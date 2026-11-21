@@ -206,6 +206,7 @@ export function CreateWorkspace({
         mcps: [],
         commands: [],
         plugins: [],
+        models: [],
         model: null,
         permissions: [],
         createdAt: now,

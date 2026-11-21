@@ -321,7 +321,11 @@ pub fn freeze_with(
         plugins,
         skills,
         mcps,
-        model: manifest.model.clone(),
+        models: manifest.models.clone(),
+        model: manifest
+            .model
+            .clone()
+            .or_else(|| manifest.models.first().cloned()),
         tools: manifest.tools.clone(),
         permissions: manifest.permissions.clone(),
         agents_md: Some(read_agents_md(templates_root, &manifest.id))
@@ -382,6 +386,7 @@ mod tests {
             mcps: vec!["context-mode".into(), "remote".into()],
             commands: vec![],
             plugins: vec![],
+            models: vec!["provider/model".into()],
             model: Some("provider/model".into()),
             tools: None,
             permissions: vec![],

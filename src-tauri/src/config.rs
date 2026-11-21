@@ -196,10 +196,13 @@ pub fn render_config(
     }
     root["permissions"] = Value::Array(permissions);
 
+    // El modelo por defecto del template se escribe en la config para que lo hereden
+    // los agentes que no tengan uno asignado.
     let model = match lock {
-        Some(lock) => lock.model.clone(),
-        None => workspace.model.clone(),
+        Some(lock) => lock.model.clone().or_else(|| lock.models.first().cloned()),
+        None => None,
     }
+    .or_else(|| workspace.model.clone())
     .filter(|model| !model.trim().is_empty());
     if let Some(model) = model {
         root["model"] = json!(model);
@@ -645,6 +648,7 @@ mod tests {
                 "frozen".to_string(),
                 json!({ "type": "remote", "url": "https://frozen.example" }),
             )]),
+            models: vec!["frozen/model".into()],
             model: Some("frozen/model".into()),
             tools: Some(json!({ "bash": false })),
             permissions: vec![json!({ "action": "edit", "resource": "*", "effect": "deny" })],
@@ -670,6 +674,26 @@ mod tests {
                 .iter()
                 .any(|rule| rule["action"] == "edit" && rule["effect"] == "deny")
         );
+    }
+
+    #[test]
+    fn default_model_applies_when_the_agent_has_none() {
+        let lock = TemplateLock {
+            models: vec!["first/model".into(), "second/model".into()],
+            ..TemplateLock::default()
+        };
+        let global = json!({});
+
+        let (config, _) = render_config(&workspace(), Some(&lock), &global);
+
+        assert_eq!(config["model"], "first/model");
+
+        let with_default = TemplateLock {
+            model: Some("second/model".into()),
+            ..lock
+        };
+        let (config, _) = render_config(&workspace(), Some(&with_default), &global);
+        assert_eq!(config["model"], "second/model");
     }
 
     #[test]
@@ -735,6 +759,7 @@ mod tests {
             }],
             skills: vec![],
             mcps: BTreeMap::new(),
+            models: vec![],
             model: None,
             tools: None,
             permissions: vec![],

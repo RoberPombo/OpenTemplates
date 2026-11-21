@@ -47,6 +47,7 @@ function emptyTemplate(): TemplateManifest {
     mcps: [],
     commands: [],
     plugins: [],
+    models: [],
     model: null,
     permissions: [],
     createdAt: now,
@@ -220,7 +221,9 @@ export function ManagePanel({
     try {
       setBusy(true);
       setError(null);
-      const saved = await api.saveTemplate({ ...draft, id, name });
+      const models = [...new Set(draft.models.map((model) => model.trim()))].filter(Boolean);
+      const model = draft.model && models.includes(draft.model) ? draft.model : null;
+      const saved = await api.saveTemplate({ ...draft, id, name, models, model });
       await api.saveTemplateAgentsMd(saved.id, agentsMd);
       onTemplatesChanged(await api.listTemplates());
       setSelectedTemplateId(saved.id);
@@ -444,21 +447,85 @@ export function ManagePanel({
                       }
                     />
                   </label>
-                  <label className="field">
-                    <span>Modelo (opcional)</span>
-                    <input
-                      className="text-input"
-                      value={draft.model ?? ""}
-                      placeholder="provider/modelo"
-                      onChange={(event) =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          model: event.target.value.trim() || null,
-                        }))
-                      }
-                    />
-                  </label>
                 </div>
+
+                <div className="field">
+                  <span>Modelos del selector</span>
+                  {draft.models.length === 0 && (
+                    <p className="muted small-text">
+                      Sin lista, el selector ofrece todos los modelos del servidor.
+                    </p>
+                  )}
+                  {draft.models.map((model, index) => (
+                    <div className="row" key={index}>
+                      <input
+                        className="text-input"
+                        value={model}
+                        placeholder="provider/modelo"
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setDraft((prev) => ({
+                            ...prev,
+                            models: prev.models.map((item, i) => (i === index ? value : item)),
+                          }));
+                          setTemplateSaved(false);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => {
+                          const removed = model.trim();
+                          setDraft((prev) => ({
+                            ...prev,
+                            models: prev.models.filter((_, i) => i !== index),
+                            model: prev.model === removed ? null : prev.model,
+                          }));
+                          setTemplateSaved(false);
+                        }}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setDraft((prev) => ({ ...prev, models: [...prev.models, ""] }));
+                      setTemplateSaved(false);
+                    }}
+                  >
+                    Añadir modelo
+                  </button>
+                </div>
+
+                <label className="field">
+                  <span>Modelo por defecto</span>
+                  <select
+                    className="text-input"
+                    value={draft.model ?? ""}
+                    onChange={(event) => {
+                      setDraft((prev) => ({
+                        ...prev,
+                        model: event.target.value || null,
+                      }));
+                      setTemplateSaved(false);
+                    }}
+                  >
+                    <option value="">Sin modelo por defecto</option>
+                    {[...new Set(draft.models.map((model) => model.trim()))]
+                      .filter(Boolean)
+                      .map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <p className="muted small-text">
+                  El modelo por defecto se aplica a los agentes que no traen uno asignado.
+                </p>
 
                 <div className="template-assets">
                   <section>

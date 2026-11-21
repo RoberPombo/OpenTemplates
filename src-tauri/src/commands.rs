@@ -336,6 +336,26 @@ pub fn save_template(
         return Err("El template necesita un nombre".into());
     }
     manifest.version = manifest.version.max(1);
+    let mut models: Vec<String> = Vec::new();
+    for model in manifest.models.drain(..) {
+        let model = model.trim().to_string();
+        if !model.is_empty() && !models.contains(&model) {
+            models.push(model);
+        }
+    }
+    manifest.models = models;
+    manifest.model = manifest
+        .model
+        .map(|model| model.trim().to_string())
+        .filter(|model| !model.is_empty());
+    if let Some(model) = manifest.model.clone()
+        && !manifest.models.contains(&model)
+    {
+        manifest.models.insert(0, model);
+    }
+    if manifest.model.is_none() {
+        manifest.model = manifest.models.first().cloned();
+    }
     let root = state.templates_root();
     let existing = templates::read_manifest(&root, &manifest.id);
     manifest.created_at = existing
@@ -558,6 +578,7 @@ pub fn create_workspace(
         commands: Vec::new(),
         plugins: Vec::new(),
         model: input.model.clone().filter(|model| !model.trim().is_empty()),
+        models: Vec::new(),
         created_at: now,
         updated_at: now,
         missing: false,
@@ -575,6 +596,7 @@ pub fn create_workspace(
                 workspace.commands = lock.commands.clone();
                 workspace.plugins = lock.plugins.clone();
                 workspace.model = lock.model.clone();
+                workspace.models = lock.models.clone();
                 Some(lock)
             }
             Err(err) => {
@@ -751,6 +773,7 @@ pub fn reapply_template(state: State<'_, AppState>, id: String) -> Result<Config
         workspace.plugins = lock.plugins.clone();
         workspace.template_version = Some(manifest.version);
         workspace.model = lock.model.clone();
+        workspace.models = lock.models.clone();
         workspace.updated_at = now_ms();
         workspace.clone()
     };

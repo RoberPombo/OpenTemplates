@@ -336,7 +336,10 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
         ]);
         if (!alive) return;
 
-        const nextModels = toModelOptions(modelResponse.data ?? []);
+        const allowedModels = new Set(workspace.models ?? []);
+        const nextModels = toModelOptions(modelResponse.data ?? []).filter(
+          (model) => allowedModels.size === 0 || allowedModels.has(model.key),
+        );
         const nextAgents = toAgentOptions(agentResponse.data ?? []);
         setModels(nextModels);
         setAgents(nextAgents);
@@ -374,6 +377,7 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
     client,
     workspace.projectPath,
     workspace.model,
+    workspace.models,
     modelStorageKey,
     agentStorageKey,
   ]);

@@ -36,6 +36,7 @@ export type Workspace = {
   commands: AssetRef[];
   plugins: AssetRef[];
   model?: string | null;
+  models: string[];
   createdAt: number;
   updatedAt: number;
   missing?: boolean;
@@ -62,6 +63,7 @@ export type TemplateManifest = {
   mcps: string[];
   commands: string[];
   plugins: string[];
+  models: string[];
   model?: string | null;
   tools?: unknown;
   permissions: unknown[];

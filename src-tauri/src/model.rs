@@ -83,6 +83,9 @@ pub struct Workspace {
     pub plugins: Vec<AssetRef>,
     #[serde(default)]
     pub model: Option<String>,
+    /// Modelos que ofrece el selector del chat (congelados del template).
+    #[serde(default)]
+    pub models: Vec<String>,
     pub created_at: u64,
     pub updated_at: u64,
     /// Solo en memoria: la carpeta del workspace ya no existe.
@@ -131,6 +134,10 @@ pub struct TemplateManifest {
     pub commands: Vec<String>,
     #[serde(default)]
     pub plugins: Vec<String>,
+    /// Modelos que aparecen en el selector del chat, en el orden dado.
+    #[serde(default)]
+    pub models: Vec<String>,
+    /// Modelo por defecto; se aplica a los agentes sin modelo asignado.
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
@@ -148,7 +155,7 @@ fn default_version() -> u32 {
 }
 
 /// Selección congelada de un template para un workspace concreto.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplateLock {
     #[serde(default)]
@@ -167,6 +174,8 @@ pub struct TemplateLock {
     pub skills: Vec<SkillRef>,
     #[serde(default)]
     pub mcps: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub models: Vec<String>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
