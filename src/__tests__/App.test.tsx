@@ -16,8 +16,8 @@ const apiMock = vi.hoisted(() => ({
 }));
 
 vi.mock("../data/tauriCommands", () => ({ api: apiMock }));
-vi.mock("../components/PerformanceCapture", () => ({ default: () => null }));
-vi.mock("../components/WorkspaceView", () => ({
+vi.mock("../presentation/components/PerformanceCapture", () => ({ default: () => null }));
+vi.mock("../presentation/components/WorkspaceView", () => ({
   WorkspaceView: ({
     workspace,
     server,
@@ -45,7 +45,7 @@ vi.mock("../components/WorkspaceView", () => ({
     </div>
   ),
 }));
-vi.mock("../components/CreateWorkspace", () => ({
+vi.mock("../presentation/components/CreateWorkspace", () => ({
   CreateWorkspace: ({
     onClose,
     onCreated,
@@ -84,14 +84,14 @@ vi.mock("../components/CreateWorkspace", () => ({
     </div>
   ),
 }));
-vi.mock("../components/ManagePanel", () => ({
+vi.mock("../presentation/components/ManagePanel", () => ({
   ManagePanel: ({ onClose }: { onClose: () => void }) => (
     <button onClick={onClose}>close-manage</button>
   ),
 }));
 
 import App from "../App";
-import { AppProvider } from "../context/AppContext";
+import { AppProvider } from "../presentation/context/AppContext";
 
 const w1: Workspace = {
   id: "w1",

@@ -3,10 +3,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Inspector } from "../Inspector";
 import { AppProvider } from "../../context/AppContext";
-import { CompositionRoot } from "../../CompositionRoot";
-import type { ChatServer } from "../../domain/repositories/ChatGateway";
-import type { ResourceUsage, ServerInfo, Workspace } from "../../types";
-import { makeWorkspace } from "../../tests/fakes";
+import { CompositionRoot } from "../../../CompositionRoot";
+import type { ChatServer } from "../../../domain/repositories/ChatGateway";
+import type { ResourceUsage, ServerInfo, Workspace } from "../../../types";
+import { makeWorkspace } from "../../../tests/fakes";
 
 // Caracterización del Inspector con el puerto opencode y los puertos del
 // CompositionRoot inyectados como fakes: sesión, proyecto, uso y toggles.

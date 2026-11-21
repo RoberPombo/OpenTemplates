@@ -3,10 +3,10 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingsPanel } from "../SettingsPanel";
 import { AppProvider } from "../../context/AppContext";
-import { CompositionRoot } from "../../CompositionRoot";
-import type { ChatGateway } from "../../domain/repositories/ChatGateway";
-import type { McpInfo, Workspace } from "../../types";
-import { makeWorkspace } from "../../tests/fakes";
+import { CompositionRoot } from "../../../CompositionRoot";
+import type { ChatGateway } from "../../../domain/repositories/ChatGateway";
+import type { McpInfo, Workspace } from "../../../types";
+import { makeWorkspace } from "../../../tests/fakes";
 
 const mcpA: McpInfo = { name: "a", config: { url: "http://a" }, source: "global" };
 const mcpB: McpInfo = { name: "b", config: { command: ["b"] }, source: "global" };

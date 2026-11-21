@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAppContext } from "../context/AppContext";
-import { errorText } from "../domain/shared";
+import { errorText } from "../../domain/shared";
 import {
   canContinue as canContinueStep,
   defaultBranch as branchDefault,
@@ -10,7 +10,7 @@ import {
   quickTemplateId,
   slugify,
   workspaceNameError,
-} from "../domain/workspace/wizard";
+} from "../../domain/workspace/wizard";
 import type {
   CreateWorkspaceInput,
   Library,
@@ -18,7 +18,7 @@ import type {
   SkillRef,
   TemplateManifest,
   Workspace,
-} from "../types";
+} from "../../types";
 import { TextInput } from "./ui";
 
 type Props = {

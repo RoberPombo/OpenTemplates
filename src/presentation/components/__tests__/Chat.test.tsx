@@ -3,8 +3,8 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Chat } from "../Chat";
 import { AppProvider } from "../../context/AppContext";
-import type { ChatServer } from "../../domain/repositories/ChatGateway";
-import { makeFakeClient, makeWorkspace } from "../../tests/fakes";
+import type { ChatServer } from "../../../domain/repositories/ChatGateway";
+import { makeFakeClient, makeWorkspace } from "../../../tests/fakes";
 
 // Caracterización del comportamiento interactivo de Chat con un cliente fake.
 // Protege el cableado del reducer de streaming (fase 1) y del hook (fase 2).

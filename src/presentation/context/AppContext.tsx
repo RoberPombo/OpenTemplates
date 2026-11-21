@@ -1,6 +1,6 @@
 /** Inyección del CompositionRoot en el árbol React. */
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { CompositionRoot } from "../CompositionRoot";
+import { CompositionRoot } from "../../CompositionRoot";
 
 const AppContext = createContext<CompositionRoot | null>(null);
 

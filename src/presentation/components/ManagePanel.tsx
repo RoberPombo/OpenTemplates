@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useAppContext } from "../context/AppContext";
-import { errorText } from "../domain/shared";
-import { slugify } from "../domain/workspace/wizard";
-import type { AssetInfo, Library, Repo, TemplateManifest, Workspace } from "../types";
+import { errorText } from "../../domain/shared";
+import { slugify } from "../../domain/workspace/wizard";
+import type { AssetInfo, Library, Repo, TemplateManifest, Workspace } from "../../types";
 
 type Props = {
   repos: Repo[];

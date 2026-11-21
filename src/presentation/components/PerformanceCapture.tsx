@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { startCapture, stopCapture } from "../perf/capture";
+import { startCapture, stopCapture } from "../../perf/capture";
 
 export default function PerformanceCapture() {
   const [active, setActive] = useState(false);

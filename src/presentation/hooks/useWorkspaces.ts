@@ -5,10 +5,17 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
-import { errorText } from "../domain/shared";
-import { groupWorkspacesByRepo } from "../domain/workspace/grouping";
-import { prefKeys } from "../domain/repositories/Preferences";
-import type { Bootstrap, Library, Repo, ServerInfo, TemplateManifest, Workspace } from "../types";
+import { errorText } from "../../domain/shared";
+import { groupWorkspacesByRepo } from "../../domain/workspace/grouping";
+import { prefKeys } from "../../domain/repositories/Preferences";
+import type {
+  Bootstrap,
+  Library,
+  Repo,
+  ServerInfo,
+  TemplateManifest,
+  Workspace,
+} from "../../types";
 
 const EMPTY_LIBRARY: Library = {
   agents: [],

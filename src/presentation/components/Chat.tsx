@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
-import type { Workspace } from "../types";
-import type { ChatServer } from "../domain/repositories/ChatGateway";
-import { folderName, formatDuration } from "../domain/shared";
-import type { ToolActivity } from "../domain/chat/messages";
+import type { Workspace } from "../../types";
+import type { ChatServer } from "../../domain/repositories/ChatGateway";
+import { folderName, formatDuration } from "../../domain/shared";
+import type { ToolActivity } from "../../domain/chat/messages";
 import { useChat } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
 

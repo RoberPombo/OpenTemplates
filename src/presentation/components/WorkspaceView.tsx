@@ -1,7 +1,7 @@
 import { Profiler, useMemo, useState } from "react";
-import type { ServerInfo, Workspace } from "../types";
+import type { ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
-import { prefKeys } from "../domain/repositories/Preferences";
+import { prefKeys } from "../../domain/repositories/Preferences";
 import { Chat } from "./Chat";
 import { Inspector } from "./Inspector";
 import { SettingsPanel } from "./SettingsPanel";

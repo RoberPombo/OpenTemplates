@@ -1,15 +1,15 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { folderName } from "./domain/shared";
-import { useWorkspaces } from "./hooks/useWorkspaces";
-import { CreateWorkspace } from "./components/CreateWorkspace";
-import { ManagePanel } from "./components/ManagePanel";
-import { WorkspaceView } from "./components/WorkspaceView";
-import { Button } from "./components/ui";
+import { useWorkspaces } from "./presentation/hooks/useWorkspaces";
+import { CreateWorkspace } from "./presentation/components/CreateWorkspace";
+import { ManagePanel } from "./presentation/components/ManagePanel";
+import { WorkspaceView } from "./presentation/components/WorkspaceView";
+import { Button } from "./presentation/components/ui";
 import type { Workspace } from "./types";
 import "./styles.css";
 
 const PerformanceCapture = import.meta.env.DEV
-  ? lazy(() => import("./components/PerformanceCapture"))
+  ? lazy(() => import("./presentation/components/PerformanceCapture"))
   : null;
 
 function App() {

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
-import { errorText } from "../domain/shared";
-import type { McpInfo, SkillInfo, SkillRef, Workspace } from "../types";
-import type { ChatGateway as WorkspaceClient } from "../domain/repositories/ChatGateway";
+import { errorText } from "../../domain/shared";
+import type { McpInfo, SkillInfo, SkillRef, Workspace } from "../../types";
+import type { ChatGateway as WorkspaceClient } from "../../domain/repositories/ChatGateway";
 
 type Props = {
   workspace: Workspace;

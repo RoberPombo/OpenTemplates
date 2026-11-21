@@ -227,7 +227,7 @@ opencode, `localStorage` ni `window.confirm`; el dominio no importa React ni inf
 - `opencode.ts` eliminado; el tipo `WorkspaceClient` es ahora alias del puerto `ChatGateway`.
 - `lib` ES2022 (Error cause). Build de producción verificado.
 
-### Fase 3 — completada (2026-11-21), salvo la reorganización de carpetas
+### Fase 3 — completada (2026-11-21)
 
 Hecho:
 - Tests de componente del **wizard** (4: camino feliz con input exacto, rama existente obligatoria,
@@ -235,7 +235,7 @@ Hecho:
   puertos fake — prueban la inyección de extremo a extremo.
 - Tests de componente de **SettingsPanel** (5: aplicar sin cambios, añadir MCP + modelo con
   recarga, quitar MCP, sin servidor, reaplicar template).
-- **Chat partido en hook + vista** (2026-11-21): `src/hooks/useChat.ts` concentra sesión,
+- **Chat partido en hook + vista** (2026-11-21): `src/presentation/hooks/useChat.ts` concentra sesión,
   catálogo, selección, streaming, envío/parada y persistencia de preferencias; `Chat.tsx` queda
   como vista (render, scroll y autoalto del textarea). Los 9 tests de caracterización de Chat
   siguen verdes sin cambiar aserciones.
@@ -250,11 +250,23 @@ Hecho:
   estado vacío sin sesión, toggle de MCP con persistencia y recarga, toggle de skill).
 - Total: **201 tests**, typecheck/lint/format/build en verde.
 
-Pendiente:
-- Reorganización final de carpetas a `presentation/` (components/hooks/context): **bloqueada**.
-  `git status` confirma que el WIP sigue sin commitear (`Chat.tsx`, `Inspector.tsx`,
-  `WorkspaceView.tsx`, `App.tsx` modificados; `src/hooks/`, `src/context/`, `src/data/`,
-  `src/domain/`, `src/perf/`, `src/components/ui/` y los docs sin seguimiento). Mover ahora
-  mezclaría el refactor con las ediciones del usuario; se hará cuando él commitee.
-- Opcional: estrechar también `mcp.list.status` (SettingsPanel todavía hace un cast local).
-- Opcional: regla de lint que prohíba imports de `data/` desde presentación.
+### Reorganización final a `presentation/` (2026-11-21)
+
+El WIP del usuario ya estaba commiteado (`9f246fa` tooling, `cdff2be` rendimiento, `11af862`
+refactor fases 0-3), así que la reorganización dejó de estar bloqueada.
+
+- `git mv` de `src/components`, `src/hooks` y `src/context` a `src/presentation/` (components,
+  hooks, context), conservando historial; `components/ui` y `components/__tests__` viajan con
+  los componentes.
+- Imports actualizados: `App.tsx`, `main.tsx`, `src/__tests__/App.test.tsx` y los ficheros
+  movidos, con la profundidad relativa correcta (`../../domain`, `../../../CompositionRoot`,
+  etc.). Los imports entre `components`/`hooks`/`context` no cambian al compartir
+  `presentation/`; `CompositionRoot.ts` y `main.tsx` siguen en la raíz de `src`.
+- Sin cambios de comportamiento ni en `domain/` ni en `data/`: los diffs de los ficheros
+  movidos son solo líneas de import (más el reajuste de una línea larga por oxfmt).
+- Puerta completa en verde: `pnpm typecheck`, `pnpm exec oxlint` (exit 0, solo warnings
+  preexistentes), `pnpm format:check`, `pnpm test` (**201 tests**) y `pnpm build`.
+
+Pendiente (opcional):
+- Estrechar también `mcp.list.status` (SettingsPanel todavía hace un cast local).
+- Regla de lint que prohíba imports de `data/` desde presentación.

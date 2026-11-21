@@ -3,9 +3,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CreateWorkspace } from "../CreateWorkspace";
 import { AppProvider } from "../../context/AppContext";
-import { CompositionRoot } from "../../CompositionRoot";
-import { makeWorkspace } from "../../tests/fakes";
-import type { Library, Repo, TemplateManifest, Workspace } from "../../types";
+import { CompositionRoot } from "../../../CompositionRoot";
+import { makeWorkspace } from "../../../tests/fakes";
+import type { Library, Repo, TemplateManifest, Workspace } from "../../../types";
 
 const repo: Repo = {
   id: "r1",

@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
-import { errorText } from "../domain/shared";
+import { errorText } from "../../domain/shared";
 import {
   cacheRatio as computeCacheRatio,
   contextRatio as computeContextRatio,
   toSessionUsage,
   type SessionUsage,
   type UsageLimits,
-} from "../domain/chat/usage";
-import type { CatalogModel } from "../domain/chat/selection";
-import type { ChatServer } from "../domain/repositories/ChatGateway";
-import type { ResourceUsage, ServerInfo, SkillRef, Workspace } from "../types";
+} from "../../domain/chat/usage";
+import type { CatalogModel } from "../../domain/chat/selection";
+import type { ChatServer } from "../../domain/repositories/ChatGateway";
+import type { ResourceUsage, ServerInfo, SkillRef, Workspace } from "../../types";
 
 type Props = {
   workspace: Workspace;

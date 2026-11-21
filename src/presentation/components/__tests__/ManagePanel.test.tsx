@@ -3,8 +3,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ManagePanel } from "../ManagePanel";
 import { AppProvider } from "../../context/AppContext";
-import { CompositionRoot } from "../../CompositionRoot";
-import type { Library, Repo, TemplateManifest } from "../../types";
+import { CompositionRoot } from "../../../CompositionRoot";
+import type { Library, Repo, TemplateManifest } from "../../../types";
 
 // Caracterización de ManagePanel con los puertos fake inyectados por
 // CompositionRoot: repos, templates, ajustes, selector de carpetas y confirmación.

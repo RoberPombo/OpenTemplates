@@ -7,23 +7,23 @@
  */
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useAppContext } from "../context/AppContext";
-import { prefKeys } from "../domain/repositories/Preferences";
-import type { Workspace } from "../types";
-import type { ChatServer } from "../domain/repositories/ChatGateway";
-import { errorText as baseErrorText } from "../domain/shared";
-import { toChatMessages, type ChatMessage } from "../domain/chat/messages";
+import { prefKeys } from "../../domain/repositories/Preferences";
+import type { Workspace } from "../../types";
+import type { ChatServer } from "../../domain/repositories/ChatGateway";
+import { errorText as baseErrorText } from "../../domain/shared";
+import { toChatMessages, type ChatMessage } from "../../domain/chat/messages";
 import {
   effectiveVariant as supportedVariant,
   toAgentOptions,
   toModelOptions,
   type AgentOption,
   type ModelOption,
-} from "../domain/chat/selection";
+} from "../../domain/chat/selection";
 import {
   chatStreamReducer,
   eventRequestsReload,
   initialChatStreamState,
-} from "../domain/chat/stream";
+} from "../../domain/chat/stream";
 
 type UseChatInput = {
   client: ChatServer;
