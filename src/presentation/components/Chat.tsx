@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Workspace } from "../../types";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import { folderName, formatDuration } from "../../domain/shared";
 import type { ToolActivity } from "../../domain/chat/messages";
 import { useChat } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
+import { AsyncSearchableSelect, Select } from "./ui";
 
 type Props = {
   client: ChatServer;
@@ -71,6 +72,27 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
 
   const folder = folderName(workspace.projectPath);
   const variants = selectedModel?.variants ?? [];
+  const modelSelectOptions = useMemo(
+    () =>
+      modelGroups.map(([provider, list]) => ({
+        label: provider,
+        options: list.map((model) => ({
+          value: model.key,
+          label: model.name,
+          description: `${model.providerID} · ${model.id}`,
+          searchText: `${model.providerID} ${model.id}`,
+        })),
+      })),
+    [modelGroups],
+  );
+  const variantSelectOptions = useMemo(
+    () => (selectedModel?.variants ?? []).map((id) => ({ value: id, label: effortLabel(id) })),
+    [selectedModel],
+  );
+  const agentSelectOptions = useMemo(
+    () => agents.map((agent) => ({ value: agent.id, label: agent.name })),
+    [agents],
+  );
 
   return (
     <section className="chat">
@@ -202,62 +224,46 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
             </div>
 
             <div className="composer-controls">
-              <label className="select-chip" title="Modelo">
+              <div className="select-chip" title="Modelo">
                 <SparkIcon />
-                <select
+                <AsyncSearchableSelect
                   aria-label="Modelo"
                   value={modelChoice}
+                  placeholder={models.length === 0 ? "Cargando modelos…" : "Buscar modelo…"}
                   disabled={models.length === 0 || busy}
-                  onChange={(event) => chooseModel(event.target.value)}
-                >
-                  {models.length === 0 && <option value="">Cargando modelos…</option>}
-                  {modelGroups.map(([provider, list]) => (
-                    <optgroup key={provider} label={provider}>
-                      {list.map((model) => (
-                        <option key={model.key} value={model.key}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
+                  options={modelSelectOptions}
+                  variant="chip"
+                  onValueChange={chooseModel}
+                />
+              </div>
 
               {variants.length > 0 && (
-                <label className="select-chip" title="Razonamiento">
+                <div className="select-chip" title="Razonamiento">
                   <BrainIcon />
-                  <select
+                  <Select
                     aria-label="Razonamiento"
-                    value={effectiveVariant}
+                    value={effectiveVariant || ""}
+                    placeholder="predeterminado"
                     disabled={busy}
-                    onChange={(event) => chooseVariant(event.target.value)}
-                  >
-                    <option value="">predeterminado</option>
-                    {variants.map((id) => (
-                      <option key={id} value={id}>
-                        {effortLabel(id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    options={variantSelectOptions}
+                    variant="chip"
+                    onValueChange={chooseVariant}
+                  />
+                </div>
               )}
 
-              <label className="select-chip" title="Agente">
+              <div className="select-chip" title="Agente">
                 <AgentIcon />
-                <select
+                <Select
                   aria-label="Agente"
                   value={agentChoice}
+                  placeholder="Cargando agentes…"
                   disabled={agents.length === 0 || busy}
-                  onChange={(event) => chooseAgent(event.target.value)}
-                >
-                  {agents.length === 0 && <option value="">Cargando agentes…</option>}
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={agentSelectOptions}
+                  variant="chip"
+                  onValueChange={chooseAgent}
+                />
+              </div>
 
               {busy ? (
                 <button

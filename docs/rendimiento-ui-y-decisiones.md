@@ -70,10 +70,13 @@ HTML nativo. Importar Base UI por componente y solo donde aporte valor.
 Se añadió `@base-ui/react` y `Button` ya está respaldado por `@base-ui/react/button`;
 `TextInput` sigue siendo un input nativo con estilos existentes.
 
-Build tras incorporar Base UI Button: JS 342.77 kB (97.65 kB gzip), CSS 28.13 kB
-(6.87 kB gzip). Frente al build previo, la diferencia observada es +7.52 kB JS y
-+2.76 kB gzip. Se limita la dependencia a los componentes que la necesiten; se
-volverá a medir al añadir otros wrappers.
+Build con Base UI Button: JS 342.77 kB (97.65 kB gzip), CSS 28.13 kB
+(6.87 kB gzip). Select y Combobox van en un chunk diferido de 146.18 kB
+(50.09 kB gzip) que solo se carga al abrir una vista con selects; el entry
+principal queda en 357.71 kB (102.90 kB gzip) y el CSS en 32.09 kB
+(7.60 kB gzip). La carga diferida protege el arranque, pero el coste al usar
+estos controles crece; el siguiente paso es medir si merece la pena el
+Combobox solo para el selector de modelos o si conviene un filtro manual.
 
 ## Decisiones pendientes para cuando se necesiten
 
@@ -94,8 +97,10 @@ volverá a medir al añadir otros wrappers.
 
 ## Wrappers de UI
 
-La primera base está en `src/components/ui`: `Button` (Base UI con variantes visuales
-propias) y `TextInput` (HTML nativo). `App`, `WorkspaceView` y el campo de búsqueda
-del diálogo de creación ya los usan. Ampliar wrappers conforme aparezcan usos
-repetidos y mantener sus props orientadas al producto, sin exponer APIs de librería
-a las features.
+La primera base está en `src/presentation/components/ui`: `Button` (Base UI con
+variantes visuales propias), `TextInput` (HTML nativo), `Select` (Base UI, con grupos
+y variantes `chip`/`field`) y `Select` con búsqueda (`AsyncSearchableSelect`, Combobox
+de Base UI) para catálogos largos como los modelos. Los selects van en carga diferida
+y los de agente/razonamiento siguen usando el Select simple. Ampliar wrappers conforme
+aparezcan usos repetidos y mantener sus props orientadas al producto, sin exponer APIs
+de librería a las features.

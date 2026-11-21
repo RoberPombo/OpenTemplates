@@ -3,6 +3,7 @@ import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { slugify } from "../../domain/workspace/wizard";
 import type { AssetInfo, Library, Repo, TemplateManifest, Workspace } from "../../types";
+import { Select } from "./ui";
 
 type Props = {
   repos: Repo[];
@@ -481,29 +482,25 @@ export function ManagePanel({
                   </button>
                 </div>
 
-                <label className="field">
+                <div className="field">
                   <span>Modelo por defecto</span>
-                  <select
-                    className="text-input"
+                  <Select
+                    aria-label="Modelo por defecto"
                     value={draft.model ?? ""}
-                    onChange={(event) => {
+                    placeholder="Sin modelo por defecto"
+                    options={[...new Set(draft.models.map((model) => model.trim()))]
+                      .filter(Boolean)
+                      .map((model) => ({ value: model, label: model }))}
+                    variant="field"
+                    onValueChange={(model) => {
                       setDraft((prev) => ({
                         ...prev,
-                        model: event.target.value || null,
+                        model: model || null,
                       }));
                       setTemplateSaved(false);
                     }}
-                  >
-                    <option value="">Sin modelo por defecto</option>
-                    {[...new Set(draft.models.map((model) => model.trim()))]
-                      .filter(Boolean)
-                      .map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <p className="muted small-text">
                   El modelo por defecto se aplica a los agentes que no traen uno asignado.
                 </p>

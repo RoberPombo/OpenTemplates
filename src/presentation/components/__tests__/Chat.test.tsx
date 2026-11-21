@@ -93,7 +93,7 @@ describe("Chat — envío", () => {
     localStorage.setItem("openconf:model:w1", "openai/gpt");
     renderChat({}, makeWorkspace({ model: "anthropic/claude" }));
     await waitFor(() =>
-      expect((screen.getByLabelText("Modelo") as HTMLSelectElement).value).toBe("openai/gpt"),
+      expect(screen.getByRole("combobox", { name: "Modelo" })).toHaveValue("GPT"),
     );
   });
 });

@@ -304,18 +304,21 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     };
   }, [client, sessionId, reload]);
 
-  function chooseModel(key: string) {
-    const next = models.find((model) => model.key === key);
-    dispatch({ kind: "modelChosen", key, model: next });
-  }
+  const chooseModel = useCallback(
+    (key: string) => {
+      const next = models.find((model) => model.key === key);
+      dispatch({ kind: "modelChosen", key, model: next });
+    },
+    [models],
+  );
 
-  function chooseVariant(value: string) {
+  const chooseVariant = useCallback((value: string) => {
     dispatch({ kind: "choices", variant: value });
-  }
+  }, []);
 
-  function chooseAgent(id: string) {
+  const chooseAgent = useCallback((id: string) => {
     dispatch({ kind: "choices", agentChoice: id });
-  }
+  }, []);
 
   async function send() {
     const text = input.trim();
