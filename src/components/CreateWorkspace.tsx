@@ -202,8 +202,8 @@ export function CreateWorkspace({
         description: quickDescription.trim(),
         version: 1,
         agents: [],
-        skills: [],
-        mcps: [],
+        skills: [...selectedSkills.keys()],
+        mcps: [...selectedMcps],
         commands: [],
         plugins: [],
         models: [],
@@ -263,7 +263,8 @@ export function CreateWorkspace({
       name: name.trim(),
       repoId: loose ? null : repoId,
       projectPath: loose ? loosePath : null,
-      templateId: loose ? null : templateId,
+      // El template también aplica a carpetas sueltas: define agentes, skills y MCPs.
+      templateId,
       mode: loose ? "adhoc" : mode,
       branch: isWorktree ? branch.trim() || null : null,
       base: isWorktree ? base.trim() || null : null,
@@ -436,7 +437,8 @@ export function CreateWorkspace({
                     </button>
                   </div>
                   <p className="muted small-text">
-                    Podrás marcar sus agentes, skills y MCPs en «Repos y templates».
+                    Se crea con los MCPs y skills que has marcado. Podrás ajustar agentes, comandos
+                    y plugins en «Repos y templates».
                   </p>
                 </div>
               )}
