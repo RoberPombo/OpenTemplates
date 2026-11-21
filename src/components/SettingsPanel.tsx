@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../api";
+import { useAppContext } from "../context/AppContext";
+import { errorText } from "../domain/shared";
 import type { McpInfo, SkillInfo, SkillRef, Workspace } from "../types";
-import type { WorkspaceClient } from "../opencode";
+import type { ChatGateway as WorkspaceClient } from "../domain/repositories/ChatGateway";
 
 type Props = {
   workspace: Workspace;
@@ -10,29 +11,14 @@ type Props = {
   onClose: () => void;
 };
 
-function sameSet(a: string[], b: string[]) {
-  if (a.length !== b.length) return false;
-  const set = new Set(a);
-  return b.every((value) => set.has(value));
-}
-
 function mcpSummary(config: Record<string, unknown>) {
   if (typeof config.url === "string") return config.url;
   if (Array.isArray(config.command)) return config.command.join(" ");
   return "";
 }
 
-function errorText(error: unknown) {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
 export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) {
+  const root = useAppContext();
   const [mcps, setMcps] = useState<McpInfo[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [reapplying, setReapplying] = useState(false);
@@ -49,14 +35,14 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
 
   useEffect(() => {
     let alive = true;
-    api
-      .listMcps()
+    root.library
+      .mcps()
       .then((items) => {
         if (alive) setMcps(items);
       })
       .catch(() => undefined);
-    api
-      .listSkills(workspace.projectPath)
+    root.library
+      .skills(workspace.projectPath)
       .then((items) => {
         if (alive) setSkills(items);
       })
@@ -64,7 +50,7 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
     return () => {
       alive = false;
     };
-  }, [workspace.projectPath]);
+  }, [root, workspace.projectPath]);
 
   useEffect(() => {
     setSelectedMcps(new Set(workspace.mcpNames));
@@ -129,47 +115,12 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
     try {
       const nextMcps = [...selectedMcps];
       const nextSkills = [...selectedSkills.values()];
-      const outcome = await api.updateWorkspace({
-        id: workspace.id,
-        mcpNames: nextMcps,
-        skills: nextSkills,
-        model: model.trim() || null,
-      });
+      const { outcome, mcpErrors } = await root
+        .provideApplyWorkspaceSettings(client ?? null)
+        .execute({ workspace, mcpNames: nextMcps, skills: nextSkills, model, mcps });
       setWarnings(outcome.warnings);
       onUpdated(outcome.workspace, outcome.warnings);
-
-      if (client) {
-        const location = { directory: workspace.projectPath };
-        const before = new Set(workspace.mcpNames);
-        const after = new Set(nextMcps);
-
-        for (const name of before) {
-          if (!after.has(name)) {
-            await client.mcp.remove({ server: name, location }).catch(() => undefined);
-          }
-        }
-        for (const name of after) {
-          if (before.has(name)) continue;
-          const info = mcps.find((item) => item.name === name);
-          if (!info) continue;
-          await client.mcp
-            .add({
-              server: name,
-              config: { ...(info.config as any), disabled: false },
-              location,
-            })
-            .catch((err) => setError(errorText(err)));
-        }
-
-        const skillsChanged = !sameSet(
-          workspace.skills.map((skill) => skill.id),
-          nextSkills.map((skill) => skill.id),
-        );
-        const modelChanged = (workspace.model ?? "") !== model.trim();
-        if (skillsChanged || modelChanged) {
-          await client.location.reload();
-        }
-      }
+      if (mcpErrors.length > 0) setError(mcpErrors[mcpErrors.length - 1]);
       await refreshStatuses();
       setApplied(true);
     } catch (err) {
@@ -184,7 +135,7 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
     setError(null);
     setWarnings([]);
     try {
-      const outcome = await api.reapplyTemplate(workspace.id);
+      const outcome = await root.workspaces.reapplyTemplate(workspace.id);
       setSelectedMcps(new Set(outcome.workspace.mcpNames));
       setSelectedSkills(new Map(outcome.workspace.skills.map((skill) => [skill.id, skill])));
       setModel(outcome.workspace.model ?? "");

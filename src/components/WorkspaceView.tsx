@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { Profiler, useMemo, useState } from "react";
 import type { ServerInfo, Workspace } from "../types";
-import { makeClient } from "../opencode";
+import { useAppContext } from "../context/AppContext";
+import { prefKeys } from "../domain/repositories/Preferences";
 import { Chat } from "./Chat";
 import { Inspector } from "./Inspector";
 import { SettingsPanel } from "./SettingsPanel";
+import { Button } from "./ui";
 
 type Props = {
   workspace: Workspace;
@@ -16,7 +18,26 @@ type Props = {
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
 };
 
-const PANEL_KEY = "openconf:panel";
+function ProfiledChat(props: React.ComponentProps<typeof Chat>) {
+  if (!import.meta.env.DEV) return <Chat {...props} />;
+
+  return (
+    <Profiler
+      id="Chat"
+      onRender={(id, phase, actualDuration, baseDuration, startTime, commitTime) =>
+        import.meta.env.DEV &&
+        document.documentElement.dataset.perfCapture === "on" &&
+        window.dispatchEvent(
+          new CustomEvent("openconf:perf-react-commit", {
+            detail: { id, phase, actualDuration, baseDuration, startTime, commitTime },
+          }),
+        )
+      }
+    >
+      <Chat {...props} />
+    </Profiler>
+  );
+}
 
 function modeLabel(workspace: Workspace) {
   if (workspace.mode === "worktree") return "worktree";
@@ -34,20 +55,23 @@ export function WorkspaceView({
   onDelete,
   onUpdated,
 }: Props) {
+  const root = useAppContext();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(() => localStorage.getItem(PANEL_KEY) !== "0");
+  const [panelOpen, setPanelOpen] = useState(
+    () => root.preferences.get(prefKeys.panelOpen) !== "0",
+  );
   const [sessionId, setSessionId] = useState<string | null>(() =>
-    localStorage.getItem(`openconf:session:${workspace.id}`),
+    root.preferences.get(prefKeys.session(workspace.id)),
   );
   const client = useMemo(
-    () => (server ? makeClient(server) : null),
-    [server?.baseUrl, server?.password],
+    () => (server ? root.provideChatGateway(server) : null),
+    [root, server?.baseUrl, server?.password],
   );
 
   function togglePanel() {
     setPanelOpen((prev) => {
       const next = !prev;
-      localStorage.setItem(PANEL_KEY, next ? "1" : "0");
+      root.preferences.set(prefKeys.panelOpen, next ? "1" : "0");
       return next;
     });
   }
@@ -82,28 +106,31 @@ export function WorkspaceView({
         <div className="row">
           {server ? (
             <>
-              <button
-                className={`ghost ${panelOpen ? "active" : ""}`}
+              <Button
+                className={panelOpen ? "active" : ""}
                 title={panelOpen ? "Ocultar panel" : "Mostrar panel"}
                 onClick={togglePanel}
               >
                 Panel
-              </button>
-              <button className="ghost" onClick={() => setSettingsOpen(true)}>
-                Ajustes
-              </button>
-              <button className="ghost danger-text" onClick={onStop}>
+              </Button>
+              <Button onClick={() => setSettingsOpen(true)}>Ajustes</Button>
+              <Button className="danger-text" onClick={onStop}>
                 Parar
-              </button>
+              </Button>
             </>
           ) : (
-            <button className="primary" onClick={onStart} disabled={starting || workspace.missing}>
+            <Button variant="primary" onClick={onStart} disabled={starting || workspace.missing}>
               {starting ? "Arrancando…" : "Arrancar workspace"}
-            </button>
+            </Button>
           )}
-          <button className="icon-button" title="Eliminar workspace" onClick={onDelete}>
+          <Button
+            variant="icon"
+            title="Eliminar workspace"
+            aria-label="Eliminar workspace"
+            onClick={onDelete}
+          >
             ×
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -116,7 +143,7 @@ export function WorkspaceView({
 
       {server && client ? (
         <div className="workspace-body">
-          <Chat client={client} workspace={workspace} onSessionChange={setSessionId} />
+          <ProfiledChat client={client} workspace={workspace} onSessionChange={setSessionId} />
           {panelOpen && (
             <Inspector
               workspace={workspace}
@@ -159,16 +186,10 @@ export function WorkspaceView({
               </div>
             </div>
             <div className="row">
-              <button
-                className="primary"
-                onClick={onStart}
-                disabled={starting || workspace.missing}
-              >
+              <Button variant="primary" onClick={onStart} disabled={starting || workspace.missing}>
                 {starting ? "Arrancando…" : "Arrancar workspace"}
-              </button>
-              <button className="ghost" onClick={() => setSettingsOpen(true)}>
-                Configurar
-              </button>
+              </Button>
+              <Button onClick={() => setSettingsOpen(true)}>Configurar</Button>
             </div>
           </div>
         </div>

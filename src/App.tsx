@@ -1,82 +1,45 @@
-import { useEffect, useMemo, useState } from "react";
-import { api } from "./api";
+import { lazy, Suspense, useMemo, useState } from "react";
+import { folderName } from "./domain/shared";
+import { useWorkspaces } from "./hooks/useWorkspaces";
 import { CreateWorkspace } from "./components/CreateWorkspace";
 import { ManagePanel } from "./components/ManagePanel";
 import { WorkspaceView } from "./components/WorkspaceView";
-import type { Bootstrap, Library, Repo, ServerInfo, TemplateManifest, Workspace } from "./types";
+import { Button } from "./components/ui";
+import type { Workspace } from "./types";
 import "./styles.css";
 
-const SELECTED_KEY = "openconf:selected";
-
-const EMPTY_LIBRARY: Library = {
-  agents: [],
-  commands: [],
-  plugins: [],
-  skills: [],
-  mcps: [],
-};
-
-function errorText(error: unknown) {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
-function folderName(path: string) {
-  return path.split("/").filter(Boolean).pop() ?? path;
-}
+const PerformanceCapture = import.meta.env.DEV
+  ? lazy(() => import("./components/PerformanceCapture"))
+  : null;
 
 function App() {
-  const [boot, setBoot] = useState<Bootstrap | null>(null);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [repos, setRepos] = useState<Repo[]>([]);
-  const [templates, setTemplates] = useState<TemplateManifest[]>([]);
-  const [library, setLibrary] = useState<Library>(EMPTY_LIBRARY);
-  const [worktreesRoot, setWorktreesRoot] = useState("");
-  const [running, setRunning] = useState<Record<string, ServerInfo>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(localStorage.getItem(SELECTED_KEY));
+  const {
+    boot,
+    workspaces,
+    repos,
+    templates,
+    library,
+    worktreesRoot,
+    running,
+    selectedId,
+    selected,
+    groups,
+    startingId,
+    notice,
+    fatal,
+    select,
+    start,
+    stop,
+    remove,
+    updated,
+    created,
+    setNotice,
+    setRepos,
+    setTemplates,
+    setWorktreesRoot,
+  } = useWorkspaces();
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState(false);
-  const [startingId, setStartingId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [fatal, setFatal] = useState<string | null>(null);
-
-  const selected = useMemo(
-    () => workspaces.find((workspace) => workspace.id === selectedId) ?? null,
-    [workspaces, selectedId],
-  );
-
-  const groups = useMemo(() => {
-    const byRepo = new Map<string, Workspace[]>();
-    for (const workspace of workspaces) {
-      const key = workspace.repoId ?? "";
-      const list = byRepo.get(key) ?? [];
-      list.push(workspace);
-      byRepo.set(key, list);
-    }
-    const result: { key: string; title: string; subtitle?: string; items: Workspace[] }[] = [];
-    for (const repo of repos) {
-      const items = byRepo.get(repo.id);
-      if (!items || items.length === 0) continue;
-      result.push({
-        key: repo.id,
-        title: repo.name,
-        subtitle: repo.path,
-        items,
-      });
-      byRepo.delete(repo.id);
-    }
-    const leftovers: Workspace[] = [];
-    for (const items of byRepo.values()) leftovers.push(...items);
-    if (leftovers.length > 0) {
-      result.push({ key: "", title: "Sin repo", items: leftovers });
-    }
-    return result;
-  }, [workspaces, repos]);
 
   const templateName = useMemo(() => {
     if (!selected?.templateId) return null;
@@ -86,155 +49,14 @@ function App() {
       : selected.templateId;
   }, [selected?.templateId, selected?.templateVersion, templates]);
 
-  async function refresh() {
-    try {
-      const bootstrap = await api.bootstrap();
-      setBoot(bootstrap);
-      setWorkspaces(bootstrap.workspaces);
-      setRepos(bootstrap.repos);
-      setTemplates(bootstrap.templates);
-      setWorktreesRoot(bootstrap.worktreesRoot);
-      setRunning(
-        Object.fromEntries(bootstrap.running.map((server) => [server.workspaceId, server])),
-      );
-      if (bootstrap.notices.length > 0) {
-        setNotice(bootstrap.notices.join(" · "));
-      }
-      setSelectedId((current) => {
-        const next =
-          current && bootstrap.workspaces.some((w) => w.id === current)
-            ? current
-            : (bootstrap.workspaces[0]?.id ?? null);
-        if (next) localStorage.setItem(SELECTED_KEY, next);
-        return next;
-      });
-      setLibrary(await api.listLibrary());
-    } catch (error) {
-      setFatal(errorText(error));
-    }
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void api
-        .workspaceStatus()
-        .then((items) => {
-          setRunning(Object.fromEntries(items.map((server) => [server.workspaceId, server])));
-        })
-        .catch(() => undefined);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  function select(id: string) {
-    setSelectedId(id);
-    localStorage.setItem(SELECTED_KEY, id);
-    setNotice(null);
-  }
-
-  async function start(id: string) {
-    setStartingId(id);
-    setNotice(null);
-    try {
-      const server = await api.startWorkspace(id);
-      setRunning((prev) => ({ ...prev, [id]: server }));
-    } catch (error) {
-      setNotice(errorText(error));
-    } finally {
-      setStartingId(null);
-    }
-  }
-
-  async function stop(id: string) {
-    setNotice(null);
-    try {
-      await api.stopWorkspace(id);
-      setRunning((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-    } catch (error) {
-      setNotice(errorText(error));
-    }
-  }
-
-  async function remove(id: string) {
-    const workspace = workspaces.find((item) => item.id === id);
-    if (!workspace) return;
-
-    let force = false;
-    if (workspace.mode === "worktree") {
-      try {
-        const status = await api.worktreeStatus(id);
-        if (
-          !window.confirm(
-            `¿Eliminar el workspace «${workspace.name}»? Se parará el servidor y se quitará el worktree. La rama «${workspace.branch ?? status.branch ?? "de trabajo"}» se conserva.`,
-          )
-        ) {
-          return;
-        }
-        if (status.dirty) {
-          if (
-            !window.confirm(
-              "El worktree tiene cambios sin commitear. ¿Eliminarlo igualmente? La rama se conservará.",
-            )
-          ) {
-            return;
-          }
-          force = true;
-        }
-      } catch (error) {
-        setNotice(errorText(error));
-        return;
-      }
-    } else if (
-      !window.confirm(
-        `¿Eliminar el workspace «${workspace.name}»? Se parará el servidor y se quitará de la lista. La carpeta del proyecto no se toca.`,
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await api.deleteWorkspace(id, {
-        removeWorktree: workspace.mode === "worktree",
-        force,
-      });
-      setWorkspaces((prev) => prev.filter((item) => item.id !== id));
-      setRunning((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      if (selectedId === id) {
-        const next = workspaces.find((item) => item.id !== id);
-        setSelectedId(next?.id ?? null);
-        if (next) localStorage.setItem(SELECTED_KEY, next.id);
-        else localStorage.removeItem(SELECTED_KEY);
-      }
-    } catch (error) {
-      setNotice(errorText(error));
-    }
-  }
-
-  function updated(workspace: Workspace, warnings: string[]) {
-    setWorkspaces((prev) => prev.map((item) => (item.id === workspace.id ? workspace : item)));
-    if (warnings.length > 0) setNotice(warnings.join(" · "));
-  }
-
   if (fatal) {
     return (
       <main className="fatal">
         <h1>OpenConf no pudo arrancar</h1>
         <p>{fatal}</p>
-        <button className="primary" onClick={() => window.location.reload()}>
+        <Button variant="primary" onClick={() => window.location.reload()}>
           Reintentar
-        </button>
+        </Button>
       </main>
     );
   }
@@ -303,9 +125,9 @@ function App() {
         </nav>
 
         <div className="sidebar-foot">
-          <button className="ghost sidebar-link" onClick={() => setManaging(true)}>
+          <Button variant="ghost" className="sidebar-link" onClick={() => setManaging(true)}>
             Repos y templates
-          </button>
+          </Button>
           {boot.error ? (
             <span className="danger-text">{boot.error}</span>
           ) : (
@@ -344,9 +166,9 @@ function App() {
                 Cada workspace arranca su propio servidor con la configuración, el template, los
                 MCPs, las skills y las sesiones que le asignes. Los demás no se enteran.
               </p>
-              <button className="primary" onClick={() => setCreating(true)}>
+              <Button variant="primary" onClick={() => setCreating(true)}>
                 Crear el primero
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -363,11 +185,8 @@ function App() {
           onRepoAdded={(repo) => setRepos((prev) => [...prev, repo])}
           onTemplateSaved={(template) => setTemplates((prev) => [...prev, template])}
           onCreated={(workspace, warnings, startNow) => {
-            setWorkspaces((prev) => [...prev, workspace]);
+            created(workspace, warnings, startNow);
             setCreating(false);
-            select(workspace.id);
-            if (warnings.length > 0) setNotice(warnings.join(" · "));
-            if (startNow) void start(workspace.id);
           }}
         />
       )}
@@ -385,6 +204,11 @@ function App() {
           onWorktreesRootChanged={setWorktreesRoot}
           onClose={() => setManaging(false)}
         />
+      )}
+      {PerformanceCapture && (
+        <Suspense fallback={null}>
+          <PerformanceCapture />
+        </Suspense>
       )}
     </div>
   );

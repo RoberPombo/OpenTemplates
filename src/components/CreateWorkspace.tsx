@@ -1,6 +1,16 @@
 import { useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { api } from "../api";
+import { useAppContext } from "../context/AppContext";
+import { errorText } from "../domain/shared";
+import {
+  canContinue as canContinueStep,
+  defaultBranch as branchDefault,
+  defaultWorktreePath,
+  pathConflicts as findPathConflicts,
+  principalConflicts as findPrincipalConflicts,
+  quickTemplateId,
+  slugify,
+  workspaceNameError,
+} from "../domain/workspace/wizard";
 import type {
   CreateWorkspaceInput,
   Library,
@@ -9,6 +19,7 @@ import type {
   TemplateManifest,
   Workspace,
 } from "../types";
+import { TextInput } from "./ui";
 
 type Props = {
   repos: Repo[];
@@ -23,23 +34,6 @@ type Props = {
 };
 
 const STEPS = ["Repo", "Template", "Nombre", "Resumen"];
-
-function errorText(error: unknown) {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
-function slugify(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function SearchField({
   label,
@@ -57,8 +51,7 @@ function SearchField({
   return (
     <label className="field">
       <span>{label}</span>
-      <input
-        className="text-input"
+      <TextInput
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -101,6 +94,7 @@ export function CreateWorkspace({
   onTemplateSaved,
   onCreated,
 }: Props) {
+  const root = useAppContext();
   const [step, setStep] = useState(0);
   const [loose, setLoose] = useState(repos.length === 0);
   const [repoId, setRepoId] = useState<string | null>(repos[0]?.id ?? null);
@@ -126,22 +120,11 @@ export function CreateWorkspace({
   const repo = repos.find((item) => item.id === repoId) ?? null;
   const template = templates.find((item) => item.id === templateId) ?? null;
   const slug = slugify(name);
-  const defaultBranch = slug || "rama";
-  const defaultPath = repo
-    ? `${worktreesRoot.replace(/\/$/, "")}/${slugify(repo.name)}/${slug || "workspace"}`
-    : "";
+  const defaultBranch = branchDefault(slug);
+  const defaultPath = repo ? defaultWorktreePath(worktreesRoot, repo.name, slug) : "";
 
-  const principalConflicts = repo
-    ? workspaces.filter(
-        (workspace) => workspace.repoId === repo.id && workspace.mode === "principal",
-      )
-    : [];
-  const pathConflicts = repo
-    ? workspaces.filter(
-        (workspace) =>
-          workspace.mode === "principal" && repo && workspace.projectPath === repo.path,
-      )
-    : [];
+  const principalConflicts = repo ? findPrincipalConflicts(workspaces, repo.id) : [];
+  const pathConflicts = repo ? findPathConflicts(workspaces, repo.path) : [];
 
   function selectRepo(id: string) {
     setRepoId(id);
@@ -151,13 +134,9 @@ export function CreateWorkspace({
 
   async function pickRepo() {
     try {
-      const picked = await open({
-        directory: true,
-        multiple: false,
-        title: "Elegir repositorio git",
-      });
-      if (typeof picked !== "string") return;
-      const added = await api.addRepo(picked);
+      const picked = await root.folderPicker.pickDirectory("Elegir repositorio git");
+      if (!picked) return;
+      const added = await root.repos.add(picked);
       onRepoAdded(added);
       selectRepo(added.id);
     } catch (err) {
@@ -166,12 +145,8 @@ export function CreateWorkspace({
   }
 
   async function pickLooseFolder() {
-    const picked = await open({
-      directory: true,
-      multiple: false,
-      title: "Elegir carpeta del proyecto",
-    });
-    if (typeof picked === "string") {
+    const picked = await root.folderPicker.pickDirectory("Elegir carpeta del proyecto");
+    if (picked) {
       setLoose(true);
       setLoosePath(picked);
       setError(null);
@@ -179,24 +154,20 @@ export function CreateWorkspace({
   }
 
   async function createQuickTemplate() {
-    if (!quickName.trim()) {
-      setError("Ponle un nombre al template.");
+    const result = quickTemplateId(
+      quickName,
+      templates.map((item) => item.id),
+    );
+    if ("error" in result) {
+      setError(result.error);
       return;
     }
-    const id = slugify(quickName);
-    if (!id) {
-      setError("El nombre del template no genera un identificador válido.");
-      return;
-    }
-    if (templates.some((item) => item.id === id)) {
-      setError(`Ya existe un template con el id "${id}".`);
-      return;
-    }
+    const id = result.id;
     setSavingTemplate(true);
     setError(null);
     try {
       const now = Date.now();
-      const saved = await api.saveTemplate({
+      const saved = await root.templates.save({
         id,
         name: quickName.trim(),
         description: quickDescription.trim(),
@@ -243,19 +214,13 @@ export function CreateWorkspace({
   }
 
   function canContinue() {
-    if (step === 0) return loose ? loosePath.trim().length > 0 : repoId !== null;
-    if (step === 1) return true;
-    if (step === 2) {
-      if (!name.trim()) return false;
-      if (!loose && mode === "worktree" && useExisting && !branch.trim()) return false;
-      return true;
-    }
-    return true;
+    return canContinueStep(step, { loose, loosePath, repoId, name, mode, useExisting, branch });
   }
 
   async function create() {
-    if (!name.trim()) {
-      setError("Ponle un nombre al workspace.");
+    const nameError = workspaceNameError(name);
+    if (nameError) {
+      setError(nameError);
       return;
     }
     const isWorktree = !loose && mode === "worktree";
@@ -278,7 +243,7 @@ export function CreateWorkspace({
     setSubmitting(true);
     setError(null);
     try {
-      const outcome = await api.createWorkspace(input);
+      const outcome = await root.provideCreateWorkspace().execute(input);
       onCreated(outcome.workspace, outcome.warnings, startNow);
     } catch (err) {
       setError(errorText(err));

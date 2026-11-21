@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { api } from "../api";
+import { useAppContext } from "../context/AppContext";
+import { errorText } from "../domain/shared";
+import { slugify } from "../domain/workspace/wizard";
 import type { AssetInfo, Library, Repo, TemplateManifest, Workspace } from "../types";
 
 type Props = {
@@ -17,23 +18,6 @@ type Props = {
 };
 
 type TemplateField = "agents" | "skills" | "mcps" | "commands" | "plugins";
-
-function errorText(error: unknown) {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
-function slugify(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function emptyTemplate(): TemplateManifest {
   const now = Date.now();
@@ -100,6 +84,7 @@ export function ManagePanel({
   onWorktreesRootChanged,
   onClose,
 }: Props) {
+  const composition = useAppContext();
   const [tab, setTab] = useState<"repos" | "templates" | "settings">("repos");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -119,8 +104,8 @@ export function ManagePanel({
       return;
     }
     let alive = true;
-    api
-      .templateAgentsMd(selectedTemplateId)
+    composition.templates
+      .agentsMd(selectedTemplateId)
       .then((text) => {
         if (alive) setAgentsMd(text);
       })
@@ -130,7 +115,7 @@ export function ManagePanel({
     return () => {
       alive = false;
     };
-  }, [selectedTemplateId]);
+  }, [selectedTemplateId, composition]);
 
   function chooseTemplate(template: TemplateManifest) {
     setSelectedTemplateId(template.id);
@@ -158,20 +143,16 @@ export function ManagePanel({
   }
 
   async function reloadRepos() {
-    onReposChanged(await api.listRepos());
+    onReposChanged(await composition.repos.list());
   }
 
   async function addRepo() {
     try {
-      const picked = await open({
-        directory: true,
-        multiple: false,
-        title: "Elegir repositorio git",
-      });
-      if (typeof picked !== "string") return;
+      const picked = await composition.folderPicker.pickDirectory("Elegir repositorio git");
+      if (!picked) return;
       setBusy(true);
       setError(null);
-      await api.addRepo(picked);
+      await composition.repos.add(picked);
       await reloadRepos();
     } catch (err) {
       setError(errorText(err));
@@ -184,7 +165,7 @@ export function ManagePanel({
     try {
       setBusy(true);
       setError(null);
-      await api.refreshRepo(repo.id);
+      await composition.repos.refresh(repo.id);
       await reloadRepos();
     } catch (err) {
       setError(errorText(err));
@@ -194,11 +175,11 @@ export function ManagePanel({
   }
 
   async function removeRepo(repo: Repo) {
-    if (!window.confirm(`¿Quitar el repositorio «${repo.name}» de la app?`)) return;
+    if (!composition.confirm.confirm(`¿Quitar el repositorio «${repo.name}» de la app?`)) return;
     try {
       setBusy(true);
       setError(null);
-      await api.removeRepo(repo.id);
+      await composition.repos.remove(repo.id);
       await reloadRepos();
     } catch (err) {
       setError(errorText(err));
@@ -223,9 +204,9 @@ export function ManagePanel({
       setError(null);
       const models = [...new Set(draft.models.map((model) => model.trim()))].filter(Boolean);
       const model = draft.model && models.includes(draft.model) ? draft.model : null;
-      const saved = await api.saveTemplate({ ...draft, id, name, models, model });
-      await api.saveTemplateAgentsMd(saved.id, agentsMd);
-      onTemplatesChanged(await api.listTemplates());
+      const saved = await composition.templates.save({ ...draft, id, name, models, model });
+      await composition.templates.saveAgentsMd(saved.id, agentsMd);
+      onTemplatesChanged(await composition.templates.list());
       setSelectedTemplateId(saved.id);
       setDraft({ ...saved });
       setTemplateSaved(true);
@@ -239,7 +220,7 @@ export function ManagePanel({
   async function deleteTemplate() {
     if (!draft.id) return;
     if (
-      !window.confirm(
+      !composition.confirm.confirm(
         `¿Borrar el template «${draft.name}»? Los workspaces existentes conservan su selección congelada.`,
       )
     ) {
@@ -248,8 +229,8 @@ export function ManagePanel({
     try {
       setBusy(true);
       setError(null);
-      await api.deleteTemplate(draft.id);
-      const next = await api.listTemplates();
+      await composition.templates.delete(draft.id);
+      const next = await composition.templates.list();
       onTemplatesChanged(next);
       setSelectedTemplateId(next[0]?.id ?? null);
       setDraft(next[0] ?? emptyTemplate());
@@ -265,7 +246,7 @@ export function ManagePanel({
     try {
       setBusy(true);
       setError(null);
-      const saved = await api.saveSettings({
+      const saved = await composition.settings.save({
         version: 2,
         worktreesRoot: worktreesDraft.trim() || null,
         defaultTemplateId: defaultTemplateId ?? null,

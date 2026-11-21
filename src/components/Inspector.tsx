@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "../api";
-import type { WorkspaceClient } from "../opencode";
+import { useAppContext } from "../context/AppContext";
+import { errorText } from "../domain/shared";
+import {
+  cacheRatio as computeCacheRatio,
+  contextRatio as computeContextRatio,
+  toSessionUsage,
+  type SessionUsage,
+  type UsageLimits,
+} from "../domain/chat/usage";
+import type { CatalogModel } from "../domain/chat/selection";
+import type { ChatServer } from "../domain/repositories/ChatGateway";
 import type { ResourceUsage, ServerInfo, SkillRef, Workspace } from "../types";
 
 type Props = {
   workspace: Workspace;
-  client: WorkspaceClient;
+  client: ChatServer;
   server: ServerInfo;
   sessionId: string | null;
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
   onClose: () => void;
-};
-
-type SessionSummary = {
-  cost: number;
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  model: { providerID: string; id: string } | null;
 };
 
 type ProjectSummary = {
@@ -27,47 +27,6 @@ type ProjectSummary = {
   additions: number;
   deletions: number;
 };
-
-type Meter = { percent: number; resetsAt: number };
-
-type Budget = { id: string; limit: number; spent: number; resetsAt: number };
-
-type UsageLimits = {
-  go?: {
-    rolling?: Meter | null;
-    weekly?: Meter | null;
-    monthly?: Meter | null;
-  } | null;
-  budgets?: Budget[] | null;
-};
-
-type ModelEntry = {
-  providerID: string;
-  modelID: string;
-  name?: string;
-  limit?: { context?: number } | null;
-};
-
-type AssistantMessage = {
-  type: string;
-  cost?: number;
-  tokens?: {
-    input: number;
-    output: number;
-    cache: { read: number; write: number };
-  };
-  model?: { providerID: string; id: string };
-};
-
-function errorText(error: unknown) {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
 
 function safe<T>(call: () => Promise<T>): Promise<T> {
   try {
@@ -135,10 +94,11 @@ function Line({ label, value }: { label: string; value: string }) {
 }
 
 export function Inspector({ workspace, client, server, sessionId, onUpdated, onClose }: Props) {
+  const root = useAppContext();
   const [project, setProject] = useState<ProjectSummary | null>(null);
-  const [session, setSession] = useState<SessionSummary | null>(null);
+  const [session, setSession] = useState<SessionUsage | null>(null);
   const [usage, setUsage] = useState<UsageLimits | null>(null);
-  const [models, setModels] = useState<ModelEntry[]>([]);
+  const [models, setModels] = useState<CatalogModel[]>([]);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [resources, setResources] = useState<ResourceUsage | null>(null);
   const [savingMcp, setSavingMcp] = useState<string | null>(null);
@@ -151,7 +111,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
     let alive = true;
     safe(() => client.model.list({ location, types: ["chat"] }))
       .then((result) => {
-        if (alive) setModels(result.data as unknown as ModelEntry[]);
+        if (alive) setModels(result.data);
         return undefined;
       })
       .catch(() => undefined);
@@ -166,7 +126,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
       safe(() => client.vcs.get({ location })),
       safe(() => client.usage.limits()),
       safe(() => client.mcp.list({ location })),
-      api.resources(server.pid),
+      root.resources.usage(server.pid),
     ]);
 
     if (vcs.status === "fulfilled") {
@@ -190,7 +150,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
     }
 
     if (limits.status === "fulfilled") {
-      setUsage((limits.value.data as unknown as UsageLimits | null) ?? null);
+      setUsage(limits.value.data ?? null);
     }
 
     if (mcpList.status === "fulfilled") {
@@ -200,7 +160,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
     }
 
     setResources(stats.status === "fulfilled" ? stats.value : null);
-  }, [client, location, server.pid]);
+  }, [client, location, server.pid, root]);
 
   const refreshSession = useCallback(async () => {
     if (!sessionId) {
@@ -216,21 +176,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
         }),
         client.session.get({ sessionID: sessionId }).catch(() => null),
       ]);
-      const assistant = (messages.data as unknown as AssistantMessage[]).find(
-        (item) => item.type === "assistant" && item.tokens,
-      );
-      if (!assistant?.tokens) {
-        setSession(null);
-        return;
-      }
-      setSession({
-        cost: info?.cost ?? assistant.cost ?? 0,
-        input: assistant.tokens.input,
-        output: assistant.tokens.output,
-        cacheRead: assistant.tokens.cache.read,
-        cacheWrite: assistant.tokens.cache.write,
-        model: assistant.model ?? null,
-      });
+      setSession(toSessionUsage(messages.data, info));
     } catch {
       setSession(null);
     }
@@ -258,17 +204,12 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
       ) ?? null)
     : null;
 
-  const contextRatio = useMemo(() => {
-    if (!session || !modelEntry?.limit?.context) return null;
-    const used = session.input + session.cacheRead + session.cacheWrite;
-    return used / modelEntry.limit.context;
-  }, [session, modelEntry]);
+  const contextRatio = useMemo(
+    () => computeContextRatio(session, modelEntry?.limit?.context),
+    [session, modelEntry],
+  );
 
-  const cacheRatio = useMemo(() => {
-    if (!session) return null;
-    const total = session.input + session.cacheRead;
-    return total > 0 ? session.cacheRead / total : null;
-  }, [session]);
+  const cacheRatio = useMemo(() => computeCacheRatio(session), [session]);
 
   const mcpNames = useMemo(
     () => [...workspace.mcpNames].sort((a, b) => a.localeCompare(b)),
@@ -286,7 +227,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
   );
 
   async function saveDisabled(disabledMcps: string[], disabledSkills: string[]) {
-    const outcome = await api.setWorkspaceDisabled({
+    const outcome = await root.workspaces.setDisabled({
       id: workspace.id,
       disabledMcps,
       disabledSkills,

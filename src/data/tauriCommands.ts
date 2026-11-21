@@ -13,7 +13,7 @@ import type {
   SkillRef,
   TemplateManifest,
   WorktreeStatus,
-} from "./types";
+} from "../types";
 
 export const api = {
   bootstrap: () => invoke<Bootstrap>("bootstrap"),
