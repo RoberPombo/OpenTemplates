@@ -7,20 +7,33 @@ compartan la misma carpeta de proyecto.
 ## Requisitos
 
 - opencode v2 en `PATH` (o `OPENCODE_BIN=/ruta/al/binario`).
-- Node.js 20+ y Rust estable.
+- Node.js 20+, pnpm 10+ y Rust estable.
 - Linux: `webkit2gtk-4.1` (Tauri v2).
 
 ## Arrancar
 
 ```bash
-npm install
-npm run tauri dev
+pnpm install
+pnpm tauri dev
 ```
 
 Para compilar la app:
 
 ```bash
-npm run tauri build
+pnpm tauri build
+```
+
+## Calidad de código
+
+El frontend usa TypeScript 7, Tailwind CSS 4, oxlint y oxfmt.
+
+```bash
+pnpm typecheck     # tsc --noEmit
+pnpm lint          # oxlint
+pnpm lint:fix      # oxlint --fix
+pnpm format        # oxfmt
+pnpm format:check  # oxfmt --check
+pnpm check         # typecheck + lint + format:check
 ```
 
 ## Cómo funciona

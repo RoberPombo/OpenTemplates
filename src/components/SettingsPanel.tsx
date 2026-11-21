@@ -32,18 +32,11 @@ function errorText(error: unknown) {
   }
 }
 
-export function SettingsPanel({
-  workspace,
-  client,
-  onUpdated,
-  onClose,
-}: Props) {
+export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) {
   const [mcps, setMcps] = useState<McpInfo[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [reapplying, setReapplying] = useState(false);
-  const [selectedMcps, setSelectedMcps] = useState<Set<string>>(
-    () => new Set(workspace.mcpNames),
-  );
+  const [selectedMcps, setSelectedMcps] = useState<Set<string>>(() => new Set(workspace.mcpNames));
   const [selectedSkills, setSelectedSkills] = useState<Map<string, SkillRef>>(
     () => new Map(workspace.skills.map((skill) => [skill.id, skill])),
   );
@@ -97,8 +90,7 @@ export function SettingsPanel({
       const next: Record<string, string> = {};
       for (const item of result.data) {
         const status = item.status as unknown as { status?: string } | string;
-        next[item.name] =
-          typeof status === "string" ? status : (status.status ?? "unknown");
+        next[item.name] = typeof status === "string" ? status : (status.status ?? "unknown");
       }
       setStatuses(next);
     } catch {
@@ -153,9 +145,7 @@ export function SettingsPanel({
 
         for (const name of before) {
           if (!after.has(name)) {
-            await client.mcp
-              .remove({ server: name, location })
-              .catch(() => undefined);
+            await client.mcp.remove({ server: name, location }).catch(() => undefined);
           }
         }
         for (const name of after) {
@@ -196,9 +186,7 @@ export function SettingsPanel({
     try {
       const outcome = await api.reapplyTemplate(workspace.id);
       setSelectedMcps(new Set(outcome.workspace.mcpNames));
-      setSelectedSkills(
-        new Map(outcome.workspace.skills.map((skill) => [skill.id, skill])),
-      );
+      setSelectedSkills(new Map(outcome.workspace.skills.map((skill) => [skill.id, skill])));
       setModel(outcome.workspace.model ?? "");
       setWarnings(outcome.warnings);
       onUpdated(outcome.workspace, outcome.warnings);
@@ -212,10 +200,7 @@ export function SettingsPanel({
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        className="modal settings"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+      <div className="modal settings" onMouseDown={(event) => event.stopPropagation()}>
         <header className="modal-head">
           <div>
             <h2>Ajustes del workspace</h2>
@@ -236,15 +221,10 @@ export function SettingsPanel({
                 </span>
               </div>
               <p className="muted small-text">
-                La selección está congelada por workspace. Reaplicar toma la
-                versión actual del template; editar el template no cambia este
-                workspace por sí solo.
+                La selección está congelada por workspace. Reaplicar toma la versión actual del
+                template; editar el template no cambia este workspace por sí solo.
               </p>
-              <button
-                className="ghost"
-                onClick={() => void reapply()}
-                disabled={reapplying}
-              >
+              <button className="ghost" onClick={() => void reapply()} disabled={reapplying}>
                 {reapplying ? "Reaplicando…" : "Reaplicar template"}
               </button>
             </section>
@@ -256,20 +236,14 @@ export function SettingsPanel({
               <span className="muted">{selectedMcps.size} activos</span>
             </div>
             {mcps.length === 0 && (
-              <p className="muted">
-                No hay MCPs en la configuración global de opencode.
-              </p>
+              <p className="muted">No hay MCPs en la configuración global de opencode.</p>
             )}
             <div className="check-list">
               {mcps.map((mcp) => {
                 const checked = selectedMcps.has(mcp.name);
                 return (
                   <label key={mcp.name} className={`check ${checked ? "on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleMcp(mcp.name)}
-                    />
+                    <input type="checkbox" checked={checked} onChange={() => toggleMcp(mcp.name)} />
                     <span className="check-main">
                       <span className="check-title">
                         {mcp.name}
@@ -292,19 +266,13 @@ export function SettingsPanel({
               <h3>Skills</h3>
               <span className="muted">{selectedSkills.size} activas</span>
             </div>
-            {skillList.length === 0 && (
-              <p className="muted">No se encontraron skills.</p>
-            )}
+            {skillList.length === 0 && <p className="muted">No se encontraron skills.</p>}
             <div className="check-list">
               {skillList.map((skill) => {
                 const checked = selectedSkills.has(skill.id);
                 return (
                   <label key={skill.id} className={`check ${checked ? "on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleSkill(skill)}
-                    />
+                    <input type="checkbox" checked={checked} onChange={() => toggleSkill(skill)} />
                     <span className="check-main">
                       <span className="check-title">
                         {skill.name}
@@ -342,9 +310,7 @@ export function SettingsPanel({
             </div>
           )}
           {error && <div className="inline-error">{error}</div>}
-          {applied && !error && (
-            <div className="ok-box">Cambios aplicados a este workspace.</div>
-          )}
+          {applied && !error && <div className="ok-box">Cambios aplicados a este workspace.</div>}
         </div>
 
         <footer className="modal-foot">

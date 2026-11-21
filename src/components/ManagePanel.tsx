@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
-import type {
-  AssetInfo,
-  Library,
-  Repo,
-  TemplateManifest,
-  Workspace,
-} from "../types";
+import type { AssetInfo, Library, Repo, TemplateManifest, Workspace } from "../types";
 
 type Props = {
   repos: Repo[];
@@ -112,9 +106,7 @@ export function ManagePanel({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     templates[0]?.id ?? null,
   );
-  const [draft, setDraft] = useState<TemplateManifest>(
-    () => templates[0] ?? emptyTemplate(),
-  );
+  const [draft, setDraft] = useState<TemplateManifest>(() => templates[0] ?? emptyTemplate());
   const [agentsMd, setAgentsMd] = useState("");
   const [templateSaved, setTemplateSaved] = useState(false);
   const [worktreesDraft, setWorktreesDraft] = useState(worktreesRoot);
@@ -288,17 +280,14 @@ export function ManagePanel({
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        className="modal manage"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+      <div className="modal manage" onMouseDown={(event) => event.stopPropagation()}>
         <header className="modal-head">
           <div>
             <h2>Repos y templates</h2>
             <p className="muted small-text">
-              Biblioteca global: {library.agents.length} agentes ·{" "}
-              {library.skills.length} skills · {library.mcps.length} MCPs ·{" "}
-              {library.commands.length} comandos · {library.plugins.length} plugins
+              Biblioteca global: {library.agents.length} agentes · {library.skills.length} skills ·{" "}
+              {library.mcps.length} MCPs · {library.commands.length} comandos ·{" "}
+              {library.plugins.length} plugins
             </p>
           </div>
           <button className="ghost" onClick={onClose}>
@@ -307,10 +296,7 @@ export function ManagePanel({
         </header>
 
         <div className="tabs">
-          <button
-            className={tab === "repos" ? "active" : ""}
-            onClick={() => setTab("repos")}
-          >
+          <button className={tab === "repos" ? "active" : ""} onClick={() => setTab("repos")}>
             Repos
           </button>
           <button
@@ -319,10 +305,7 @@ export function ManagePanel({
           >
             Templates
           </button>
-          <button
-            className={tab === "settings" ? "active" : ""}
-            onClick={() => setTab("settings")}
-          >
+          <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
             Ajustes
           </button>
         </div>
@@ -338,8 +321,8 @@ export function ManagePanel({
               </div>
               {repos.length === 0 && (
                 <p className="muted">
-                  Añade la carpeta de un repo git. Se usa su checkout principal y su
-                  rama principal para proponer worktrees.
+                  Añade la carpeta de un repo git. Se usa su checkout principal y su rama principal
+                  para proponer worktrees.
                 </p>
               )}
               <div className="manage-list">
@@ -498,10 +481,7 @@ export function ManagePanel({
                       {library.skills.map((skill) => {
                         const checked = draft.skills.includes(skill.id);
                         return (
-                          <label
-                            key={skill.id}
-                            className={`check ${checked ? "on" : ""}`}
-                          >
+                          <label key={skill.id} className={`check ${checked ? "on" : ""}`}>
                             <input
                               type="checkbox"
                               checked={checked}
@@ -525,10 +505,7 @@ export function ManagePanel({
                       {library.mcps.map((mcp) => {
                         const checked = draft.mcps.includes(mcp.name);
                         return (
-                          <label
-                            key={mcp.name}
-                            className={`check ${checked ? "on" : ""}`}
-                          >
+                          <label key={mcp.name} className={`check ${checked ? "on" : ""}`}>
                             <input
                               type="checkbox"
                               checked={checked}
@@ -587,7 +564,9 @@ export function ManagePanel({
                   />
                 </label>
                 {templateSaved && (
-                  <div className="ok-box">Template guardado. Reaplícalo en los workspaces que quieras actualizar.</div>
+                  <div className="ok-box">
+                    Template guardado. Reaplícalo en los workspaces que quieras actualizar.
+                  </div>
                 )}
                 <div className="row">
                   {draft.id && (
@@ -599,11 +578,7 @@ export function ManagePanel({
                       Borrar template
                     </button>
                   )}
-                  <button
-                    className="primary"
-                    onClick={() => void saveTemplate()}
-                    disabled={busy}
-                  >
+                  <button className="primary" onClick={() => void saveTemplate()} disabled={busy}>
                     {busy ? "Guardando…" : "Guardar template"}
                   </button>
                 </div>
@@ -639,11 +614,7 @@ export function ManagePanel({
               </label>
               {settingsSaved && <div className="ok-box">Ajustes guardados.</div>}
               <div className="row">
-                <button
-                  className="primary"
-                  onClick={() => void saveSettings()}
-                  disabled={busy}
-                >
+                <button className="primary" onClick={() => void saveSettings()} disabled={busy}>
                   {busy ? "Guardando…" : "Guardar ajustes"}
                 </button>
               </div>

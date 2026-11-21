@@ -133,16 +133,13 @@ export function CreateWorkspace({
 
   const principalConflicts = repo
     ? workspaces.filter(
-        (workspace) =>
-          workspace.repoId === repo.id && workspace.mode === "principal",
+        (workspace) => workspace.repoId === repo.id && workspace.mode === "principal",
       )
     : [];
   const pathConflicts = repo
     ? workspaces.filter(
         (workspace) =>
-          workspace.mode === "principal" &&
-          repo &&
-          workspace.projectPath === repo.path,
+          workspace.mode === "principal" && repo && workspace.projectPath === repo.path,
       )
     : [];
 
@@ -289,10 +286,7 @@ export function CreateWorkspace({
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        className="modal wizard"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+      <div className="modal wizard" onMouseDown={(event) => event.stopPropagation()}>
         <header className="modal-head">
           <div>
             <h2>Nuevo workspace</h2>
@@ -337,8 +331,8 @@ export function CreateWorkspace({
               </div>
               {repos.length === 0 && (
                 <p className="muted">
-                  Todavía no hay repositorios. Añade la carpeta de un repo git para
-                  crear workspaces sobre su checkout principal o sobre worktrees.
+                  Todavía no hay repositorios. Añade la carpeta de un repo git para crear workspaces
+                  sobre su checkout principal o sobre worktrees.
                 </p>
               )}
               <div className="option-list">
@@ -401,16 +395,13 @@ export function CreateWorkspace({
             <section className="wizard-pane">
               <div className="section-head">
                 <h3>Template</h3>
-                <button
-                  className="ghost small"
-                  onClick={() => setQuickOpen((value) => !value)}
-                >
+                <button className="ghost small" onClick={() => setQuickOpen((value) => !value)}>
                   {quickOpen ? "Cancelar" : "Crear template"}
                 </button>
               </div>
               <p className="muted small-text">
-                El template elige agentes, skills, MCPs, comandos y plugins de la
-                biblioteca global. Se congela al crear el workspace.
+                El template elige agentes, skills, MCPs, comandos y plugins de la biblioteca global.
+                Se congela al crear el workspace.
               </p>
 
               {quickOpen && (
@@ -434,9 +425,7 @@ export function CreateWorkspace({
                     />
                   </label>
                   <div className="row">
-                    <span className="muted small-text">
-                      id: {slugify(quickName) || "—"}
-                    </span>
+                    <span className="muted small-text">id: {slugify(quickName) || "—"}</span>
                     <button
                       className="primary"
                       onClick={() => void createQuickTemplate()}
@@ -476,9 +465,7 @@ export function CreateWorkspace({
                         {item.name}
                         <span className="tool-chip">v{item.version}</span>
                       </span>
-                      <span className="option-sub">
-                        {item.description || "Sin descripción"}
-                      </span>
+                      <span className="option-sub">{item.description || "Sin descripción"}</span>
                       <span className="option-sub">
                         {item.agents.length} agentes · {item.skills.length} skills ·{" "}
                         {item.mcps.length} MCPs · {item.commands.length} comandos ·{" "}
@@ -554,9 +541,7 @@ export function CreateWorkspace({
                   onChange={(event) => setName(event.target.value)}
                 />
                 {name.trim() && (
-                  <span className="field-hint">
-                    id de rama y carpeta: {slug || "—"}
-                  </span>
+                  <span className="field-hint">id de rama y carpeta: {slug || "—"}</span>
                 )}
               </label>
 
@@ -578,8 +563,8 @@ export function CreateWorkspace({
                       <span className="option-main">
                         <span className="option-title">Worktree (recomendado)</span>
                         <span className="option-sub">
-                          Carpeta aparte y rama propia. Varios workspaces en paralelo
-                          sin compartir ficheros.
+                          Carpeta aparte y rama propia. Varios workspaces en paralelo sin compartir
+                          ficheros.
                         </span>
                       </span>
                     </button>
@@ -591,8 +576,7 @@ export function CreateWorkspace({
                       <span className="option-main">
                         <span className="option-title">Checkout principal</span>
                         <span className="option-sub">
-                          Trabaja sobre {repo?.path ?? "la carpeta del repo"} y su rama
-                          actual.
+                          Trabaja sobre {repo?.path ?? "la carpeta del repo"} y su rama actual.
                         </span>
                       </span>
                     </button>
@@ -640,19 +624,20 @@ export function CreateWorkspace({
 
                   {mode === "principal" && principalConflicts.length > 0 && (
                     <div className="callout warning">
-                      Ya hay {principalConflicts.length === 1 ? "un workspace" : "varios workspaces"} sobre
+                      Ya hay{" "}
+                      {principalConflicts.length === 1 ? "un workspace" : "varios workspaces"} sobre
                       el checkout principal:{" "}
-                      {principalConflicts.map((workspace) => workspace.name).join(", ")}.
-                      Dos procesos sobre la misma carpeta comparten ficheros y estado
-                      git. Para paralelo, usa un worktree.
+                      {principalConflicts.map((workspace) => workspace.name).join(", ")}. Dos
+                      procesos sobre la misma carpeta comparten ficheros y estado git. Para
+                      paralelo, usa un worktree.
                     </div>
                   )}
                 </>
               )}
 
               <p className="muted small-text">
-                Las issues de GitHub con <code>gh</code> llegan en la siguiente fase;
-                este asistente crea ya el workspace, la rama y la config aislada.
+                Las issues de GitHub con <code>gh</code> llegan en la siguiente fase; este asistente
+                crea ya el workspace, la rama y la config aislada.
               </p>
             </section>
           )}
@@ -695,20 +680,14 @@ export function CreateWorkspace({
                       <dt>Base</dt>
                       <dd>
                         {base.trim() ||
-                          (repo?.remote
-                            ? `origin/${repo.mainBranch}`
-                            : repo?.mainBranch || "—")}
+                          (repo?.remote ? `origin/${repo.mainBranch}` : repo?.mainBranch || "—")}
                       </dd>
                     </div>
                   </>
                 )}
                 <div>
                   <dt>Template</dt>
-                  <dd>
-                    {template
-                      ? `${template.name} · v${template.version}`
-                      : "Sin template"}
-                  </dd>
+                  <dd>{template ? `${template.name} · v${template.version}` : "Sin template"}</dd>
                 </div>
                 <div>
                   <dt>Selección</dt>
@@ -723,8 +702,8 @@ export function CreateWorkspace({
               {pathConflicts.length > 0 && (
                 <div className="callout warning">
                   La carpeta del checkout principal ya la usa{" "}
-                  {pathConflicts.map((workspace) => `«${workspace.name}»`).join(", ")}.
-                  Puedes continuar, pero los dos procesos compartirán ficheros.
+                  {pathConflicts.map((workspace) => `«${workspace.name}»`).join(", ")}. Puedes
+                  continuar, pero los dos procesos compartirán ficheros.
                 </div>
               )}
 
