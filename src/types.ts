@@ -29,7 +29,9 @@ export type Workspace = {
   templateVersion?: number | null;
   issue?: IssueRef | null;
   mcpNames: string[];
+  disabledMcps: string[];
   skills: SkillRef[];
+  disabledSkills: string[];
   agents: AssetRef[];
   commands: AssetRef[];
   plugins: AssetRef[];
@@ -116,6 +118,25 @@ export type WorktreeStatus = {
   dirty: boolean;
   branch?: string | null;
   path: string;
+};
+
+export type ProcessUsage = {
+  pid: number;
+  memoryBytes: number;
+  cpuPercent: number;
+};
+
+export type SystemUsage = {
+  cores: number;
+  cpuPercent: number;
+  memoryTotalBytes: number;
+  memoryUsedBytes: number;
+};
+
+export type ResourceUsage = {
+  app: ProcessUsage | null;
+  workspace: ProcessUsage | null;
+  system: SystemUsage;
 };
 
 export type Bootstrap = {

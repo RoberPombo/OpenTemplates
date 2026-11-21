@@ -71,6 +71,7 @@ workspaces/<workspace-id>/
 - Seleccionar MCPs y skills por workspace.
 - Aplicar MCPs en caliente; skills y modelo recargan la location de ese workspace.
 - Chat mínimo con sesiones y streaming.
+- Panel derecho con consumo de la sesión, estado de git, uso, MCPs y recursos.
 - Persistencia de selecciones y sesión activa.
 
 Pendiente: OAuth de MCPs remotos desde la UI, catálogos HTTP de skills, importar

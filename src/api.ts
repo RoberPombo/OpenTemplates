@@ -7,6 +7,7 @@ import type {
   Library,
   McpInfo,
   Repo,
+  ResourceUsage,
   ServerInfo,
   SkillInfo,
   SkillRef,
@@ -30,8 +31,7 @@ export const api = {
   saveTemplate: (manifest: TemplateManifest) =>
     invoke<TemplateManifest>("save_template", { manifest }),
   deleteTemplate: (id: string) => invoke<void>("delete_template", { id }),
-  templateAgentsMd: (id: string) =>
-    invoke<string>("template_agents_md", { id }),
+  templateAgentsMd: (id: string) => invoke<string>("template_agents_md", { id }),
   saveTemplateAgentsMd: (id: string, content: string) =>
     invoke<string>("save_template_agents_md", { id, content }),
 
@@ -43,8 +43,9 @@ export const api = {
     skills: SkillRef[];
     model: string | null;
   }) => invoke<ConfigOutcome>("update_workspace", input),
-  reapplyTemplate: (id: string) =>
-    invoke<ConfigOutcome>("reapply_template", { id }),
+  setWorkspaceDisabled: (input: { id: string; disabledMcps: string[]; disabledSkills: string[] }) =>
+    invoke<ConfigOutcome>("set_workspace_disabled", input),
+  reapplyTemplate: (id: string) => invoke<ConfigOutcome>("reapply_template", { id }),
   deleteWorkspace: (
     id: string,
     options?: { removeWorktree?: boolean; force?: boolean; deleteDb?: boolean },
@@ -58,12 +59,10 @@ export const api = {
   startWorkspace: (id: string) => invoke<ServerInfo>("start_workspace", { id }),
   stopWorkspace: (id: string) => invoke<void>("stop_workspace", { id }),
   workspaceStatus: () => invoke<ServerInfo[]>("workspace_status"),
-  worktreeStatus: (id: string) =>
-    invoke<WorktreeStatus>("worktree_status", { id }),
-  workspaceLog: (id: string, lines = 200) =>
-    invoke<string>("workspace_log", { id, lines }),
+  worktreeStatus: (id: string) => invoke<WorktreeStatus>("worktree_status", { id }),
+  workspaceLog: (id: string, lines = 200) => invoke<string>("workspace_log", { id, lines }),
+  resources: (pid?: number | null) => invoke<ResourceUsage>("resources", { pid: pid ?? null }),
 
   getSettings: () => invoke<AppSettings>("get_settings"),
-  saveSettings: (settings: AppSettings) =>
-    invoke<AppSettings>("save_settings", { settings }),
+  saveSettings: (settings: AppSettings) => invoke<AppSettings>("save_settings", { settings }),
 };

@@ -5,7 +5,7 @@ use serde_json::{Map, Value, json};
 use walkdir::WalkDir;
 
 use crate::library;
-use crate::model::{McpInfo, TemplateLock, Workspace};
+use crate::model::{McpInfo, SkillRef, TemplateLock, Workspace};
 use crate::templates;
 
 pub fn global_config_dir() -> PathBuf {
@@ -125,7 +125,10 @@ pub fn render_config(
             for (name, config) in &lock.mcps {
                 let mut config = config.clone();
                 if let Some(obj) = config.as_object_mut() {
-                    obj.insert("disabled".into(), Value::Bool(false));
+                    obj.insert(
+                        "disabled".into(),
+                        Value::Bool(workspace.disabled_mcps.contains(name)),
+                    );
                 }
                 servers.insert(name.clone(), config);
             }
@@ -136,7 +139,10 @@ pub fn render_config(
                     Some(config) => {
                         let mut config = config.clone();
                         if let Some(obj) = config.as_object_mut() {
-                            obj.insert("disabled".into(), Value::Bool(false));
+                            obj.insert(
+                                "disabled".into(),
+                                Value::Bool(workspace.disabled_mcps.contains(name)),
+                            );
                         }
                         servers.insert(name.clone(), config);
                     }
@@ -149,12 +155,13 @@ pub fn render_config(
     }
     root["mcp"] = json!({ "servers": servers });
 
-    let skill_refs = match lock {
-        Some(lock) => &lock.skills,
-        None => &workspace.skills,
+    let mut skill_refs: Vec<&SkillRef> = match lock {
+        Some(lock) => lock.skills.iter().collect(),
+        None => workspace.skills.iter().collect(),
     };
+    skill_refs.retain(|skill| !workspace.disabled_skills.contains(&skill.id));
     let mut skill_roots: Vec<String> = Vec::new();
-    for skill in skill_refs {
+    for skill in &skill_refs {
         let path = PathBuf::from(&skill.path);
         let root_dir = path.parent().unwrap_or(path.as_path());
         let root_dir = root_dir.to_string_lossy().to_string();
@@ -427,6 +434,10 @@ pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> 
             .map(|skill| skill.id.clone())
             .collect(),
     };
+    let allowed: Vec<String> = allowed
+        .into_iter()
+        .filter(|id| !workspace.disabled_skills.contains(id))
+        .collect();
     for skill in library::list_skills(Some(&workspace.project_path)) {
         if !allowed.contains(&skill.id)
             && let Some(permissions) = root.get_mut("permissions").and_then(Value::as_array_mut)
@@ -567,6 +578,36 @@ mod tests {
             permissions
                 .iter()
                 .any(|rule| rule["action"] == "bash" && rule["effect"] == "allow")
+        );
+    }
+
+    #[test]
+    fn disables_items_without_removing_them() {
+        let global = json!({
+            "mcp": {
+                "servers": {
+                    "alpha": { "type": "local", "command": ["run"] }
+                }
+            }
+        });
+        let mut workspace = workspace();
+        workspace.disabled_mcps = vec!["alpha".into()];
+        workspace.disabled_skills = vec!["testing".into()];
+
+        let (config, _) = render_config(&workspace, None, &global);
+
+        assert_eq!(config["mcp"]["servers"]["alpha"]["disabled"], true);
+        assert_eq!(config["skills"], json!([]));
+        let permissions = config["permissions"].as_array().unwrap();
+        assert!(
+            !permissions
+                .iter()
+                .any(|rule| rule["resource"] == "testing" && rule["effect"] == "allow")
+        );
+        assert!(
+            permissions
+                .iter()
+                .any(|rule| rule["resource"] == "opencode" && rule["effect"] == "allow")
         );
     }
 

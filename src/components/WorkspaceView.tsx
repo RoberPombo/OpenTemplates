@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { ServerInfo, Workspace } from "../types";
 import { makeClient } from "../opencode";
 import { Chat } from "./Chat";
+import { Inspector } from "./Inspector";
 import { SettingsPanel } from "./SettingsPanel";
 
 type Props = {
@@ -14,6 +15,8 @@ type Props = {
   onDelete: () => void;
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
 };
+
+const PANEL_KEY = "openconf:panel";
 
 function modeLabel(workspace: Workspace) {
   if (workspace.mode === "worktree") return "worktree";
@@ -32,10 +35,22 @@ export function WorkspaceView({
   onUpdated,
 }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(() => localStorage.getItem(PANEL_KEY) !== "0");
+  const [sessionId, setSessionId] = useState<string | null>(() =>
+    localStorage.getItem(`openconf:session:${workspace.id}`),
+  );
   const client = useMemo(
     () => (server ? makeClient(server) : null),
     [server?.baseUrl, server?.password],
   );
+
+  function togglePanel() {
+    setPanelOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem(PANEL_KEY, next ? "1" : "0");
+      return next;
+    });
+  }
 
   const folder = workspace.projectPath.split("/").filter(Boolean).pop();
 
@@ -67,6 +82,13 @@ export function WorkspaceView({
         <div className="row">
           {server ? (
             <>
+              <button
+                className={`ghost ${panelOpen ? "active" : ""}`}
+                title={panelOpen ? "Ocultar panel" : "Mostrar panel"}
+                onClick={togglePanel}
+              >
+                Panel
+              </button>
               <button className="ghost" onClick={() => setSettingsOpen(true)}>
                 Ajustes
               </button>
@@ -75,11 +97,7 @@ export function WorkspaceView({
               </button>
             </>
           ) : (
-            <button
-              className="primary"
-              onClick={onStart}
-              disabled={starting || workspace.missing}
-            >
+            <button className="primary" onClick={onStart} disabled={starting || workspace.missing}>
               {starting ? "Arrancando…" : "Arrancar workspace"}
             </button>
           )}
@@ -91,22 +109,32 @@ export function WorkspaceView({
 
       {workspace.missing && !server && (
         <div className="callout warning workspace-callout">
-          La carpeta de este workspace ya no existe ({workspace.projectPath}). Si era
-          un worktree, se puede reparar con{" "}
-          <code>git worktree add</code> o eliminar el workspace.
+          La carpeta de este workspace ya no existe ({workspace.projectPath}). Si era un worktree,
+          se puede reparar con <code>git worktree add</code> o eliminar el workspace.
         </div>
       )}
 
       {server && client ? (
-        <Chat client={client} workspace={workspace} />
+        <div className="workspace-body">
+          <Chat client={client} workspace={workspace} onSessionChange={setSessionId} />
+          {panelOpen && (
+            <Inspector
+              workspace={workspace}
+              client={client}
+              server={server}
+              sessionId={sessionId}
+              onUpdated={onUpdated}
+              onClose={togglePanel}
+            />
+          )}
+        </div>
       ) : (
         <div className="start-pane">
           <div className="start-card">
             <h2>Workspace parado</h2>
             <p className="muted">
-              Al arrancarlo se lanza un proceso de opencode con su propia
-              configuración. Nada de lo que hagas aquí afecta a los demás
-              workspaces.
+              Al arrancarlo se lanza un proceso de opencode con su propia configuración. Nada de lo
+              que hagas aquí afecta a los demás workspaces.
             </p>
             <div className="start-stats">
               <div>

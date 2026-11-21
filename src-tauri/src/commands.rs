@@ -551,7 +551,9 @@ pub fn create_workspace(
         template_version: None,
         issue: input.issue.clone(),
         mcp_names: input.mcp_names.clone(),
+        disabled_mcps: Vec::new(),
         skills: input.skills.clone(),
+        disabled_skills: Vec::new(),
         agents: Vec::new(),
         commands: Vec::new(),
         plugins: Vec::new(),
@@ -640,6 +642,12 @@ pub fn update_workspace(
         workspace.mcp_names = mcp_names;
         workspace.skills = skills;
         workspace.model = model.filter(|m| !m.trim().is_empty());
+        workspace
+            .disabled_mcps
+            .retain(|name| workspace.mcp_names.contains(name));
+        workspace
+            .disabled_skills
+            .retain(|id| workspace.skills.iter().any(|skill| &skill.id == id));
         workspace.updated_at = now_ms();
         workspace.clone()
     };
@@ -667,6 +675,38 @@ pub fn update_workspace(
     let mut outcome = outcome(workspace, materialized);
     warnings.append(&mut outcome.warnings);
     outcome.warnings = warnings;
+    state.save()?;
+    Ok(outcome)
+}
+
+#[tauri::command]
+pub fn set_workspace_disabled(
+    state: State<'_, AppState>,
+    id: String,
+    disabled_mcps: Vec<String>,
+    disabled_skills: Vec<String>,
+) -> Result<ConfigOutcome, String> {
+    let workspace = {
+        let mut workspaces = state.workspaces.lock().map_err(|_| "estado bloqueado")?;
+        let workspace = workspaces
+            .iter_mut()
+            .find(|w| w.id == id)
+            .ok_or_else(|| format!("Workspace '{id}' no existe"))?;
+        workspace.disabled_mcps = disabled_mcps
+            .into_iter()
+            .filter(|name| workspace.mcp_names.contains(name))
+            .collect();
+        workspace.disabled_skills = disabled_skills
+            .into_iter()
+            .filter(|skill_id| workspace.skills.iter().any(|skill| &skill.id == skill_id))
+            .collect();
+        workspace.updated_at = now_ms();
+        workspace.clone()
+    };
+
+    let workspace_dir = ensure_workspace_dir(&state.data_dir, &id);
+    let materialized = materialize_workspace(&workspace, &workspace_dir)?;
+    let outcome = outcome(workspace, materialized);
     state.save()?;
     Ok(outcome)
 }
@@ -926,6 +966,15 @@ pub fn workspace_log(state: State<'_, AppState>, id: String, lines: Option<usize
     let take = lines.unwrap_or(200);
     let all: Vec<&str> = raw.lines().collect();
     all[all.len().saturating_sub(take)..].join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// Recursos
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn resources(pid: Option<u32>) -> crate::resources::ResourceUsage {
+    crate::resources::snapshot(pid).await
 }
 
 // ---------------------------------------------------------------------------

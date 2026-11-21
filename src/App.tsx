@@ -3,14 +3,7 @@ import { api } from "./api";
 import { CreateWorkspace } from "./components/CreateWorkspace";
 import { ManagePanel } from "./components/ManagePanel";
 import { WorkspaceView } from "./components/WorkspaceView";
-import type {
-  Bootstrap,
-  Library,
-  Repo,
-  ServerInfo,
-  TemplateManifest,
-  Workspace,
-} from "./types";
+import type { Bootstrap, Library, Repo, ServerInfo, TemplateManifest, Workspace } from "./types";
 import "./styles.css";
 
 const SELECTED_KEY = "openconf:selected";
@@ -45,9 +38,7 @@ function App() {
   const [library, setLibrary] = useState<Library>(EMPTY_LIBRARY);
   const [worktreesRoot, setWorktreesRoot] = useState("");
   const [running, setRunning] = useState<Record<string, ServerInfo>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(
-    localStorage.getItem(SELECTED_KEY),
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(localStorage.getItem(SELECTED_KEY));
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState(false);
   const [startingId, setStartingId] = useState<string | null>(null);
@@ -67,8 +58,7 @@ function App() {
       list.push(workspace);
       byRepo.set(key, list);
     }
-    const result: { key: string; title: string; subtitle?: string; items: Workspace[] }[] =
-      [];
+    const result: { key: string; title: string; subtitle?: string; items: Workspace[] }[] = [];
     for (const repo of repos) {
       const items = byRepo.get(repo.id);
       if (!items || items.length === 0) continue;
@@ -91,7 +81,9 @@ function App() {
   const templateName = useMemo(() => {
     if (!selected?.templateId) return null;
     const template = templates.find((item) => item.id === selected.templateId);
-    return template ? `${template.name} · v${selected.templateVersion ?? template.version}` : selected.templateId;
+    return template
+      ? `${template.name} · v${selected.templateVersion ?? template.version}`
+      : selected.templateId;
   }, [selected?.templateId, selected?.templateVersion, templates]);
 
   async function refresh() {
@@ -103,9 +95,7 @@ function App() {
       setTemplates(bootstrap.templates);
       setWorktreesRoot(bootstrap.worktreesRoot);
       setRunning(
-        Object.fromEntries(
-          bootstrap.running.map((server) => [server.workspaceId, server]),
-        ),
+        Object.fromEntries(bootstrap.running.map((server) => [server.workspaceId, server])),
       );
       if (bootstrap.notices.length > 0) {
         setNotice(bootstrap.notices.join(" · "));
@@ -133,9 +123,7 @@ function App() {
       void api
         .workspaceStatus()
         .then((items) => {
-          setRunning(
-            Object.fromEntries(items.map((server) => [server.workspaceId, server])),
-          );
+          setRunning(Object.fromEntries(items.map((server) => [server.workspaceId, server])));
         })
         .catch(() => undefined);
     }, 5000);
@@ -235,9 +223,7 @@ function App() {
   }
 
   function updated(workspace: Workspace, warnings: string[]) {
-    setWorkspaces((prev) =>
-      prev.map((item) => (item.id === workspace.id ? workspace : item)),
-    );
+    setWorkspaces((prev) => prev.map((item) => (item.id === workspace.id ? workspace : item)));
     if (warnings.length > 0) setNotice(warnings.join(" · "));
   }
 
@@ -312,25 +298,18 @@ function App() {
             </div>
           ))}
           {workspaces.length === 0 && (
-            <p className="muted sidebar-empty">
-              Sin workspaces. Crea uno para empezar.
-            </p>
+            <p className="muted sidebar-empty">Sin workspaces. Crea uno para empezar.</p>
           )}
         </nav>
 
         <div className="sidebar-foot">
-          <button
-            className="ghost sidebar-link"
-            onClick={() => setManaging(true)}
-          >
+          <button className="ghost sidebar-link" onClick={() => setManaging(true)}>
             Repos y templates
           </button>
           {boot.error ? (
             <span className="danger-text">{boot.error}</span>
           ) : (
-            <span className="muted">
-              opencode · {boot.opencodeBin?.split("/").pop()}
-            </span>
+            <span className="muted">opencode · {boot.opencodeBin?.split("/").pop()}</span>
           )}
         </div>
       </aside>
@@ -362,9 +341,8 @@ function App() {
             <div className="start-card">
               <h2>Workspaces aislados sobre opencode</h2>
               <p className="muted">
-                Cada workspace arranca su propio servidor con la configuración,
-                el template, los MCPs, las skills y las sesiones que le asignes.
-                Los demás no se enteran.
+                Cada workspace arranca su propio servidor con la configuración, el template, los
+                MCPs, las skills y las sesiones que le asignes. Los demás no se enteran.
               </p>
               <button className="primary" onClick={() => setCreating(true)}>
                 Crear el primero
@@ -383,9 +361,7 @@ function App() {
           worktreesRoot={worktreesRoot}
           onClose={() => setCreating(false)}
           onRepoAdded={(repo) => setRepos((prev) => [...prev, repo])}
-          onTemplateSaved={(template) =>
-            setTemplates((prev) => [...prev, template])
-          }
+          onTemplateSaved={(template) => setTemplates((prev) => [...prev, template])}
           onCreated={(workspace, warnings, startNow) => {
             setWorkspaces((prev) => [...prev, workspace]);
             setCreating(false);

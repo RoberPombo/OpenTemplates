@@ -18,6 +18,7 @@ type StreamPart = {
 type Props = {
   client: WorkspaceClient;
   workspace: Workspace;
+  onSessionChange?: (sessionId: string | null) => void;
 };
 
 function toChatMessages(raw: any[]): ChatMessage[] {
@@ -72,11 +73,9 @@ function errorText(error: unknown): string {
   }
 }
 
-export function Chat({ client, workspace }: Props) {
+export function Chat({ client, workspace, onSessionChange }: Props) {
   const storageKey = `openconf:session:${workspace.id}`;
-  const [sessionId, setSessionId] = useState<string | null>(() =>
-    localStorage.getItem(storageKey),
-  );
+  const [sessionId, setSessionId] = useState<string | null>(() => localStorage.getItem(storageKey));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState<StreamPart[]>([]);
   const [busy, setBusy] = useState(false);
@@ -84,6 +83,10 @@ export function Chat({ client, workspace }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    onSessionChange?.(sessionId);
+  }, [onSessionChange, sessionId]);
 
   const reload = useCallback(async () => {
     if (!sessionId) return;
@@ -155,9 +158,7 @@ export function Chat({ client, workspace }: Props) {
           if (type === "session.text.started") {
             const id = data.assistantMessageID ?? "stream";
             setStreaming((prev) =>
-              prev.some((part) => part.id === id)
-                ? prev
-                : [...prev, { id, text: "" }],
+              prev.some((part) => part.id === id) ? prev : [...prev, { id, text: "" }],
             );
           } else if (type === "session.text.delta") {
             const id = data.assistantMessageID ?? "stream";
@@ -180,8 +181,7 @@ export function Chat({ client, workspace }: Props) {
             void reload().finally(() => setStreaming([]));
           } else if (type === "session.execution.failed") {
             setBusy(false);
-            const message =
-              data.error?.message ?? data.error?.name ?? "La ejecución falló";
+            const message = data.error?.message ?? data.error?.name ?? "La ejecución falló";
             setError(message);
             void reload().finally(() => setStreaming([]));
           }
@@ -272,8 +272,7 @@ export function Chat({ client, workspace }: Props) {
           <div className="empty-chat">
             <p>Escribe el primer mensaje de este workspace.</p>
             <p className="muted">
-              MCPs y skills aplicados: {workspace.mcpNames.length} ·{" "}
-              {workspace.skills.length}
+              MCPs y skills aplicados: {workspace.mcpNames.length} · {workspace.skills.length}
             </p>
           </div>
         )}
@@ -316,11 +315,7 @@ export function Chat({ client, workspace }: Props) {
         <textarea
           value={input}
           rows={2}
-          placeholder={
-            sessionId
-              ? "Escribe un mensaje… (Enter para enviar)"
-              : "Preparando sesión…"
-          }
+          placeholder={sessionId ? "Escribe un mensaje… (Enter para enviar)" : "Preparando sesión…"}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {

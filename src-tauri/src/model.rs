@@ -67,8 +67,14 @@ pub struct Workspace {
     pub issue: Option<IssueRef>,
     #[serde(default)]
     pub mcp_names: Vec<String>,
+    /// MCPs seleccionados que no se cargan en el servidor (fuera del contexto).
+    #[serde(default)]
+    pub disabled_mcps: Vec<String>,
     #[serde(default)]
     pub skills: Vec<SkillRef>,
+    /// Skills seleccionadas que no se cargan en el servidor (fuera del contexto).
+    #[serde(default)]
+    pub disabled_skills: Vec<String>,
     #[serde(default)]
     pub agents: Vec<AssetRef>,
     #[serde(default)]

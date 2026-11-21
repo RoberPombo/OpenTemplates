@@ -3,6 +3,7 @@ mod config;
 mod git;
 mod library;
 mod model;
+mod resources;
 mod server;
 mod state;
 mod store;
@@ -39,6 +40,7 @@ pub fn run() {
             commands::save_template_agents_md,
             commands::create_workspace,
             commands::update_workspace,
+            commands::set_workspace_disabled,
             commands::reapply_template,
             commands::delete_workspace,
             commands::start_workspace,
@@ -46,6 +48,7 @@ pub fn run() {
             commands::workspace_status,
             commands::worktree_status,
             commands::workspace_log,
+            commands::resources,
             commands::get_settings,
             commands::save_settings,
         ])
