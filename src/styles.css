@@ -988,7 +988,8 @@ p {
   font-size: 12px;
 }
 
-.select-chip:hover {
+.select-chip:hover,
+.select-chip:focus-within {
   border-color: var(--line);
   background: #161d25;
 }
@@ -998,26 +999,216 @@ p {
   color: #8b97a6;
 }
 
-.select-chip select {
+.select-trigger {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select-trigger-chip {
   max-width: 200px;
+  padding: 0;
+  background: transparent;
+}
+
+.select-trigger-chip .select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-trigger-field {
+  text-align: left;
+}
+
+.select-trigger[data-disabled] {
+  cursor: default;
+}
+
+.select-trigger:focus-visible {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 2px;
+}
+
+.select-trigger-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.select-trigger[data-popup-open] .select-trigger-icon {
+  transform: rotate(180deg);
+}
+
+.select-value[data-placeholder] {
+  color: var(--muted);
+}
+
+.select-search-control {
+  display: inline-flex;
+  width: 184px;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.select-search-input {
+  width: 100%;
+  min-width: 0;
   padding: 0;
   border: 0;
   outline: none;
   background: transparent;
-  color: inherit;
+  color: var(--text);
   font: inherit;
   font-size: 12px;
-  cursor: pointer;
 }
 
-.select-chip option {
-  background: #11161c;
+.select-search-input::placeholder {
+  color: var(--muted);
+}
+
+.select-search-input:focus-visible {
+  outline: none;
+}
+
+.select-search-trigger {
+  display: grid;
+  width: 20px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.select-search-trigger:hover:not(:disabled) {
   color: var(--text);
 }
 
-.select-chip optgroup {
-  background: #11161c;
+.select-popup-search {
+  min-width: max(240px, var(--anchor-width));
+  max-width: min(400px, var(--available-width));
+}
+
+.select-search-item {
+  min-height: 40px;
+}
+
+.select-search-item-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.select-search-item-description {
+  overflow: hidden;
   color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-empty {
+  padding: 12px 9px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.select-positioner {
+  z-index: 1300;
+  outline: none;
+}
+
+.select-popup {
+  box-sizing: border-box;
+  min-width: max(180px, var(--anchor-width));
+  max-width: min(340px, var(--available-width));
+  max-height: min(320px, var(--available-height));
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 12px 32px #0008;
+}
+
+.select-popup-field {
+  min-width: var(--anchor-width);
+}
+
+.select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.select-group + .select-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.select-group-label {
+  padding: 7px 9px 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.select-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.select-item[data-highlighted],
+.select-item[data-selected] {
+  background: var(--panel-2);
+}
+
+.select-item[data-disabled] {
+  color: var(--muted);
+  cursor: default;
+}
+
+.select-item-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-item-indicator {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--accent);
 }
 
 .send-button {
