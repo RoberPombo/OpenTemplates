@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AsyncSearchableSelect, Select } from "../ui";
@@ -101,5 +101,34 @@ describe("Select", () => {
 
     await user.click(screen.getByRole("option", { name: /Claude/ }));
     expect(onValueChange).toHaveBeenCalledWith("anthropic/claude");
+  });
+
+  it("muestra la ficha de la opción al pasar el ratón", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AsyncSearchableSelect
+        aria-label="Modelo"
+        value=""
+        placeholder="Buscar modelo…"
+        onValueChange={() => {}}
+        options={[
+          {
+            value: "anthropic/claude",
+            label: "Claude",
+            tooltip: <div>Ficha del modelo</div>,
+          },
+        ]}
+      />,
+    );
+
+    const input = await screen.findByRole("combobox", { name: "Modelo" });
+    await user.click(input);
+    await user.hover(await screen.findByRole("option", { name: "Claude" }));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Ficha del modelo");
+
+    await user.unhover(screen.getByRole("option", { name: "Claude" }));
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
   });
 });
