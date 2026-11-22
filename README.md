@@ -36,6 +36,19 @@ pnpm format:check  # oxfmt --check
 pnpm check         # typecheck + lint + format:check
 ```
 
+## Ramas
+
+`develop` es la rama por defecto: todo el trabajo sale de ahí y vuelve con PR.
+`main` solo recibe merges desde `develop`, también por PR.
+
+```bash
+pnpm hooks   # activa .githooks en este clon (una vez)
+```
+
+Ese hook rechaza cualquier `git push` directo a `main`, incluido el force-push y
+el borrado de la rama. Es una salvaguarda local: la protección real del
+servidor necesita un repo público o GitHub Pro.
+
 ## Cómo funciona
 
 Cada workspace se lanza como un `opencode serve` independiente con:
