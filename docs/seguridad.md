@@ -30,7 +30,9 @@ Revisión aplicada sobre el repo de OpenTemplates. Lo que depende de una persona
   siguen desactivados: GitHub los marca como funciones de GHAS de pago.
 - CodeQL por defecto (default setup) no soporta Rust; se usa workflow avanzado con
   `build-mode: none` para los dos lenguajes.
-- La CSP de la webview sigue en `null` hasta validarla con la app arrancada.
+- La CSP está activa con `connect-src` acotado a los servidores opencode locales y
+  al IPC de Tauri, pero falta un arranque manual con entorno gráfico para
+  confirmarla (en esta máquina no se abre la ventana ni con la build anterior).
 
 ## Depende de una persona
 
