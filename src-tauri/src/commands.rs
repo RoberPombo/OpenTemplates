@@ -1046,7 +1046,7 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
     let workspace_dir = ensure_workspace_dir(&state.data_dir, &id);
     let materialized = materialize_workspace(&workspace, &workspace_dir)?;
     for warning in &materialized.warnings {
-        eprintln!("[openconf] {}", warning);
+        eprintln!("[opentemplates] {}", warning);
     }
 
     let (handle, info) = server::spawn(&workspace, &workspace_dir, &bin).await?;

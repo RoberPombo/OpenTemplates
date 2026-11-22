@@ -52,11 +52,11 @@ describe("Chat — sesión y carga", () => {
     );
     expect(await screen.findByText("hola")).toBeInTheDocument();
     expect(screen.getByText("respuesta")).toBeInTheDocument();
-    await waitFor(() => expect(localStorage.getItem("openconf:session:w1")).toBe("s1"));
+    await waitFor(() => expect(localStorage.getItem("opentemplates:session:w1")).toBe("s1"));
   });
 
   test("reutiliza la sesión guardada en localStorage", async () => {
-    localStorage.setItem("openconf:session:w1", "previa");
+    localStorage.setItem("opentemplates:session:w1", "previa");
     const { client } = renderChat({ messages: rawMessages });
     await screen.findByText("hola");
     expect(client.session.create).not.toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe("Chat — envío", () => {
   });
 
   test("el modelo guardado gana al del workspace", async () => {
-    localStorage.setItem("openconf:model:w1", "openai/gpt");
+    localStorage.setItem("opentemplates:model:w1", "openai/gpt");
     renderChat({}, makeWorkspace({ model: "anthropic/claude" }));
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: "Modelo" })).toHaveValue("GPT"),
@@ -195,7 +195,7 @@ describe("Chat — nueva conversación", () => {
     client.message.list.mockResolvedValue({ data: [] });
     await user.click(screen.getByRole("button", { name: "Nueva conversación" }));
     await waitFor(() => expect(client.session.create).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(localStorage.getItem("openconf:session:w1")).toBe("s2"));
+    await waitFor(() => expect(localStorage.getItem("opentemplates:session:w1")).toBe("s2"));
     await waitFor(() => expect(screen.queryByText("hola")).toBeNull());
     expect(client.message.list).toHaveBeenCalledWith(expect.objectContaining({ sessionID: "s2" }));
   });

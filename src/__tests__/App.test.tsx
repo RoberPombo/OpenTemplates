@@ -172,12 +172,12 @@ describe("App — carga y selección", () => {
     expect(screen.getByText("Segundo")).toBeInTheDocument();
     expect(screen.getByText("Repo")).toBeInTheDocument();
     expect(screen.getByText("view:Primero")).toBeInTheDocument();
-    await waitFor(() => expect(localStorage.getItem("openconf:selected")).toBe("w1"));
+    await waitFor(() => expect(localStorage.getItem("opentemplates:selected")).toBe("w1"));
     expect(apiMock.listLibrary).toHaveBeenCalled();
   });
 
   test("respeta la selección guardada", async () => {
-    localStorage.setItem("openconf:selected", "w2");
+    localStorage.setItem("opentemplates:selected", "w2");
     renderApp();
     expect(await screen.findByText("view:Segundo")).toBeInTheDocument();
   });
@@ -188,13 +188,13 @@ describe("App — carga y selección", () => {
     await screen.findByText("Primero");
     await user.click(screen.getByText("Segundo"));
     expect(screen.getByText("view:Segundo")).toBeInTheDocument();
-    expect(localStorage.getItem("openconf:selected")).toBe("w2");
+    expect(localStorage.getItem("opentemplates:selected")).toBe("w2");
   });
 
   test("fallo de bootstrap muestra pantalla fatal", async () => {
     apiMock.bootstrap.mockRejectedValue(new Error("sin backend"));
     renderApp();
-    expect(await screen.findByText("OpenConf no pudo arrancar")).toBeInTheDocument();
+    expect(await screen.findByText("OpenTemplates no pudo arrancar")).toBeInTheDocument();
     expect(screen.getByText("sin backend")).toBeInTheDocument();
   });
 });
@@ -252,13 +252,13 @@ describe("App — borrado con política", () => {
       force: false,
     });
     expect(screen.getByText("view:Segundo")).toBeInTheDocument();
-    expect(localStorage.getItem("openconf:selected")).toBe("w2");
+    expect(localStorage.getItem("opentemplates:selected")).toBe("w2");
     confirm.mockRestore();
   });
 
   test("worktree sucio: doble confirmación activa force", async () => {
     const user = userEvent.setup();
-    localStorage.setItem("openconf:selected", "w2");
+    localStorage.setItem("opentemplates:selected", "w2");
     apiMock.worktreeStatus.mockResolvedValue({
       exists: true,
       dirty: true,
@@ -299,7 +299,7 @@ describe("App — creación y gestión", () => {
     await user.click(screen.getByText("create"));
     expect(await screen.findByText("view:Nuevo")).toBeInTheDocument();
     expect(screen.getByText("aviso")).toBeInTheDocument();
-    expect(localStorage.getItem("openconf:selected")).toBe("nuevo");
+    expect(localStorage.getItem("opentemplates:selected")).toBe("nuevo");
   });
 
   test("abrir y cerrar el panel de gestión", async () => {

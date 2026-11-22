@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Evolucionar OpenConf (Tauri v2 + React/TS) del modelo actual de workspaces
+Evolucionar OpenTemplates (Tauri v2 + React/TS) del modelo actual de workspaces
 ad-hoc a:
 
 - **Templates globales híbridos**: seleccionan assets de la biblioteca global de
@@ -33,7 +33,7 @@ Arquitectura de aislamiento: `docs/arquitectura-workspaces.md`.
 - Backend Rust: `src-tauri/src/{commands,config,model,server,state}.rs`.
 - Frontend: `src/{App.tsx,api.ts,opencode.ts,types.ts,styles.css}` y
   `src/components/{Chat,CreateWorkspace,SettingsPanel,WorkspaceView}.tsx`.
-- Datos en `~/.local/share/com.alukard.openconf/`.
+- Datos en `~/.local/share/com.alukard.opentemplates/`.
 - opencode v2.3.0; la app lo busca en `PATH` o `OPENCODE_BIN`.
 
 ## Invariantes verificados (no romper)

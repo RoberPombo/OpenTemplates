@@ -7,10 +7,10 @@ export interface Preferences {
 
 /** Claves centralizadas (antes repartidas como strings ad-hoc en los componentes). */
 export const prefKeys = {
-  selectedWorkspace: "openconf:selected",
-  panelOpen: "openconf:panel",
-  session: (workspaceId: string) => `openconf:session:${workspaceId}`,
-  model: (workspaceId: string) => `openconf:model:${workspaceId}`,
-  agent: (workspaceId: string) => `openconf:agent:${workspaceId}`,
-  variant: (workspaceId: string) => `openconf:variant:${workspaceId}`,
+  selectedWorkspace: "opentemplates:selected",
+  panelOpen: "opentemplates:panel",
+  session: (workspaceId: string) => `opentemplates:session:${workspaceId}`,
+  model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
+  agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,
+  variant: (workspaceId: string) => `opentemplates:variant:${workspaceId}`,
 };

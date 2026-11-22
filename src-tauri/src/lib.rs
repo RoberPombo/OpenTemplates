@@ -9,9 +9,36 @@ mod state;
 mod store;
 mod templates;
 
+use std::path::Path;
+
 use tauri::Manager;
 
 use state::AppState;
+
+/// Identificador con el que se publicó la app antes de llamarse OpenTemplates.
+const LEGACY_IDENTIFIER: &str = "com.alukard.openconf";
+
+/// Mueve el directorio de datos de la versión anterior al actual la primera vez
+/// que arranca con el identificador nuevo, para no perder workspaces ni ajustes.
+fn migrate_legacy_data_dir(data_dir: &Path) {
+    if data_dir.exists() {
+        return;
+    }
+    let Some(parent) = data_dir.parent() else {
+        return;
+    };
+    let legacy = parent.join(LEGACY_IDENTIFIER);
+    if !legacy.is_dir() {
+        return;
+    }
+    if let Err(err) = std::fs::rename(&legacy, data_dir) {
+        eprintln!(
+            "[opentemplates] no se pudo migrar {} a {}: {err}",
+            legacy.display(),
+            data_dir.display()
+        );
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,6 +47,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
+            migrate_legacy_data_dir(&data_dir);
             std::fs::create_dir_all(&data_dir)?;
             app.manage(AppState::load(data_dir));
             Ok(())
@@ -62,4 +90,51 @@ pub fn run() {
                 state.kill_all();
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_root(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "opentemplates-lib-{label}-{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn migra_el_directorio_de_datos_anterior() {
+        let root = temp_root("migra");
+        let legacy = root.join(LEGACY_IDENTIFIER);
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("workspaces.json"), "[]").unwrap();
+
+        let data_dir = root.join("com.alukard.opentemplates");
+        migrate_legacy_data_dir(&data_dir);
+
+        assert!(data_dir.join("workspaces.json").exists());
+        assert!(!legacy.exists());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn no_toca_el_directorio_actual_si_ya_existe() {
+        let root = temp_root("existente");
+        let legacy = root.join(LEGACY_IDENTIFIER);
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("workspaces.json"), "[\"viejo\"]").unwrap();
+        let data_dir = root.join("com.alukard.opentemplates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::write(data_dir.join("workspaces.json"), "[\"nuevo\"]").unwrap();
+
+        migrate_legacy_data_dir(&data_dir);
+
+        assert_eq!(
+            std::fs::read_to_string(data_dir.join("workspaces.json")).unwrap(),
+            "[\"nuevo\"]"
+        );
+        assert!(legacy.exists());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }

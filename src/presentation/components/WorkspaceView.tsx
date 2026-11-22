@@ -28,7 +28,7 @@ function ProfiledChat(props: React.ComponentProps<typeof Chat>) {
         import.meta.env.DEV &&
         document.documentElement.dataset.perfCapture === "on" &&
         window.dispatchEvent(
-          new CustomEvent("openconf:perf-react-commit", {
+          new CustomEvent("opentemplates:perf-react-commit", {
             detail: { id, phase, actualDuration, baseDuration, startTime, commitTime },
           }),
         )

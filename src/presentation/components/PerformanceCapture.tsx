@@ -21,7 +21,7 @@ export default function PerformanceCapture() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `openconf-performance-${new Date().toISOString().replace(/:/g, "-")}.json`;
+    link.download = `opentemplates-performance-${new Date().toISOString().replace(/:/g, "-")}.json`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

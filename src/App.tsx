@@ -52,7 +52,7 @@ function App() {
   if (fatal) {
     return (
       <main className="fatal">
-        <h1>OpenConf no pudo arrancar</h1>
+        <h1>OpenTemplates no pudo arrancar</h1>
         <p>{fatal}</p>
         <Button variant="primary" onClick={() => window.location.reload()}>
           Reintentar
@@ -100,7 +100,7 @@ function App() {
         <div className="brand">
           <span className="brand-mark">◒</span>
           <div>
-            <strong>OpenConf</strong>
+            <strong>OpenTemplates</strong>
             <span className="muted">workspaces</span>
           </div>
         </div>

@@ -176,8 +176,10 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn serves_its_own_project() {
-        let base =
-            std::env::temp_dir().join(format!("openconf-server-test-{}", uuid::Uuid::new_v4()));
+        let base = std::env::temp_dir().join(format!(
+            "opentemplates-server-test-{}",
+            uuid::Uuid::new_v4()
+        ));
         let project = base.join("project");
         let config_dir = base.join("xdg/opencode");
         fs::create_dir_all(&project).unwrap();

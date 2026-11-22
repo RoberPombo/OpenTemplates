@@ -1,4 +1,4 @@
-# OpenConf
+# OpenTemplates
 
 Workspaces aislados sobre [opencode](https://opencode.ai). Cada workspace tiene su
 propio proceso, configuración, MCPs, skills y sesiones, aunque varios workspaces
@@ -55,7 +55,7 @@ del proyecto. Por eso el aislamiento real lo impone una allowlist de permisos
 (`deny *` + `allow` de las skills elegidas), que oculta y bloquea las demás.
 
 Los datos de la app viven en el directorio de datos de Tauri
-(`~/.local/share/com.alukard.openconf` en Linux):
+(`~/.local/share/com.alukard.opentemplates` en Linux):
 
 ```
 workspaces.json
@@ -64,6 +64,10 @@ workspaces/<workspace-id>/
 ├── opencode.db
 └── logs/server.log
 ```
+
+La primera vez que arranca con el nombre nuevo, la app mueve automáticamente el
+directorio anterior (`~/.local/share/com.alukard.openconf`) y copia las
+preferencias guardadas con el prefijo `openconf:` a las claves actuales.
 
 ## Alcance actual
 

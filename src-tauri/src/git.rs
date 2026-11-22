@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn creates_a_worktree_and_removes_it_keeping_the_branch() {
-        let root = std::env::temp_dir().join(format!("openconf-git-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("opentemplates-git-{}", uuid::Uuid::new_v4()));
         let repo = root.join("repo");
         fs::create_dir_all(&repo).unwrap();
         let setup = |args: &[&str]| {

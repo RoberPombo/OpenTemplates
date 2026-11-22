@@ -78,7 +78,7 @@ export function startCapture() {
     reactCommits.push((event as CustomEvent<ReactCommit>).detail);
   };
   document.documentElement.dataset.perfCapture = "on";
-  window.addEventListener("openconf:perf-react-commit", reactCommitListener);
+  window.addEventListener("opentemplates:perf-react-commit", reactCommitListener);
 
   longTaskApiSupported =
     typeof PerformanceObserver !== "undefined" &&
@@ -115,7 +115,7 @@ export function stopCapture(): PerformanceReport | null {
   observer = null;
   delete document.documentElement.dataset.perfCapture;
   if (reactCommitListener) {
-    window.removeEventListener("openconf:perf-react-commit", reactCommitListener);
+    window.removeEventListener("opentemplates:perf-react-commit", reactCommitListener);
     reactCommitListener = null;
   }
 

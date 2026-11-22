@@ -71,12 +71,12 @@ describe("TauriGateways — mapeo de comandos y argumentos", () => {
 describe("LocalStoragePreferences", () => {
   test("get/set/remove sobre localStorage", () => {
     const preferences = new LocalStoragePreferences();
-    expect(preferences.get("openconf:selected")).toBeNull();
-    preferences.set("openconf:selected", "w1");
-    expect(localStorage.getItem("openconf:selected")).toBe("w1");
-    expect(preferences.get("openconf:selected")).toBe("w1");
-    preferences.remove("openconf:selected");
-    expect(preferences.get("openconf:selected")).toBeNull();
+    expect(preferences.get("opentemplates:selected")).toBeNull();
+    preferences.set("opentemplates:selected", "w1");
+    expect(localStorage.getItem("opentemplates:selected")).toBe("w1");
+    expect(preferences.get("opentemplates:selected")).toBe("w1");
+    preferences.remove("opentemplates:selected");
+    expect(preferences.get("opentemplates:selected")).toBeNull();
   });
 });
 

@@ -354,7 +354,7 @@ pub fn build_agents_md(
 ) -> String {
     let mut sections: Vec<String> = Vec::new();
     sections.push(
-        "# AGENTS.md combinado\n\n<!-- Generado por OpenConf. No editar a mano: se regenera al arrancar o al reaplicar el template. -->".into(),
+        "# AGENTS.md combinado\n\n<!-- Generado por OpenTemplates. No editar a mano: se regenera al arrancar o al reaplicar el template. -->".into(),
     );
     if let Some(global) = global_md.filter(|text| !text.trim().is_empty()) {
         sections.push(format!("## Instrucciones globales\n\n{}", global.trim()));
@@ -516,8 +516,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn temp_dir(label: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("openconf-config-{label}-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!(
+            "opentemplates-config-{label}-{}",
+            uuid::Uuid::new_v4()
+        ));
         fs::create_dir_all(&dir).unwrap();
         dir
     }

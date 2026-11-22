@@ -1,4 +1,4 @@
-# Arquitectura de workspaces (OpenConfApp)
+# Arquitectura de workspaces (OpenTemplates)
 
 ## Decisión
 

@@ -1,4 +1,4 @@
-# Revisión: Clean Architecture y testing — OpenConf
+# Revisión: Clean Architecture y testing — OpenTemplates
 
 Fecha: 2026-11-21. Alcance: frontend React (`src/`); el backend Rust se revisa solo como contexto.
 Metodología: skills `clean-architecture-frontend`, `refactoring-clean-architecture`, `testing-frontend`.
