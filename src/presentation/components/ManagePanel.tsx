@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { slugify } from "../../domain/workspace/wizard";
 import type { AssetInfo, Library, Repo, TemplateManifest, Workspace } from "../../types";
-import { Select } from "./ui";
+import { AsyncMultiSearchableSelect, Select } from "./ui";
+import type { SelectEntry } from "./ui";
 
 type Props = {
   repos: Repo[];
@@ -19,6 +20,18 @@ type Props = {
 };
 
 type TemplateField = "agents" | "skills" | "mcps" | "commands" | "plugins";
+
+function splitModel(model: string): { provider: string; id: string } {
+  const slash = model.indexOf("/");
+  return slash > 0
+    ? { provider: model.slice(0, slash), id: model.slice(slash + 1) }
+    : { provider: "otros", id: model };
+}
+
+function modelLabel(model: string): string {
+  const { provider, id } = splitModel(model);
+  return model.includes("/") ? `${id} (${provider})` : model;
+}
 
 function emptyTemplate(): TemplateManifest {
   const now = Date.now();
@@ -98,6 +111,64 @@ export function ManagePanel({
   const [templateSaved, setTemplateSaved] = useState(false);
   const [worktreesDraft, setWorktreesDraft] = useState(worktreesRoot);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [catalogModels, setCatalogModels] = useState<string[]>([]);
+  const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [subscriptionFilter, setSubscriptionFilter] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    composition.modelCatalog
+      .list()
+      .then((models) => {
+        if (alive) {
+          setCatalogModels(models);
+          setCatalogStatus("ready");
+        }
+        return undefined;
+      })
+      .catch(() => {
+        if (alive) setCatalogStatus("error");
+        return undefined;
+      });
+    return () => {
+      alive = false;
+    };
+  }, [composition]);
+
+  const subscriptionOptions = useMemo<SelectEntry[]>(() => {
+    const providers = new Set<string>();
+    for (const key of [...catalogModels, ...draft.models]) {
+      const trimmed = key.trim();
+      if (trimmed) providers.add(splitModel(trimmed).provider);
+    }
+    return [
+      { value: "", label: "Todas" },
+      ...[...providers]
+        .sort((left, right) => left.localeCompare(right))
+        .map((provider) => ({ value: provider, label: provider })),
+    ];
+  }, [catalogModels, draft.models]);
+
+  const modelOptions = useMemo<SelectEntry[]>(() => {
+    const selected = draft.models.map((model) => model.trim()).filter(Boolean);
+    const available = catalogModels.filter(
+      (model) => !subscriptionFilter || splitModel(model).provider === subscriptionFilter,
+    );
+    const keys = new Set([...available, ...selected]);
+    const groups = new Map<string, { value: string; label: string; searchText: string }[]>();
+    for (const key of keys) {
+      const { provider } = splitModel(key);
+      const group = groups.get(provider) ?? [];
+      group.push({ value: key, label: modelLabel(key), searchText: key });
+      groups.set(provider, group);
+    }
+    return [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([label, options]) => ({
+        label,
+        options: options.sort((left, right) => left.label.localeCompare(right.label)),
+      }));
+  }, [catalogModels, draft.models, subscriptionFilter]);
 
   useEffect(() => {
     if (!selectedTemplateId) {
@@ -140,6 +211,15 @@ export function ManagePanel({
       else current.add(id);
       return { ...prev, [field]: [...current] };
     });
+    setTemplateSaved(false);
+  }
+
+  function removeModel(model: string) {
+    setDraft((prev) => ({
+      ...prev,
+      models: prev.models.filter((item) => item !== model),
+      model: prev.model === model ? null : prev.model,
+    }));
     setTemplateSaved(false);
   }
 
@@ -433,53 +513,67 @@ export function ManagePanel({
 
                 <div className="field">
                   <span>Modelos del selector</span>
-                  {draft.models.length === 0 && (
+                  <div className="model-picker">
+                    <Select
+                      aria-label="Suscripción"
+                      value={subscriptionFilter}
+                      placeholder="Todas"
+                      options={subscriptionOptions}
+                      variant="field"
+                      className="model-picker-subscription"
+                      onValueChange={setSubscriptionFilter}
+                    />
+                    <AsyncMultiSearchableSelect
+                      aria-label="Modelos del template"
+                      value={draft.models}
+                      options={modelOptions}
+                      placeholder={
+                        catalogStatus === "loading" ? "Cargando modelos…" : "Buscar modelo…"
+                      }
+                      disabled={catalogStatus === "loading"}
+                      variant="field"
+                      className="model-picker-models"
+                      emptyText={
+                        catalogStatus === "error"
+                          ? "No se pudo cargar el catálogo de modelos"
+                          : "No hay modelos que coincidan"
+                      }
+                      onValueChange={(models) => {
+                        setDraft((prev) => ({
+                          ...prev,
+                          models,
+                          model: prev.model && models.includes(prev.model) ? prev.model : null,
+                        }));
+                        setTemplateSaved(false);
+                      }}
+                    />
+                  </div>
+                  {draft.models.length > 0 ? (
+                    <div className="model-chips">
+                      {draft.models.map((model) => (
+                        <span key={model} className="model-chip">
+                          {modelLabel(model)}
+                          <button
+                            type="button"
+                            aria-label={`Quitar ${model}`}
+                            onClick={() => removeModel(model)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
                     <p className="muted small-text">
-                      Sin lista, el selector ofrece todos los modelos del servidor.
+                      Sin selección, el selector ofrece todos los modelos disponibles.
                     </p>
                   )}
-                  {draft.models.map((model, index) => (
-                    <div className="row" key={index}>
-                      <input
-                        className="text-input"
-                        value={model}
-                        placeholder="provider/modelo"
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setDraft((prev) => ({
-                            ...prev,
-                            models: prev.models.map((item, i) => (i === index ? value : item)),
-                          }));
-                          setTemplateSaved(false);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => {
-                          const removed = model.trim();
-                          setDraft((prev) => ({
-                            ...prev,
-                            models: prev.models.filter((_, i) => i !== index),
-                            model: prev.model === removed ? null : prev.model,
-                          }));
-                          setTemplateSaved(false);
-                        }}
-                      >
-                        Quitar
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      setDraft((prev) => ({ ...prev, models: [...prev.models, ""] }));
-                      setTemplateSaved(false);
-                    }}
-                  >
-                    Añadir modelo
-                  </button>
+                  {catalogStatus === "error" && (
+                    <p className="muted small-text">
+                      No se pudo leer el catálogo de opencode; se conservan los modelos ya
+                      asignados.
+                    </p>
+                  )}
                 </div>
 
                 <div className="field">
@@ -490,7 +584,7 @@ export function ManagePanel({
                     placeholder="Sin modelo por defecto"
                     options={[...new Set(draft.models.map((model) => model.trim()))]
                       .filter(Boolean)
-                      .map((model) => ({ value: model, label: model }))}
+                      .map((model) => ({ value: model, label: modelLabel(model) }))}
                     variant="field"
                     onValueChange={(model) => {
                       setDraft((prev) => ({

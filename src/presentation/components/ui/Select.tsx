@@ -142,6 +142,135 @@ export const Select = memo(function Select({
   );
 });
 
+export type MultiSelectProps = Omit<SelectProps, "value" | "onValueChange"> & {
+  value: readonly string[];
+  onValueChange: (value: string[]) => void;
+  emptyText?: string;
+};
+
+function flattenOptions(options: readonly SelectEntry[]): SelectOption[] {
+  return options.flatMap((entry) => {
+    if (!isGroup(entry)) return [entry];
+    return entry.options.map((option) => ({
+      ...option,
+      searchText: `${entry.label} ${option.searchText ?? ""}`.trim(),
+    }));
+  });
+}
+
+export const MultiSearchableSelect = memo(function MultiSearchableSelect({
+  "aria-label": ariaLabel,
+  value,
+  options,
+  placeholder,
+  onValueChange,
+  disabled = false,
+  variant = "field",
+  className,
+  emptyText = "No hay modelos que coincidan",
+}: MultiSelectProps) {
+  const items = useMemo(() => flattenOptions(options), [options]);
+  const selectedItems = useMemo(
+    () =>
+      value.map(
+        (itemValue) =>
+          items.find((item) => item.value === itemValue) ?? {
+            value: itemValue,
+            label: itemValue,
+            searchText: itemValue,
+          },
+      ),
+    [items, value],
+  );
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const filter = BaseCombobox.useFilter({ locale: "es", sensitivity: "base" });
+  const filterItem = useCallback(
+    (item: SelectOption, searchQuery: string) =>
+      filter.contains(
+        `${item.label} ${item.description ?? ""} ${item.searchText ?? ""}`,
+        searchQuery,
+      ),
+    [filter],
+  );
+  const inputClasses = [
+    "select-search-input",
+    variant === "field" ? "select-search-input-field" : "",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <BaseCombobox.Root<SelectOption, true>
+      multiple
+      items={items}
+      value={selectedItems}
+      inputValue={open ? query : ""}
+      onInputValueChange={setQuery}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) setQuery("");
+      }}
+      onValueChange={(nextItems) => onValueChange(nextItems.map((item) => item.value))}
+      itemToStringLabel={(item) => item.label}
+      itemToStringValue={(item) => item.value}
+      isItemEqualToValue={(item, selected) => item.value === selected.value}
+      filter={filterItem}
+      autoHighlight
+      disabled={disabled}
+    >
+      <BaseCombobox.InputGroup
+        className={`select-search-control ${variant === "field" ? "select-search-control-field" : ""}`}
+      >
+        <BaseCombobox.Input
+          className={inputClasses}
+          aria-label={ariaLabel}
+          placeholder={placeholder}
+        />
+        {value.length > 0 && (
+          <span className="select-search-count" aria-hidden="true">
+            {value.length}
+          </span>
+        )}
+        <BaseCombobox.Trigger className="select-search-trigger" aria-label="Mostrar opciones">
+          <BaseCombobox.Icon>
+            <ChevronDownIcon />
+          </BaseCombobox.Icon>
+        </BaseCombobox.Trigger>
+      </BaseCombobox.InputGroup>
+
+      <BaseCombobox.Portal>
+        <BaseCombobox.Positioner className="select-positioner" sideOffset={5}>
+          <BaseCombobox.Popup className="select-popup select-popup-search">
+            <BaseCombobox.Empty className="select-empty">{emptyText}</BaseCombobox.Empty>
+            <BaseCombobox.List className="select-list">
+              {(item: SelectOption) => (
+                <BaseCombobox.Item
+                  key={item.value}
+                  className="select-item select-search-item"
+                  value={item}
+                  disabled={item.disabled}
+                >
+                  <span className="select-search-item-copy">
+                    <span className="select-item-text">{item.label}</span>
+                    {item.description && (
+                      <span className="select-search-item-description">{item.description}</span>
+                    )}
+                  </span>
+                  <BaseCombobox.ItemIndicator className="select-item-indicator" aria-hidden="true">
+                    <CheckIcon />
+                  </BaseCombobox.ItemIndicator>
+                </BaseCombobox.Item>
+              )}
+            </BaseCombobox.List>
+          </BaseCombobox.Popup>
+        </BaseCombobox.Positioner>
+      </BaseCombobox.Portal>
+    </BaseCombobox.Root>
+  );
+});
+
 export const SearchableSelect = memo(function SearchableSelect({
   "aria-label": ariaLabel,
   value,

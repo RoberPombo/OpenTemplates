@@ -1097,6 +1097,96 @@ p {
   color: var(--text);
 }
 
+.select-search-control-field {
+  width: 100%;
+  padding: 9px 9px 9px 12px;
+  border: 1px solid #2a3541;
+  border-radius: 9px;
+  background: #0e1319;
+}
+
+.select-search-control-field:focus-within {
+  border-color: var(--accent-dim);
+}
+
+.select-search-control-field:has(.select-search-input:disabled) {
+  opacity: 0.6;
+}
+
+.select-search-placeholder {
+  color: var(--muted);
+}
+
+.select-search-count {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  flex: none;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #1a2530;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.model-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.model-picker {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.model-picker .model-picker-subscription {
+  width: auto;
+  min-width: 0;
+  flex: 0 0 40%;
+  padding: 9px 8px 9px 10px;
+}
+
+.model-picker .model-picker-models {
+  flex: 1 1 60%;
+  min-width: 0;
+}
+
+.model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 5px 3px 9px;
+  border: 1px solid #2d3a47;
+  border-radius: 999px;
+  background: #10161d;
+  color: #c7d2de;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+}
+
+.model-chip button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.model-chip button:hover {
+  background: #1a2530;
+  color: var(--text);
+}
+
 .select-popup-search {
   min-width: max(240px, var(--anchor-width));
   max-width: min(400px, var(--available-width));

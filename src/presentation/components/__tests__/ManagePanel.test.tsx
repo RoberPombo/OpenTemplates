@@ -65,6 +65,7 @@ function setup(templates: TemplateManifest[] = [template]) {
   const saveSettings = vi.fn(async (settings: { worktreesRoot?: string | null }) => settings);
   const confirm = vi.fn(() => true);
   const pickDirectory = vi.fn(async () => "/nuevo/repo");
+  const listModels = vi.fn(async () => ["anthropic/claude", "openai/gpt"]);
 
   const root = new CompositionRoot({
     repos: { list: reposList, add, refresh, remove } as never,
@@ -76,6 +77,7 @@ function setup(templates: TemplateManifest[] = [template]) {
       agentsMd,
     } as never,
     settings: { save: saveSettings } as never,
+    modelCatalog: { list: listModels } as never,
     confirm: { confirm } as never,
     folderPicker: { pickDirectory } as never,
   });
@@ -153,8 +155,10 @@ describe("ManagePanel — templates", () => {
     await user.click(screen.getByRole("button", { name: "Templates" }));
     await user.click(screen.getByRole("button", { name: /Nuevo template/ }));
     await user.type(screen.getByLabelText("Nombre"), "Backend review");
-    await user.click(screen.getByRole("button", { name: "Añadir modelo" }));
-    await user.type(screen.getByPlaceholderText("provider/modelo"), " anthropic/claude ");
+    const models = await screen.findByRole("combobox", { name: "Modelos del template" });
+    await user.click(models);
+    await user.type(models, "claude");
+    await user.click(await screen.findByRole("option", { name: /claude/ }));
     await user.click(screen.getByRole("button", { name: "Guardar template" }));
 
     expect(save).toHaveBeenCalledWith(
@@ -170,6 +174,22 @@ describe("ManagePanel — templates", () => {
       expect.objectContaining({ id: "backend-review", name: "Backend review" }),
     ]);
     expect(await screen.findByText(/Template guardado/)).toBeInTheDocument();
+  });
+
+  test("el selector de suscripción filtra los modelos disponibles", async () => {
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(screen.getByRole("button", { name: "Templates" }));
+    const subscription = await screen.findByRole("combobox", { name: "Suscripción" });
+    await user.click(subscription);
+    await user.click(await screen.findByRole("option", { name: "openai" }));
+
+    const models = await screen.findByRole("combobox", { name: "Modelos del template" });
+    await user.click(models);
+
+    expect(await screen.findByRole("option", { name: /gpt \(openai\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /claude/ })).not.toBeInTheDocument();
   });
 
   test("sin nombre muestra error y no guarda", async () => {
