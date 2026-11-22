@@ -213,6 +213,47 @@ pub fn list_skills(project_path: Option<String>) -> Vec<SkillInfo> {
     library::list_skills(project_path.as_deref())
 }
 
+/// Modelos a los que dan acceso las suscripciones y proveedores configurados
+/// en opencode. Se consulta al CLI para no depender de un workspace arrancado.
+#[tauri::command]
+pub async fn list_available_models() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let bin = find_opencode_bin()
+            .ok_or_else(|| "No se encontró el binario de opencode".to_string())?;
+        let output = std::process::Command::new(bin)
+            .arg("models")
+            .env_remove("OPENCODE_CONFIG")
+            .env_remove("OPENCODE_CONFIG_CONTENT")
+            .env_remove("OPENCODE_CONFIG_DIR")
+            .env_remove("OPENCODE_SESSION_ID")
+            .env_remove("OPENCODE_PASSWORD")
+            .env_remove("OPENCODE_SERVER_PASSWORD")
+            .output()
+            .map_err(|e| format!("No se pudo ejecutar opencode models: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let detail = stderr.trim();
+            return Err(if detail.is_empty() {
+                format!("opencode models terminó con {}", output.status)
+            } else {
+                detail.to_string()
+            });
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut models: Vec<String> = stdout
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && line.contains('/'))
+            .map(str::to_string)
+            .collect();
+        models.sort();
+        models.dedup();
+        Ok(models)
+    })
+    .await
+    .map_err(|e| format!("No se pudo listar los modelos: {e}"))?
+}
+
 // ---------------------------------------------------------------------------
 // Repos
 // ---------------------------------------------------------------------------

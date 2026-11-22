@@ -29,6 +29,7 @@ pub fn run() {
             commands::list_library,
             commands::list_mcps,
             commands::list_skills,
+            commands::list_available_models,
             commands::list_repos,
             commands::add_repo,
             commands::refresh_repo,

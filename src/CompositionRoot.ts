@@ -6,6 +6,7 @@
 import {
   TauriBootstrapGateway,
   TauriLibraryGateway,
+  TauriModelCatalogGateway,
   TauriRepoGateway,
   TauriResourcesGateway,
   TauriSettingsGateway,
@@ -23,6 +24,7 @@ import type { BootstrapGateway, SettingsGateway } from "./domain/repositories/Se
 import type { ChatGateway, ChatServer } from "./domain/repositories/ChatGateway";
 import type { ConfirmDialog, FolderPicker } from "./domain/repositories/Dialogs";
 import type { LibraryGateway } from "./domain/repositories/LibraryGateway";
+import type { ModelCatalogGateway } from "./domain/repositories/ModelCatalogGateway";
 import type { Preferences } from "./domain/repositories/Preferences";
 import type { RepoGateway } from "./domain/repositories/RepoGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
@@ -37,6 +39,7 @@ export type Ports = {
   templates: TemplateGateway;
   settings: SettingsGateway;
   library: LibraryGateway;
+  modelCatalog: ModelCatalogGateway;
   resources: ResourcesGateway;
   preferences: Preferences;
   confirm: ConfirmDialog;
@@ -52,6 +55,7 @@ export class CompositionRoot {
   readonly templates: TemplateGateway;
   readonly settings: SettingsGateway;
   readonly library: LibraryGateway;
+  readonly modelCatalog: ModelCatalogGateway;
   readonly resources: ResourcesGateway;
   readonly preferences: Preferences;
   readonly confirm: ConfirmDialog;
@@ -64,6 +68,7 @@ export class CompositionRoot {
     this.templates = overrides.templates ?? new TauriTemplateGateway();
     this.settings = overrides.settings ?? new TauriSettingsGateway();
     this.library = overrides.library ?? new TauriLibraryGateway();
+    this.modelCatalog = overrides.modelCatalog ?? new TauriModelCatalogGateway();
     this.resources = overrides.resources ?? new TauriResourcesGateway();
     this.preferences = overrides.preferences ?? new LocalStoragePreferences();
     this.confirm = overrides.confirm ?? new WindowConfirmDialog();

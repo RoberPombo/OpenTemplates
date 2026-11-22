@@ -6,6 +6,7 @@ import { api } from "./tauriCommands";
 import { errorText } from "../domain/shared/errors";
 import type { BootstrapGateway, SettingsGateway } from "../domain/repositories/SettingsGateway";
 import type { LibraryGateway } from "../domain/repositories/LibraryGateway";
+import type { ModelCatalogGateway } from "../domain/repositories/ModelCatalogGateway";
 import type { RepoGateway } from "../domain/repositories/RepoGateway";
 import type { ResourcesGateway } from "../domain/repositories/ResourcesGateway";
 import type { TemplateGateway } from "../domain/repositories/TemplateGateway";
@@ -131,6 +132,12 @@ export class TauriTemplateGateway implements TemplateGateway {
 
   saveAgentsMd(id: string, content: string): Promise<string> {
     return call(api.saveTemplateAgentsMd(id, content));
+  }
+}
+
+export class TauriModelCatalogGateway implements ModelCatalogGateway {
+  list(): Promise<string[]> {
+    return call(api.listAvailableModels());
   }
 }
 

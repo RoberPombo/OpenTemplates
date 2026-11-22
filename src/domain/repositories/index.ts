@@ -3,6 +3,7 @@ export type { RepoGateway } from "./RepoGateway";
 export type { TemplateGateway } from "./TemplateGateway";
 export type { SettingsGateway, BootstrapGateway } from "./SettingsGateway";
 export type { LibraryGateway } from "./LibraryGateway";
+export type { ModelCatalogGateway } from "./ModelCatalogGateway";
 export type { ResourcesGateway } from "./ResourcesGateway";
 export type { ChatGateway, ChatServer, ServerLocation } from "./ChatGateway";
 export { prefKeys, type Preferences } from "./Preferences";
