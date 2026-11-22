@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "tauri": "tauri",
+    "build:local": "tauri build --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'",
     "hooks": "git config core.hooksPath .githooks"
   },
   "dependencies": {
