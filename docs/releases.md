@@ -20,9 +20,14 @@ compila y publica, y la app consulta el updater al arrancar.
    `https://github.com/RoberPombo/OpenTemplates/releases/latest/download/latest.json`
    y muestra el diálogo de actualización si la versión publicada es mayor.
 
-Versiones: `feat` sube minor, `fix`/`perf`/`refactor` suben patch, y `BREAKING
-CHANGE` sube major. Los commits deben seguir Conventional Commits para que el
-CHANGELOG y el salto de versión salgan bien.
+Versiones: `feat` sube versión, `fix`/`perf`/`refactor` también (con
+`bump-patch-for-minor-pre-major` un `feat` en 0.x sube patch), y un `BREAKING
+CHANGE` sube minor en vez de saltar a 1.0.0 (`bump-minor-pre-major`). Los commits
+deben seguir Conventional Commits para que el CHANGELOG y el salto salgan bien.
+
+**La 1.0.0 no es automática**: mientras falten piezas por pulir nos quedamos en
+0.x. Para publicarla habrá que quitarlo a mano en `.release-please-config.json` y
+en `.release-please-manifest.json`.
 
 ## Ajustes del repositorio que el pipeline necesita
 
