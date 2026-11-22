@@ -1,0 +1,59 @@
+# Releases y actualizaciones automáticas
+
+El pipeline replica el de Economía Casera: `release-please` versiona, `tauri-action`
+compila y publica, y la app consulta el updater al arrancar.
+
+## Flujo
+
+1. El trabajo entra en `develop` por PR desde una rama de feature.
+2. `release-please` (push a `main`) mantiene abierto un PR de release que sube la
+   versión en `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
+   y `.release-please-manifest.json`, y escribe `CHANGELOG.md`.
+3. Al mergear ese PR en `main`, `release-please` crea el tag `vX.Y.Z` y un draft
+   de release.
+4. El tag dispara `.github/workflows/tauri-release.yml`: compila Linux (deb),
+   Windows (NSIS) y macOS arm64 (dmg + app), firma los artefactos con la clave del
+   updater, sube los binarios y `latest.json`, y publica el draft.
+5. `sync-develop.yml` abre un PR `main -> develop` para devolver los cambios de
+   versión al desarrollo (merge normal, nunca squash).
+6. La app instalada consulta al arrancar
+   `https://github.com/RoberPombo/OpenTemplates/releases/latest/download/latest.json`
+   y muestra el diálogo de actualización si la versión publicada es mayor.
+
+Versiones: `feat` sube minor, `fix`/`perf`/`refactor` suben patch, y `BREAKING
+CHANGE` sube major. Los commits deben seguir Conventional Commits para que el
+CHANGELOG y el salto de versión salgan bien.
+
+## Secretos del repositorio
+
+| Secreto | Para qué |
+| --- | --- |
+| `RELEASE_PLEASE_TOKEN` | PAT con `contents: write` y `pull-requests: write`. Necesario porque los tags creados con `GITHUB_TOKEN` no disparan otros workflows. |
+| `TAURI_SIGNING_PRIVATE_KEY` | Clave privada minisign que firma los artefactos del updater. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Contraseña de esa clave. |
+
+La clave vive fuera del repo, en `~/.config/opentemplates/updater.key` (y su
+contraseña en `updater.key.password`, ambos con permisos 600). La pública está en
+`src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). **Si se pierde la clave o
+la contraseña, ninguna app instalada podrá aceptar actualizaciones** hasta
+publicar una build con una clave nueva, y habrá que reinstalar a mano.
+
+## Probar una release
+
+```bash
+# 1. provoca un cambio con tipo release en develop y mergea a main
+git switch -c chore/prueba-release develop
+git commit --allow-empty -m "fix: probar el pipeline de release"
+# PR a develop, merge; PR de develop a main, merge
+# 2. release-please abrirá "chore(main): release 0.1.1"; mergealo
+# 3. sigue el run de "Release Binaries" hasta que publique el draft
+```
+
+La release debe quedar publicada (no draft) para que `releases/latest/download`
+sirva `latest.json`. Los assets de un repo privado exigirían autenticación: el
+updater solo funciona con el repositorio público o con un endpoint propio.
+
+## Actualizaciones en local
+
+`pnpm tauri build` sin `TAURI_SIGNING_PRIVATE_KEY` no genera `.sig`; para probar
+el updater en local hay que exportar la clave y su contraseña antes de compilar.

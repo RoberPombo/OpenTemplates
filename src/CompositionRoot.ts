@@ -16,10 +16,13 @@ import {
 import { LocalStoragePreferences } from "./data/LocalStoragePreferences";
 import { WindowConfirmDialog } from "./data/WindowConfirmDialog";
 import { TauriFolderPicker } from "./data/TauriFolderPicker";
+import { TauriUpdateGateway } from "./data/TauriUpdateGateway";
 import { createChatGateway } from "./data/OpencodeChatGateway";
 import { DeleteWorkspace } from "./domain/usecases/DeleteWorkspace";
 import { CreateWorkspace } from "./domain/usecases/CreateWorkspace";
 import { ApplyWorkspaceSettings } from "./domain/usecases/ApplyWorkspaceSettings";
+import { CheckForUpdate } from "./domain/usecases/CheckForUpdate";
+import { InstallUpdate } from "./domain/usecases/InstallUpdate";
 import type { BootstrapGateway, SettingsGateway } from "./domain/repositories/SettingsGateway";
 import type { ChatGateway, ChatServer } from "./domain/repositories/ChatGateway";
 import type { ConfirmDialog, FolderPicker } from "./domain/repositories/Dialogs";
@@ -29,6 +32,7 @@ import type { Preferences } from "./domain/repositories/Preferences";
 import type { RepoGateway } from "./domain/repositories/RepoGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
 import type { TemplateGateway } from "./domain/repositories/TemplateGateway";
+import type { UpdateGateway } from "./domain/repositories/UpdateGateway";
 import type { WorkspaceGateway } from "./domain/repositories/WorkspaceGateway";
 import type { ServerInfo } from "./types";
 
@@ -44,6 +48,7 @@ export type Ports = {
   preferences: Preferences;
   confirm: ConfirmDialog;
   folderPicker: FolderPicker;
+  updates: UpdateGateway;
 };
 
 export class CompositionRoot {
@@ -60,6 +65,7 @@ export class CompositionRoot {
   readonly preferences: Preferences;
   readonly confirm: ConfirmDialog;
   readonly folderPicker: FolderPicker;
+  readonly updates: UpdateGateway;
 
   constructor(overrides: Partial<Ports> = {}) {
     this.bootstrap = overrides.bootstrap ?? new TauriBootstrapGateway();
@@ -73,6 +79,7 @@ export class CompositionRoot {
     this.preferences = overrides.preferences ?? new LocalStoragePreferences();
     this.confirm = overrides.confirm ?? new WindowConfirmDialog();
     this.folderPicker = overrides.folderPicker ?? new TauriFolderPicker();
+    this.updates = overrides.updates ?? new TauriUpdateGateway();
   }
 
   static getInstance(): CompositionRoot {
@@ -92,6 +99,14 @@ export class CompositionRoot {
 
   provideApplyWorkspaceSettings(server: ChatGateway | null): ApplyWorkspaceSettings {
     return new ApplyWorkspaceSettings(this.workspaces, server);
+  }
+
+  provideCheckForUpdate(): CheckForUpdate {
+    return new CheckForUpdate(this.updates);
+  }
+
+  provideInstallUpdate(): InstallUpdate {
+    return new InstallUpdate(this.updates);
   }
 
   provideChatGateway(server: ServerInfo): ChatServer {

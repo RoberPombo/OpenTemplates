@@ -3,8 +3,10 @@ import { folderName } from "./domain/shared";
 import { useWorkspaces } from "./presentation/hooks/useWorkspaces";
 import { CreateWorkspace } from "./presentation/components/CreateWorkspace";
 import { ManagePanel } from "./presentation/components/ManagePanel";
+import { UpdateDialog } from "./presentation/components/UpdateDialog";
 import { WorkspaceView } from "./presentation/components/WorkspaceView";
 import { Button } from "./presentation/components/ui";
+import { useUpdater } from "./presentation/hooks/useUpdater";
 import type { Workspace } from "./types";
 import "./styles.css";
 
@@ -40,6 +42,7 @@ function App() {
   } = useWorkspaces();
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState(false);
+  const updater = useUpdater();
 
   const templateName = useMemo(() => {
     if (!selected?.templateId) return null;
@@ -203,6 +206,17 @@ function App() {
           onTemplatesChanged={setTemplates}
           onWorktreesRootChanged={setWorktreesRoot}
           onClose={() => setManaging(false)}
+        />
+      )}
+      {updater.update && (
+        <UpdateDialog
+          update={updater.update}
+          installing={updater.installing}
+          installed={updater.installed}
+          error={updater.error}
+          onInstall={() => void updater.install()}
+          onRestart={updater.restart}
+          onDismiss={updater.dismiss}
         />
       )}
       {PerformanceCapture && (
