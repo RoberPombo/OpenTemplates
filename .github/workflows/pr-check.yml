@@ -59,7 +59,10 @@ jobs:
 
       - name: Rust tests
         working-directory: src-tauri
-        run: cargo test --locked
+        # Sin --locked: release-please sube la versión del crate en Cargo.toml y
+        # el lock solo se actualiza al compilar; con --locked el PR de release
+        # no puede pasar CI.
+        run: cargo test
 
       - name: Build Tauri app
         run: pnpm run tauri build --no-bundle
