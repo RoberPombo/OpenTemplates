@@ -28,19 +28,55 @@ describe("toCatalogModels", () => {
       },
     ]);
 
-    expect(models).toEqual([
+    expect(models[0]).toMatchObject({
+      providerID: "anthropic",
+      id: "claude",
+      modelID: "claude-sonnet",
+      name: "Claude",
+      enabled: true,
+      type: "chat",
+      variants: [{ id: "high" }, { id: "low" }],
+      limit: { context: 200_000 },
+      details: { key: "anthropic/claude", name: "Claude" },
+    });
+    expect(toModelOptions(models)[0]).toMatchObject({ key: "anthropic/claude", name: "Claude" });
+  });
+
+  test("construye la ficha con coste, modalidades, límites y fecha", () => {
+    const [model] = toCatalogModels([
       {
-        providerID: "anthropic",
-        id: "claude",
-        modelID: "claude-sonnet",
-        name: "Claude",
-        enabled: true,
-        type: "chat",
-        variants: [{ id: "high" }, { id: "low" }],
-        limit: { context: 200_000 },
+        providerID: "openai",
+        id: "gpt",
+        name: "GPT",
+        family: "gpt",
+        status: "active",
+        capabilities: {
+          tools: true,
+          input: ["text", "image"],
+          output: ["text"],
+          temperature: false,
+        },
+        cost: [{ input: 1.5, output: 6, cache: { read: 0.1, write: 0.2 } }],
+        limit: { context: 128_000, input: 120_000, output: 8_000 },
+        time: { released: 1_700_000_000_000 },
       },
     ]);
-    expect(toModelOptions(models)[0]).toMatchObject({ key: "anthropic/claude", name: "Claude" });
+
+    expect(model?.details).toMatchObject({
+      key: "openai/gpt",
+      providerID: "openai",
+      id: "gpt",
+      name: "GPT",
+      family: "gpt",
+      status: "active",
+      tools: true,
+      temperature: false,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      cost: { input: 1.5, output: 6, cacheRead: 0.1, cacheWrite: 0.2 },
+      limit: { context: 128_000, input: 120_000, output: 8_000 },
+      releaseDate: "2023-11-14",
+    });
   });
 
   test("descarta entradas inválidas y usa el id como nombre de reserva", () => {

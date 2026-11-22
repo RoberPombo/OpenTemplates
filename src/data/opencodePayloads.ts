@@ -8,6 +8,7 @@
  */
 import type { RawPart, RawSessionMessage } from "../domain/chat/messages";
 import type { CatalogAgent, CatalogModel } from "../domain/chat/selection";
+import type { ModelCost, ModelDetails } from "../domain/models/details";
 import type { UsageBudget, UsageLimits, UsageMeter } from "../domain/chat/usage";
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -26,6 +27,66 @@ function count(value: unknown): number | undefined {
 
 function list(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function texts(value: unknown): string[] {
+  return list(value).flatMap((item) => (typeof item === "string" ? [item] : []));
+}
+
+function toModelCost(value: unknown): ModelCost | undefined {
+  const costs = list(value).flatMap((item) => {
+    const entry = record(item);
+    return entry ? [entry] : [];
+  });
+  const base = costs.find((entry) => !record(entry.tier)) ?? costs[0];
+  if (!base) return undefined;
+  const cache = record(base.cache);
+  const input = count(base.input);
+  const output = count(base.output);
+  const cacheRead = count(cache?.read);
+  const cacheWrite = count(cache?.write);
+  if (
+    input === undefined &&
+    output === undefined &&
+    cacheRead === undefined &&
+    cacheWrite === undefined
+  ) {
+    return undefined;
+  }
+  return { input, output, cacheRead, cacheWrite };
+}
+
+/** Ficha del modelo con lo que expone el servidor (coste, límites, modalidades). */
+function toModelDetails(
+  model: Record<string, unknown>,
+  providerID: string,
+  id: string,
+): ModelDetails {
+  const capabilities = record(model.capabilities);
+  const limit = record(model.limit);
+  const released = count(record(model.time)?.released);
+  const context = count(limit?.context);
+  const inputLimit = count(limit?.input);
+  const outputLimit = count(limit?.output);
+  return {
+    key: `${providerID}/${id}`,
+    providerID,
+    id,
+    name: text(model.name) ?? id,
+    family: text(model.family),
+    status: text(model.status),
+    tools: typeof capabilities?.tools === "boolean" ? capabilities.tools : undefined,
+    temperature:
+      typeof capabilities?.temperature === "boolean" ? capabilities.temperature : undefined,
+    inputModalities: texts(capabilities?.input),
+    outputModalities: texts(capabilities?.output),
+    cost: toModelCost(model.cost),
+    limit:
+      context !== undefined || inputLimit !== undefined || outputLimit !== undefined
+        ? { context, input: inputLimit, output: outputLimit }
+        : undefined,
+    releaseDate: released ? new Date(released).toISOString().slice(0, 10) : undefined,
+  };
 }
 
 /** Modelos del catálogo del workspace (incluye límite de contexto para el inspector). */
@@ -50,6 +111,7 @@ export function toCatalogModels(payload: unknown): CatalogModel[] {
           return variantId ? [{ id: variantId }] : [];
         }),
         limit: limit ? { context: count(limit.context) } : null,
+        details: toModelDetails(model, providerID, id),
       },
     ];
   });

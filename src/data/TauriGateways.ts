@@ -4,6 +4,7 @@
  */
 import { api } from "./tauriCommands";
 import { errorText } from "../domain/shared/errors";
+import type { ModelDetails } from "../domain/models/details";
 import type { BootstrapGateway, SettingsGateway } from "../domain/repositories/SettingsGateway";
 import type { LibraryGateway } from "../domain/repositories/LibraryGateway";
 import type { ModelCatalogGateway } from "../domain/repositories/ModelCatalogGateway";
@@ -136,7 +137,7 @@ export class TauriTemplateGateway implements TemplateGateway {
 }
 
 export class TauriModelCatalogGateway implements ModelCatalogGateway {
-  list(): Promise<string[]> {
+  list(): Promise<ModelDetails[]> {
     return call(api.listAvailableModels());
   }
 }

@@ -8,8 +8,9 @@ use crate::config;
 use crate::git;
 use crate::library;
 use crate::model::{
-    AppSettings, Bootstrap, ConfigOutcome, CreateWorkspaceInput, Library, McpInfo, Repo,
-    ServerInfo, SkillInfo, SkillRef, TemplateManifest, Workspace, WorkspaceMode, WorktreeStatus,
+    AppSettings, Bootstrap, ConfigOutcome, CreateWorkspaceInput, Library, McpInfo, ModelCost,
+    ModelDetail, ModelLimit, Repo, ServerInfo, SkillInfo, SkillRef, TemplateManifest, Workspace,
+    WorkspaceMode, WorktreeStatus,
 };
 use crate::server::{self, ServerHandle};
 use crate::state::{AppState, ensure_workspace_dir, expand_tilde};
@@ -213,10 +214,100 @@ pub fn list_skills(project_path: Option<String>) -> Vec<SkillInfo> {
     library::list_skills(project_path.as_deref())
 }
 
+fn json_text(value: Option<&serde_json::Value>) -> Option<String> {
+    value
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+fn json_flag(value: Option<&serde_json::Value>) -> Option<bool> {
+    value.and_then(serde_json::Value::as_bool)
+}
+
+fn json_count(value: Option<&serde_json::Value>) -> Option<u64> {
+    value.and_then(serde_json::Value::as_u64)
+}
+
+fn json_amount(value: Option<&serde_json::Value>) -> Option<f64> {
+    value.and_then(serde_json::Value::as_f64)
+}
+
+fn json_texts(value: Option<&serde_json::Value>) -> Vec<String> {
+    value
+        .and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn model_detail(key: &str, registry: &serde_json::Value) -> ModelDetail {
+    let (provider_id, id) = key.split_once('/').unwrap_or((key, key));
+    let entry = registry
+        .get(provider_id)
+        .and_then(|provider| provider.get("models"))
+        .and_then(|models| models.get(id));
+
+    let cost = entry.and_then(|model| model.get("cost")).and_then(|value| {
+        let input = json_amount(value.get("input"));
+        let output = json_amount(value.get("output"));
+        let cache_read = json_amount(value.get("cache_read"));
+        let cache_write = json_amount(value.get("cache_write"));
+        (input.is_some() || output.is_some() || cache_read.is_some() || cache_write.is_some())
+            .then_some(ModelCost {
+                input,
+                output,
+                cache_read,
+                cache_write,
+            })
+    });
+    let limit = entry
+        .and_then(|model| model.get("limit"))
+        .and_then(|value| {
+            let context = json_count(value.get("context"));
+            let input = json_count(value.get("input"));
+            let output = json_count(value.get("output"));
+            (context.is_some() || input.is_some() || output.is_some()).then_some(ModelLimit {
+                context,
+                input,
+                output,
+            })
+        });
+    let modalities = entry.and_then(|model| model.get("modalities"));
+
+    ModelDetail {
+        key: key.to_string(),
+        provider_id: provider_id.to_string(),
+        id: id.to_string(),
+        name: entry
+            .and_then(|model| json_text(model.get("name")))
+            .unwrap_or_else(|| id.to_string()),
+        description: entry.and_then(|model| json_text(model.get("description"))),
+        family: entry.and_then(|model| json_text(model.get("family"))),
+        reasoning: entry.and_then(|model| json_flag(model.get("reasoning"))),
+        tools: entry.and_then(|model| json_flag(model.get("tool_call"))),
+        attachment: entry.and_then(|model| json_flag(model.get("attachment"))),
+        temperature: entry.and_then(|model| json_flag(model.get("temperature"))),
+        input_modalities: json_texts(modalities.and_then(|value| value.get("input"))),
+        output_modalities: json_texts(modalities.and_then(|value| value.get("output"))),
+        cost,
+        limit,
+        knowledge: entry.and_then(|model| json_text(model.get("knowledge"))),
+        release_date: entry.and_then(|model| json_text(model.get("release_date"))),
+        last_updated: entry.and_then(|model| json_text(model.get("last_updated"))),
+        status: entry.and_then(|model| json_text(model.get("status"))),
+        open_weights: entry.and_then(|model| json_flag(model.get("open_weights"))),
+    }
+}
+
 /// Modelos a los que dan acceso las suscripciones y proveedores configurados
-/// en opencode. Se consulta al CLI para no depender de un workspace arrancado.
+/// en opencode, con la ficha que opencode cachea de models.dev.
 #[tauri::command]
-pub async fn list_available_models() -> Result<Vec<String>, String> {
+pub async fn list_available_models() -> Result<Vec<ModelDetail>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let bin = find_opencode_bin()
             .ok_or_else(|| "No se encontró el binario de opencode".to_string())?;
@@ -239,6 +330,11 @@ pub async fn list_available_models() -> Result<Vec<String>, String> {
                 detail.to_string()
             });
         }
+        let registry = dirs::cache_dir()
+            .map(|dir| dir.join("opencode").join("models.json"))
+            .and_then(|path| fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .unwrap_or(serde_json::Value::Null);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let mut models: Vec<String> = stdout
             .lines()
@@ -248,7 +344,10 @@ pub async fn list_available_models() -> Result<Vec<String>, String> {
             .collect();
         models.sort();
         models.dedup();
-        Ok(models)
+        Ok(models
+            .iter()
+            .map(|key| model_detail(key, &registry))
+            .collect())
     })
     .await
     .map_err(|e| format!("No se pudo listar los modelos: {e}"))?

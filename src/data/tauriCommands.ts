@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ModelDetails } from "../domain/models/details";
 import type {
   AppSettings,
   Bootstrap,
@@ -27,7 +28,7 @@ export const api = {
   refreshRepo: (id: string) => invoke<Repo>("refresh_repo", { id }),
   removeRepo: (id: string) => invoke<void>("remove_repo", { id }),
 
-  listAvailableModels: () => invoke<string[]>("list_available_models"),
+  listAvailableModels: () => invoke<ModelDetails[]>("list_available_models"),
   listTemplates: () => invoke<TemplateManifest[]>("list_templates"),
   saveTemplate: (manifest: TemplateManifest) =>
     invoke<TemplateManifest>("save_template", { manifest }),

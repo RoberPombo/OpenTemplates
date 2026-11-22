@@ -324,6 +324,71 @@ pub struct WorktreeStatus {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCost {
+    #[serde(default)]
+    pub input: Option<f64>,
+    #[serde(default)]
+    pub output: Option<f64>,
+    #[serde(default)]
+    pub cache_read: Option<f64>,
+    #[serde(default)]
+    pub cache_write: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelLimit {
+    #[serde(default)]
+    pub context: Option<u64>,
+    #[serde(default)]
+    pub input: Option<u64>,
+    #[serde(default)]
+    pub output: Option<u64>,
+}
+
+/// Ficha de un modelo accesible: lo que expone el CLI de opencode cruzado con
+/// el catálogo de models.dev que opencode mantiene en caché.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDetail {
+    pub key: String,
+    pub provider_id: String,
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub family: Option<String>,
+    #[serde(default)]
+    pub reasoning: Option<bool>,
+    #[serde(default)]
+    pub tools: Option<bool>,
+    #[serde(default)]
+    pub attachment: Option<bool>,
+    #[serde(default)]
+    pub temperature: Option<bool>,
+    #[serde(default)]
+    pub input_modalities: Vec<String>,
+    #[serde(default)]
+    pub output_modalities: Vec<String>,
+    #[serde(default)]
+    pub cost: Option<ModelCost>,
+    #[serde(default)]
+    pub limit: Option<ModelLimit>,
+    #[serde(default)]
+    pub knowledge: Option<String>,
+    #[serde(default)]
+    pub release_date: Option<String>,
+    #[serde(default)]
+    pub last_updated: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub open_weights: Option<bool>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceStore {

@@ -5,6 +5,7 @@ import { folderName, formatDuration } from "../../domain/shared";
 import type { ToolActivity } from "../../domain/chat/messages";
 import { useChat } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
+import { ModelInfoCard } from "./ModelInfoCard";
 import { AsyncSearchableSelect, Select } from "./ui";
 
 type Props = {
@@ -81,6 +82,7 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
           label: model.name,
           description: `${model.providerID} · ${model.id}`,
           searchText: `${model.providerID} ${model.id}`,
+          tooltip: model.details ? <ModelInfoCard details={model.details} /> : undefined,
         })),
       })),
     [modelGroups],

@@ -3,6 +3,7 @@
  * Prioridad de modelo: actual > guardado > workspace > default del servidor > primero.
  * Prioridad de agente: actual > guardado > "build" > primero.
  */
+import type { ModelDetails } from "../models/details";
 
 export type ModelOption = {
   key: string;
@@ -10,6 +11,7 @@ export type ModelOption = {
   id: string;
   name: string;
   variants: string[];
+  details?: ModelDetails;
 };
 
 export type AgentOption = {
@@ -27,6 +29,7 @@ export type CatalogModel = {
   type?: string;
   variants: { id: string }[];
   limit?: { context?: number } | null;
+  details?: ModelDetails;
 };
 
 export type CatalogAgent = {
@@ -49,6 +52,7 @@ export function toModelOptions(list: CatalogModel[]): ModelOption[] {
       id: model.id,
       name: model.name,
       variants: model.variants.map((variant) => variant.id),
+      details: model.details,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

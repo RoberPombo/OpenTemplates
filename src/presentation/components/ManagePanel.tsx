@@ -3,8 +3,10 @@ import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { slugify } from "../../domain/workspace/wizard";
 import type { AssetInfo, Library, Repo, TemplateManifest, Workspace } from "../../types";
+import type { ModelDetails } from "../../domain/models/details";
+import { ModelInfoCard } from "./ModelInfoCard";
 import { AsyncMultiSearchableSelect, Select } from "./ui";
-import type { SelectEntry } from "./ui";
+import type { SelectEntry, SelectOption } from "./ui";
 
 type Props = {
   repos: Repo[];
@@ -111,7 +113,7 @@ export function ManagePanel({
   const [templateSaved, setTemplateSaved] = useState(false);
   const [worktreesDraft, setWorktreesDraft] = useState(worktreesRoot);
   const [settingsSaved, setSettingsSaved] = useState(false);
-  const [catalogModels, setCatalogModels] = useState<string[]>([]);
+  const [catalogModels, setCatalogModels] = useState<ModelDetails[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "error">("loading");
   const [subscriptionFilter, setSubscriptionFilter] = useState("");
 
@@ -135,9 +137,14 @@ export function ManagePanel({
     };
   }, [composition]);
 
+  const catalogIndex = useMemo(
+    () => new Map(catalogModels.map((model) => [model.key, model])),
+    [catalogModels],
+  );
+
   const subscriptionOptions = useMemo<SelectEntry[]>(() => {
     const providers = new Set<string>();
-    for (const key of [...catalogModels, ...draft.models]) {
+    for (const key of [...catalogModels.map((model) => model.key), ...draft.models]) {
       const trimmed = key.trim();
       if (trimmed) providers.add(splitModel(trimmed).provider);
     }
@@ -152,14 +159,20 @@ export function ManagePanel({
   const modelOptions = useMemo<SelectEntry[]>(() => {
     const selected = draft.models.map((model) => model.trim()).filter(Boolean);
     const available = catalogModels.filter(
-      (model) => !subscriptionFilter || splitModel(model).provider === subscriptionFilter,
+      (model) => !subscriptionFilter || model.providerID === subscriptionFilter,
     );
-    const keys = new Set([...available, ...selected]);
-    const groups = new Map<string, { value: string; label: string; searchText: string }[]>();
+    const keys = new Set([...available.map((model) => model.key), ...selected]);
+    const groups = new Map<string, SelectOption[]>();
     for (const key of keys) {
       const { provider } = splitModel(key);
+      const details = catalogIndex.get(key);
       const group = groups.get(provider) ?? [];
-      group.push({ value: key, label: modelLabel(key), searchText: key });
+      group.push({
+        value: key,
+        label: modelLabel(key),
+        searchText: key,
+        tooltip: details ? <ModelInfoCard details={details} /> : undefined,
+      });
       groups.set(provider, group);
     }
     return [...groups.entries()]
@@ -168,7 +181,7 @@ export function ManagePanel({
         label,
         options: options.sort((left, right) => left.label.localeCompare(right.label)),
       }));
-  }, [catalogModels, draft.models, subscriptionFilter]);
+  }, [catalogIndex, catalogModels, draft.models, subscriptionFilter]);
 
   useEffect(() => {
     if (!selectedTemplateId) {
@@ -584,7 +597,14 @@ export function ManagePanel({
                     placeholder="Sin modelo por defecto"
                     options={[...new Set(draft.models.map((model) => model.trim()))]
                       .filter(Boolean)
-                      .map((model) => ({ value: model, label: modelLabel(model) }))}
+                      .map((model) => {
+                        const details = catalogIndex.get(model);
+                        return {
+                          value: model,
+                          label: modelLabel(model),
+                          tooltip: details ? <ModelInfoCard details={details} /> : undefined,
+                        };
+                      })}
                     variant="field"
                     onValueChange={(model) => {
                       setDraft((prev) => ({

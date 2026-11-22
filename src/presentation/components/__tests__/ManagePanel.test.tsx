@@ -65,7 +65,24 @@ function setup(templates: TemplateManifest[] = [template]) {
   const saveSettings = vi.fn(async (settings: { worktreesRoot?: string | null }) => settings);
   const confirm = vi.fn(() => true);
   const pickDirectory = vi.fn(async () => "/nuevo/repo");
-  const listModels = vi.fn(async () => ["anthropic/claude", "openai/gpt"]);
+  const listModels = vi.fn(async () => [
+    {
+      key: "anthropic/claude",
+      providerID: "anthropic",
+      id: "claude",
+      name: "Claude",
+      inputModalities: ["text"],
+      outputModalities: ["text"],
+    },
+    {
+      key: "openai/gpt",
+      providerID: "openai",
+      id: "gpt",
+      name: "GPT",
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+    },
+  ]);
 
   const root = new CompositionRoot({
     repos: { list: reposList, add, refresh, remove } as never,
