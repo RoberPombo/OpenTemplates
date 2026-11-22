@@ -25,7 +25,8 @@ pnpm tauri build
 
 ## Calidad de código
 
-El frontend usa TypeScript 7, Tailwind CSS 4, oxlint y oxfmt.
+El frontend usa TypeScript 7, Tailwind CSS 4, oxlint y oxfmt. Las dependencias
+npm se declaran con versión exacta (`save-exact` en `.npmrc`), sin `^` ni `~`.
 
 ```bash
 pnpm typecheck     # tsc --noEmit

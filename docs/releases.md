@@ -24,6 +24,14 @@ Versiones: `feat` sube minor, `fix`/`perf`/`refactor` suben patch, y `BREAKING
 CHANGE` sube major. Los commits deben seguir Conventional Commits para que el
 CHANGELOG y el salto de versión salgan bien.
 
+## Ajustes del repositorio que el pipeline necesita
+
+- Rama por defecto: `develop` (las releases se abren contra `main`, por eso el
+  workflow pasa `target-branch: main` al action).
+- Ruleset de `main`: PR obligatorio, sin force-push y sin borrado.
+- Settings → Actions → General: **Allow GitHub Actions to create and approve pull
+  requests**, o `sync-develop` no puede abrir su PR.
+
 ## Secretos del repositorio
 
 | Secreto | Para qué |
