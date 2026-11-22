@@ -1468,6 +1468,13 @@ p {
   width: min(960px, 100%);
 }
 
+.modal.update {
+  width: min(520px, 100%);
+  margin: auto;
+  padding: 0;
+  color: inherit;
+}
+
 .modal-head,
 .modal-foot {
   display: flex;

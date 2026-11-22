@@ -1,0 +1,33 @@
+{
+  "draft": true,
+  "force-tag-creation": true,
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "opentemplates",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "extra-files": [
+        "src-tauri/tauri.conf.json",
+        {
+          "type": "toml",
+          "path": "src-tauri/Cargo.toml",
+          "jsonpath": "$.package.version"
+        }
+      ],
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "style", "section": "Styles" },
+        { "type": "refactor", "section": "Code Refactoring" },
+        { "type": "perf", "section": "Performance Improvements" },
+        { "type": "test", "section": "Tests" },
+        { "type": "build", "section": "Build System" },
+        { "type": "ci", "section": "Continuous Integration" },
+        { "type": "chore", "section": "Chores" },
+        { "type": "revert", "section": "Reverts" }
+      ]
+    }
+  }
+}

@@ -49,6 +49,13 @@ Ese hook rechaza cualquier `git push` directo a `main`, incluido el force-push y
 el borrado de la rama. Es una salvaguarda local: la protección real del
 servidor necesita un repo público o GitHub Pro.
 
+## Releases
+
+Cada merge en `main` pasa por `release-please`, que sube la versión y crea el tag
+`vX.Y.Z`; el tag compila Linux, Windows y macOS y publica la release con los
+binarios firmados y `latest.json`. La app consulta las actualizaciones al
+arrancar. Detalles y secretos en [docs/releases.md](docs/releases.md).
+
 ## Cómo funciona
 
 Cada workspace se lanza como un `opencode serve` independiente con:
