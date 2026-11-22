@@ -1,6 +1,7 @@
 {
   "draft": true,
   "force-tag-creation": true,
+  "target-branch": "main",
   "packages": {
     ".": {
       "release-type": "node",
