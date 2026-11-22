@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
-  checks: write
 
 concurrency:
   group: security-audit
@@ -43,8 +41,8 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
       - name: Audit Rust dependencies
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: src-tauri
+        run: cargo audit --file src-tauri/Cargo.lock
