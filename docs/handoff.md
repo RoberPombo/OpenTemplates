@@ -183,6 +183,22 @@ Implementado (fases 1-4 + wizard básico):
   cubre también las preguntas. El estrechado de payloads vive en
   `data/opencodePayloads.ts` y el estado puro en `domain/chat/permissions.ts` y
   `domain/chat/forms.ts`.
+- **Panel de cambios y ficheros**: el botón «Cambios» de la cabecera abre el
+  Inspector en su pestaña de diff; «Resumen» y «Ficheros» comparten panel. La
+  lista tiene estado (añadido/modificado/borrado) y contadores, con dos fuentes:
+  `session.diff` para lo que hizo el agente en la sesión y
+  `vcs.status`/`vcs.diff` para el árbol de trabajo. El visor pinta el parche
+  unificado con numeración y resaltado por línea (sin dependencias nuevas), y el
+  árbol de ficheros carga cada carpeta con `file.list` y abre el contenido con
+  `file.read` (texto o binario; los ficheros grandes se cortan a 256 KiB). Se
+  refresca al cambiar de sesión y al terminar un turno (`session.idle` y
+  `session.execution.*`), con debounce de 400 ms para no martillear el servidor.
+  La pestaña se recuerda por workspace en `opentemplates:panel-tab:<id>`.
+  Verificado contra opencode v2.3.0 real: `session.diff` y `vcs.diff` devuelven
+  `{file, patch, additions, deletions, status}`; `vcs.status` omite `patch`;
+  `file.list` devuelve `{path, type}` con las carpetas acabadas en `/` y
+  `file.read` entrega `Uint8Array`. `file.watch` se deja fuera: el refresco por
+  fin de turno ya cubre el caso y evita duplicar watchers por workspace.
 
 Pendiente de las fases 5-8:
 
