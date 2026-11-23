@@ -13,6 +13,7 @@ import type { PermissionRequest, PermissionSource } from "../domain/chat/permiss
 import type { CatalogAgent, CatalogModel } from "../domain/chat/selection";
 import type { ModelCost, ModelDetails } from "../domain/models/details";
 import type { RawSessionSummary } from "../domain/chat/sessions";
+import type { SessionTransfer } from "../domain/chat/transfer";
 import type {
   UsageBudget,
   UsageLimits,
@@ -350,6 +351,31 @@ export function toRawSessionSummaries(payload: unknown): RawSessionSummary[] {
 
 function toChangeStatus(value: unknown): FileChangeStatus | undefined {
   return value === "added" || value === "deleted" || value === "modified" ? value : undefined;
+}
+
+/**
+ * Transferencia de sesión (`session.export`): `{info, messages}` con el
+ * identificador garantizado. Los mensajes sin id o tipo se descartan aquí; el
+ * export del servidor siempre los trae.
+ */
+export function toSessionTransfer(payload: unknown): SessionTransfer {
+  const root = record(payload);
+  const info = record(root?.info);
+  const location = record(info?.location);
+  return {
+    info: {
+      ...(info ?? {}),
+      id: text(info?.id) ?? "",
+      title: text(info?.title),
+      location: location ? { directory: text(location.directory) } : undefined,
+    },
+    messages: list(root?.messages).flatMap((item) => {
+      const message = record(item);
+      const id = text(message?.id);
+      const type = text(message?.type);
+      return message && id && type ? [{ ...message, id, type }] : [];
+    }),
+  };
 }
 
 /**

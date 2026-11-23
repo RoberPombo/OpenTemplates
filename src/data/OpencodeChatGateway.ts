@@ -5,6 +5,7 @@
  */
 import { OpenCode } from "@opencode/client";
 import type { ChatServer } from "../domain/repositories/ChatGateway";
+import { sanitizeTransfer } from "../domain/chat/transfer";
 import type { ServerInfo } from "../types";
 import {
   toAgentForms,
@@ -20,6 +21,7 @@ import {
   toRawSessionSummaries,
   toServerEvent,
   toSessionMessages,
+  toSessionTransfer,
   toUsageLimits,
   toWorkspaceStats,
 } from "./opencodePayloads";
@@ -48,6 +50,25 @@ export function createChatGateway(server: ServerInfo): ChatServer {
       switchAgent: (input) => sdk.session.switchAgent(input),
       update: (input) => sdk.session.update(input),
       remove: (input) => sdk.session.remove(input),
+      // El sanitize del servidor sustituye todos los textos por
+      // `[redacted:...]`: la sesión deja de ser legible. Se pide siempre en
+      // crudo y se sanea en dominio, que conserva el contenido y quita rutas y
+      // credenciales.
+      export: async (input) => {
+        const transfer = toSessionTransfer(
+          await sdk.session.export({ sessionID: input.sessionID, sanitize: false }),
+        );
+        return input.sanitize === false ? transfer : sanitizeTransfer(transfer);
+      },
+      import: async (input) => {
+        // El SDK tipa `info` con la sesión completa; el import solo necesita
+        // los campos del fichero (el servidor rellena proyecto y tiempos).
+        const session = await sdk.session.import(
+          input as unknown as Parameters<typeof sdk.session.import>[0],
+        );
+        return { id: session.id };
+      },
+      fork: (input) => sdk.session.fork(input),
       list: async (input) => ({
         data: toRawSessionSummaries((await sdk.session.list(input)).data),
       }),
