@@ -3,6 +3,7 @@ import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import { NOTIFICATIONS_ON, notificationsEnabled } from "../../domain/chat/notifications";
+import { parseBudgetUsd } from "../../domain/chat/usage";
 import type { McpInfo, SkillInfo, SkillRef, Workspace } from "../../types";
 import type { ChatGateway as WorkspaceClient } from "../../domain/repositories/ChatGateway";
 
@@ -38,6 +39,10 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
     notificationsEnabled(root.preferences.get(prefKeys.notifications)),
   );
   const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [budgetText, setBudgetText] = useState(
+    () => root.preferences.get(prefKeys.budget(workspace.id)) ?? "",
+  );
+  const [budgetError, setBudgetError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -62,10 +67,12 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
     setSelectedMcps(new Set(workspace.mcpNames));
     setSelectedSkills(new Map(workspace.skills.map((skill) => [skill.id, skill])));
     setModel(workspace.model ?? "");
+    setBudgetText(root.preferences.get(prefKeys.budget(workspace.id)) ?? "");
+    setBudgetError(null);
     setError(null);
     setWarnings([]);
     setApplied(false);
-  }, [workspace.id]);
+  }, [root.preferences, workspace.id]);
 
   const skillList = useMemo(() => {
     const map = new Map<string, SkillInfo>();
@@ -110,6 +117,23 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
     }
     root.preferences.set(prefKeys.notifications, NOTIFICATIONS_ON);
     setNotifications(true);
+  }
+
+  function changeBudget(value: string) {
+    setBudgetText(value);
+    const raw = value.trim();
+    if (!raw) {
+      root.preferences.remove(prefKeys.budget(workspace.id));
+      setBudgetError(null);
+      return;
+    }
+    const budget = parseBudgetUsd(raw);
+    if (budget === null) {
+      setBudgetError("Introduce un importe mayor que 0 o deja el campo vacío.");
+      return;
+    }
+    root.preferences.set(prefKeys.budget(workspace.id), String(budget));
+    setBudgetError(null);
   }
 
   function toggleMcp(name: string) {
@@ -297,6 +321,30 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
                 setApplied(false);
               }}
             />
+          </section>
+
+          <section>
+            <div className="section-head">
+              <h3>Presupuesto</h3>
+              <span className="muted">mensual · opcional</span>
+            </div>
+            <p className="muted small-text">
+              El Inspector avisa cuando el coste del rango supera este importe. Se guarda al
+              editarlo como preferencia de este workspace: vacío significa sin límite y no toca la
+              configuración del servidor.
+            </p>
+            <input
+              className="text-input"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              aria-label="Presupuesto mensual en dólares"
+              placeholder="p. ej. 20"
+              value={budgetText}
+              onChange={(event) => changeBudget(event.target.value)}
+            />
+            {budgetError && <div className="inline-error">{budgetError}</div>}
           </section>
 
           {warnings.length > 0 && (

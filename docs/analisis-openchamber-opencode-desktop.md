@@ -26,8 +26,10 @@ endpoints que el SDK ya expone.
 - Chat: agente, modelo, razonamiento, actividad de tools (solo estado), razonamiento
   colapsable, nueva conversación, parar. **Una sesión activa por workspace.**
 - Inspector: sesión (tokens, coste, acierto de caché), proyecto (`vcs` branch/status),
-  uso (límites semanal/mensual, saldo), recursos (CPU/RSS del proceso), fuentes
-  (toggles de skills y MCP en caliente).
+  consumo acumulado del workspace (`session.stats`: rango, tokens, coste,
+  actividad y desglose por modelo) con presupuesto mensual, límites del
+  proveedor (`usage.limits`), recursos (CPU/RSS del proceso), fuentes (toggles de
+  skills y MCP en caliente).
 - Ajustes por workspace (template, MCPs, skills, modelo), logs del proceso, updater.
 
 Huecos confirmados por búsqueda en el código: no hay diff, ni árbol de ficheros, ni

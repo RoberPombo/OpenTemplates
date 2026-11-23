@@ -16,6 +16,7 @@ import {
   toServerEvent,
   toSessionMessages,
   toUsageLimits,
+  toWorkspaceStats,
 } from "../data/opencodePayloads";
 import { toModelOptions, toAgentOptions } from "../domain/chat/selection";
 import { toChatMessages } from "../domain/chat/messages";
@@ -488,5 +489,103 @@ describe("ficheros", () => {
       kind: "binary",
       text: "",
     });
+  });
+});
+
+describe("toWorkspaceStats", () => {
+  const payload = {
+    range: { from: 100, to: 200 },
+    sessions: 3,
+    subagents: 1,
+    prompts: 9,
+    steps: 12,
+    tokens: {
+      input: 6710,
+      output: 8,
+      reasoning: 53,
+      cache: { read: 4096, write: 10 },
+    },
+    cost: 0.42,
+    tools: { mode: "none" },
+    activeDays: 2,
+    streak: 2,
+    activity: [
+      { date: "2026-11-22", steps: 4 },
+      { date: "2026-11-23", steps: 8 },
+      { date: "", steps: 1 },
+      { date: "2026-11-24" },
+    ],
+    models: [
+      {
+        model: { id: "claude", providerID: "anthropic", variant: "high" },
+        steps: 10,
+        tokens: { input: 10, output: 2, reasoning: 0, cache: { read: 1, write: 0 } },
+        cost: 0.4,
+      },
+      { model: { id: "sin-proveedor" }, cost: 1 },
+      { model: { id: "gpt", providerID: "openai" }, steps: 2, cost: 0.02 },
+    ],
+  };
+
+  test("mapea el consumo acumulado y descarta actividad y modelos inválidos", () => {
+    expect(toWorkspaceStats(payload)).toEqual({
+      range: { from: 100, to: 200 },
+      sessions: 3,
+      subagents: 1,
+      prompts: 9,
+      steps: 12,
+      tokens: {
+        input: 6710,
+        output: 8,
+        reasoning: 53,
+        cache: { read: 4096, write: 10 },
+      },
+      cost: 0.42,
+      activeDays: 2,
+      streak: 2,
+      activity: [
+        { date: "2026-11-22", steps: 4 },
+        { date: "2026-11-23", steps: 8 },
+      ],
+      models: [
+        {
+          model: { id: "claude", providerID: "anthropic", variant: "high" },
+          steps: 10,
+          tokens: { input: 10, output: 2, reasoning: 0, cache: { read: 1, write: 0 } },
+          cost: 0.4,
+        },
+        {
+          model: { id: "gpt", providerID: "openai" },
+          steps: 2,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          cost: 0.02,
+        },
+      ],
+    });
+  });
+
+  test("normaliza contadores ausentes a cero", () => {
+    expect(toWorkspaceStats({ range: { from: 1, to: 2 } })).toEqual({
+      range: { from: 1, to: 2 },
+      sessions: 0,
+      subagents: 0,
+      prompts: 0,
+      steps: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      cost: 0,
+      activeDays: 0,
+      streak: 0,
+      activity: [],
+      models: [],
+    });
+  });
+
+  test("sin rango válido devuelve null", () => {
+    expect(toWorkspaceStats(undefined)).toBeNull();
+    expect(toWorkspaceStats(null)).toBeNull();
+    expect(toWorkspaceStats([])).toBeNull();
+    expect(toWorkspaceStats({})).toBeNull();
+    expect(toWorkspaceStats({ range: { from: 1 } })).toBeNull();
+    expect(toWorkspaceStats({ range: { from: "1", to: 2 } })).toBeNull();
   });
 });

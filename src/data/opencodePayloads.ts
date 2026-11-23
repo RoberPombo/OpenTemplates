@@ -13,7 +13,15 @@ import type { PermissionRequest, PermissionSource } from "../domain/chat/permiss
 import type { CatalogAgent, CatalogModel } from "../domain/chat/selection";
 import type { ModelCost, ModelDetails } from "../domain/models/details";
 import type { RawSessionSummary } from "../domain/chat/sessions";
-import type { UsageBudget, UsageLimits, UsageMeter } from "../domain/chat/usage";
+import type {
+  UsageBudget,
+  UsageLimits,
+  UsageMeter,
+  UsageModelBreakdown,
+  UsageModelRef,
+  UsageTokens,
+  WorkspaceStats,
+} from "../domain/chat/usage";
 import type {
   FileChange,
   FileChangeStatus,
@@ -186,6 +194,77 @@ export function toUsageLimits(payload: unknown): UsageLimits | null {
     budgets: list(limits.budgets).flatMap((item) => {
       const budget = toBudget(item);
       return budget ? [budget] : [];
+    }),
+  };
+}
+
+function toUsageTokens(value: unknown): UsageTokens {
+  const tokens = record(value);
+  const cache = record(tokens?.cache);
+  return {
+    input: count(tokens?.input) ?? 0,
+    output: count(tokens?.output) ?? 0,
+    reasoning: count(tokens?.reasoning) ?? 0,
+    cache: {
+      read: count(cache?.read) ?? 0,
+      write: count(cache?.write) ?? 0,
+    },
+  };
+}
+
+function toUsageModelRef(value: unknown): UsageModelRef | null {
+  const model = record(value);
+  const providerID = text(model?.providerID);
+  const id = text(model?.id);
+  if (!providerID || !id) return null;
+  const variant = text(model?.variant);
+  return variant ? { providerID, id, variant } : { providerID, id };
+}
+
+function toModelBreakdown(value: unknown): UsageModelBreakdown | null {
+  const usage = record(value);
+  const model = toUsageModelRef(usage?.model);
+  const cost = count(usage?.cost);
+  if (!model || cost === undefined) return null;
+  return {
+    model,
+    steps: count(usage?.steps) ?? 0,
+    tokens: toUsageTokens(usage?.tokens),
+    cost,
+  };
+}
+
+/**
+ * Consumo acumulado del workspace (`session.stats`). `null` solo cuando el
+ * payload no es un objeto o no trae un rango válido; los contadores ausentes se
+ * normalizan a cero y las entradas de actividad/modelo inválidas se descartan.
+ */
+export function toWorkspaceStats(payload: unknown): WorkspaceStats | null {
+  const stats = record(payload);
+  if (!stats) return null;
+  const range = record(stats.range);
+  const from = count(range?.from);
+  const to = count(range?.to);
+  if (from === undefined || to === undefined) return null;
+  return {
+    range: { from, to },
+    sessions: count(stats.sessions) ?? 0,
+    subagents: count(stats.subagents) ?? 0,
+    prompts: count(stats.prompts) ?? 0,
+    steps: count(stats.steps) ?? 0,
+    tokens: toUsageTokens(stats.tokens),
+    cost: count(stats.cost) ?? 0,
+    activeDays: count(stats.activeDays) ?? 0,
+    streak: count(stats.streak) ?? 0,
+    activity: list(stats.activity).flatMap((item) => {
+      const day = record(item);
+      const date = text(day?.date);
+      const steps = count(day?.steps);
+      return date && steps !== undefined ? [{ date, steps }] : [];
+    }),
+    models: list(stats.models).flatMap((item) => {
+      const usage = toModelBreakdown(item);
+      return usage ? [usage] : [];
     }),
   };
 }
