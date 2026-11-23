@@ -118,6 +118,11 @@ export function useTerminal({ gateway, directory }: Args) {
           channel.close();
           return;
         }
+        // La pestaña pudo cerrarse mientras se resolvía el ticket.
+        if (!tabsRef.current.some((item) => item.id === id)) {
+          channel.close();
+          return;
+        }
         channels.current.set(id, channel);
         patch(id, { state: "connected", error: undefined });
       } catch (err) {
