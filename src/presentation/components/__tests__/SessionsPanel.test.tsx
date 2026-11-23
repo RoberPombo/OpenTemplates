@@ -35,6 +35,9 @@ function renderPanel(props: Partial<Parameters<typeof SessionsPanel>[0]> = {}, c
     onDelete: vi.fn(async () => {}),
     onNew: vi.fn(),
     onClose: vi.fn(),
+    onExport: vi.fn(async () => {}),
+    onImport: vi.fn(async () => {}),
+    onFork: vi.fn(async () => {}),
     ...props,
   };
   const view = render(
@@ -117,5 +120,57 @@ describe("SessionsPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Ocultar sesiones" }));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("SessionsPanel — transferencia", () => {
+  test("exporta saneada por defecto y sin sanear con la casilla marcada", async () => {
+    const user = userEvent.setup();
+    const { onExport } = renderPanel();
+
+    await user.click(screen.getByRole("button", { name: "Exportar Refactor de login" }));
+    expect(onExport).toHaveBeenLastCalledWith("a", true);
+
+    await user.click(screen.getByRole("checkbox", { name: /Exportar sin sanear/ }));
+    await user.click(screen.getByRole("button", { name: "Exportar Refactor de login" }));
+    expect(onExport).toHaveBeenLastCalledWith("a", false);
+  });
+
+  test("duplica la sesión de la fila", async () => {
+    const user = userEvent.setup();
+    const { onFork } = renderPanel();
+
+    await user.click(screen.getByRole("button", { name: "Duplicar Migración de tests" }));
+    expect(onFork).toHaveBeenCalledWith("b");
+  });
+
+  test("importa desde la cabecera", async () => {
+    const user = userEvent.setup();
+    const { onImport } = renderPanel();
+
+    await user.click(screen.getByRole("button", { name: "Importar sesión" }));
+    expect(onImport).toHaveBeenCalled();
+  });
+
+  test("muestra el aviso de la última transferencia", () => {
+    renderPanel({ notice: "Sesión exportada en /tmp/sesion.json" });
+    expect(screen.getByText("Sesión exportada en /tmp/sesion.json")).toBeInTheDocument();
+  });
+
+  test("deshabilita importar, duplicar y exportar mientras hay un turno", async () => {
+    const user = userEvent.setup();
+    const { onExport, onImport, onFork } = renderPanel({ busy: true });
+
+    expect(screen.getByRole("button", { name: "Importar sesión" })).toBeDisabled();
+    const exportButton = screen.getByRole("button", { name: "Exportar Refactor de login" });
+    const forkButton = screen.getByRole("button", { name: "Duplicar Refactor de login" });
+    expect(exportButton).toBeDisabled();
+    expect(forkButton).toBeDisabled();
+
+    await user.click(forkButton);
+    await user.click(exportButton);
+    expect(onFork).not.toHaveBeenCalled();
+    expect(onExport).not.toHaveBeenCalled();
+    expect(onImport).not.toHaveBeenCalled();
   });
 });

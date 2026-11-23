@@ -1,6 +1,7 @@
 /**
- * Historial de sesiones del workspace: buscar, abrir, renombrar y eliminar.
- * La lista llega ya ordenada del hook; aquí solo se filtra (estado de UI local).
+ * Historial de sesiones del workspace: buscar, abrir, renombrar, duplicar,
+ * exportar, importar y eliminar. La lista llega ya ordenada del hook; aquí solo
+ * se filtra (estado de UI local).
  */
 import { useState } from "react";
 import { filterSessions, type SessionSummary } from "../../domain/chat/sessions";
@@ -13,11 +14,16 @@ type Props = {
   activeId: string | null;
   busy: boolean;
   error: string | null;
+  notice?: string | null;
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onNew: () => void;
   onClose: () => void;
+  /** Exporta con saneado salvo que el usuario pida lo contrario. */
+  onExport: (id: string, sanitize: boolean) => Promise<void>;
+  onImport: () => Promise<void>;
+  onFork: (id: string) => Promise<void>;
 };
 
 export function SessionsPanel({
@@ -25,16 +31,21 @@ export function SessionsPanel({
   activeId,
   busy,
   error,
+  notice,
   onSelect,
   onRename,
   onDelete,
   onNew,
   onClose,
+  onExport,
+  onImport,
+  onFork,
 }: Props) {
   const { confirm } = useAppContext();
   const [query, setQuery] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [includeRaw, setIncludeRaw] = useState(false);
 
   const visible = filterSessions(sessions, query);
 
@@ -63,6 +74,16 @@ export function SessionsPanel({
         <Button
           variant="icon"
           size="small"
+          title="Importar sesión"
+          aria-label="Importar sesión"
+          disabled={busy}
+          onClick={() => void onImport()}
+        >
+          ⤒
+        </Button>
+        <Button
+          variant="icon"
+          size="small"
           title="Ocultar sesiones"
           aria-label="Ocultar sesiones"
           onClick={onClose}
@@ -70,7 +91,6 @@ export function SessionsPanel({
           ×
         </Button>
       </header>
-
       <div className="sessions-tools">
         <TextInput
           type="search"
@@ -83,9 +103,18 @@ export function SessionsPanel({
           Nueva
         </Button>
       </div>
-
+      <label className="sessions-raw">
+        <input
+          type="checkbox"
+          checked={includeRaw}
+          onChange={(event) => setIncludeRaw(event.target.checked)}
+        />
+        <span title="Incluye rutas y credenciales tal cual: no compartas el archivo sin revisarlo">
+          Exportar sin sanear
+        </span>
+      </label>
       {error && <p className="inline-error sessions-error">{error}</p>}
-
+      {notice && <p className="sessions-notice">{notice}</p>}
       <ul className="session-list">
         {visible.map((session) => (
           <li key={session.id} className={`session-row ${session.id === activeId ? "active" : ""}`}>
@@ -128,6 +157,26 @@ export function SessionsPanel({
               <Button
                 variant="icon"
                 size="small"
+                title="Duplicar sesión"
+                aria-label={`Duplicar ${session.title}`}
+                disabled={busy}
+                onClick={() => void onFork(session.id)}
+              >
+                ⧉
+              </Button>
+              <Button
+                variant="icon"
+                size="small"
+                title="Exportar sesión"
+                aria-label={`Exportar ${session.title}`}
+                disabled={busy}
+                onClick={() => void onExport(session.id, !includeRaw)}
+              >
+                ⤓
+              </Button>
+              <Button
+                variant="icon"
+                size="small"
                 title="Renombrar"
                 aria-label={`Renombrar ${session.title}`}
                 onClick={() => startRename(session)}
@@ -148,7 +197,6 @@ export function SessionsPanel({
           </li>
         ))}
       </ul>
-
       {visible.length === 0 && (
         <p className="muted small-text sessions-empty">
           {sessions.length === 0 ? "Aún no hay sesiones." : "Sin resultados."}

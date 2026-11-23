@@ -67,4 +67,9 @@ export const api = {
 
   getSettings: () => invoke<AppSettings>("get_settings"),
   saveSettings: (settings: AppSettings) => invoke<AppSettings>("save_settings", { settings }),
+
+  /** Escribe texto en una ruta elegida por el diálogo; `false` si ya existía. */
+  writeTextFile: (path: string, contents: string, overwrite: boolean) =>
+    invoke<boolean>("write_text_file", { path, contents, overwrite }),
+  readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
 };

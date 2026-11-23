@@ -56,6 +56,7 @@ export function Chat({
     messages,
     sessions,
     sessionsError,
+    sessionsNotice,
     permissions,
     forms,
     requestError,
@@ -94,6 +95,9 @@ export function Chat({
     selectSession,
     renameSession,
     deleteSession,
+    exportSession,
+    importSession,
+    forkSession,
     replyPermission,
     replyForm,
     cancelForm,
@@ -233,9 +237,13 @@ export function Chat({
           activeId={sessionId}
           busy={busy}
           error={sessionsError}
+          notice={sessionsNotice}
           onSelect={selectSession}
           onRename={renameSession}
           onDelete={deleteSession}
+          onExport={exportSession}
+          onImport={importSession}
+          onFork={forkSession}
           onNew={newConversation}
           onClose={() => onCloseSessions?.()}
         />
@@ -252,31 +260,42 @@ export function Chat({
             </div>
           )}
 
-          {messages.map((message) =>
-            message.role === "user" ? (
-              <article key={message.id} className="msg user">
+          {messages.map((message) => (
+            <article key={message.id} className={`msg ${message.role}`}>
+              {message.role === "user" ? (
                 <div className="user-bubble">
                   <Markdown text={message.text} />
                 </div>
-              </article>
-            ) : (
-              <article key={message.id} className="msg assistant">
-                {message.tools.length > 0 && <Activity tools={message.tools} />}
-                {message.reasoning && (
-                  <details className="reasoning">
-                    <summary>Razonamiento</summary>
-                    <Markdown text={message.reasoning} />
-                  </details>
-                )}
-                {message.text && <Markdown text={message.text} />}
-                <MessageMeta
-                  model={modelName(message.model)}
-                  agent={agentName(message.agent)}
-                  duration={formatDuration((message.completed ?? 0) - message.created)}
-                />
-              </article>
-            ),
-          )}
+              ) : (
+                <>
+                  {message.tools.length > 0 && <Activity tools={message.tools} />}
+                  {message.reasoning && (
+                    <details className="reasoning">
+                      <summary>Razonamiento</summary>
+                      <Markdown text={message.reasoning} />
+                    </details>
+                  )}
+                  {message.text && <Markdown text={message.text} />}
+                  <MessageMeta
+                    model={modelName(message.model)}
+                    agent={agentName(message.agent)}
+                    duration={formatDuration((message.completed ?? 0) - message.created)}
+                  />
+                </>
+              )}
+              <button
+                type="button"
+                className="msg-fork"
+                title="Bifurca la sesión con el historial anterior a este mensaje"
+                disabled={busy || !sessionId}
+                onClick={() => {
+                  if (sessionId) void forkSession(sessionId, message.id);
+                }}
+              >
+                Continuar desde aquí
+              </button>
+            </article>
+          ))}
 
           {streaming.map((part) => (
             <article key={`stream-${part.id}`} className="msg assistant streaming">
