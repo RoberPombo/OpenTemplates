@@ -290,6 +290,40 @@ Implementado (fases 1-4 + wizard básico):
   Limitación conocida: importar en el workspace del que salió la sesión falla
   por los ids de mensaje; el mensaje de la UI lo explica.
 
+- **Terminal por workspace**: botón «Terminal» en la cabecera del workspace
+  (junto a Sesiones/Panel/Cambios) y dock inferior con pestañas por PTY,
+  «Nueva», cierre por pestaña y reconexión. Usa `@xterm/xterm` 6.0.0 y
+  `@xterm/addon-fit` 0.11.0 (versiones exactas) con su CSS. El PTY se crea con
+  `cwd` del proyecto y sin `env`, así hereda el entorno aislado del workspace.
+  Cerrar el dock solo cierra el WebSocket, no el PTY; cerrar una pestaña o parar
+  el workspace lo termina (al borrar, el borrado ya para el servidor y con él
+  sus PTYs, así que no se matan antes de la confirmación). Protocolo verificado
+  contra opencode v2.3.0 real: `POST /api/pty/{id}/connect-token` con cabecera
+  `x-opencode-ticket: 1` devuelve `{ticket, expires_in: 60}`; el WebSocket es
+  `ws://host/api/pty/{id}/connect?location[directory]=<cwd>&ticket=<ticket>`
+  (el ticket es de un solo uso y sustituye a la auth básica); los frames de
+  texto son salida UTF-8 y también se acepta entrada de texto o binaria; los
+  frames binarios que empiezan por `0x00` llevan `{"cursor":N}`, el offset
+  absoluto del flujo para reanudar sin duplicar; el tamaño se cambia con
+  `pty.update` (`{size:{cols,rows}}`) por HTTP; al terminar el shell el socket
+  cierra con `4404` y `session exited`. El puerto `TerminalGateway` está en
+  `domain/repositories`; el adaptador (`data/TerminalGateway.ts`) resuelve el
+  ticket y las tramas, y `domain/terminal/terminals.ts` concentra pestañas,
+  buffer limitado y aritmética de cursor (probada sin WebSocket). Al reconectar
+  se pide `cursor = último confirmado + bytes recibidos`; si nunca hubo cursor
+  se limpia el buffer local y se deja que el servidor reenvíe lo que retiene.
+- **Estado runtime de MCP**: el Inspector muestra el estado real de cada
+  servidor (`connected`, `pending`, `disabled`, `failed`, `needs_auth`) con
+  etiqueta en español y el error del servidor en la fila (texto en una línea,
+  sin ANSI y acotado). Refresca con `mcp.list` al abrir y con los eventos
+  `mcp.status.changed`, sin esperar al sondeo de 5 s. Cada fila habilitada tiene
+  «Conectar»/«Reintentar» o «Desconectar», que llaman a
+  `experimental.mcp.connect/disconnect` (los métodos `mcp.*` están deprecados
+  en el SDK 2.3.2); no reescriben la config ni recargan la location, así que no
+  reaplican el template. Verificado contra opencode v2.3.0 real con un MCP local
+  roto (`/bin/false`): `mcp.list` devuelve
+  `{status:"failed", error:"Connection closed: MCP server process exited with code 1"}`,
+  `disconnect` lo deja en `{status:"disabled"}` y `connect` lo reintenta.
 Pendiente de las fases 5-8:
 
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).
