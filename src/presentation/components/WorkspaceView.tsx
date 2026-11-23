@@ -16,6 +16,8 @@ type Props = {
   onStop: () => void;
   onDelete: () => void;
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
+  /** El workspace terminó un turno sin foco: se marca en el sidebar. */
+  onWorkspaceActivity?: (workspaceId: string) => void;
 };
 
 function ProfiledChat(props: React.ComponentProps<typeof Chat>) {
@@ -54,6 +56,7 @@ export function WorkspaceView({
   onStop,
   onDelete,
   onUpdated,
+  onWorkspaceActivity,
 }: Props) {
   const root = useAppContext();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -187,6 +190,7 @@ export function WorkspaceView({
             onSessionChange={setSessionId}
             sessionsOpen={sessionsOpen}
             onCloseSessions={toggleSessions}
+            onWorkspaceActivity={onWorkspaceActivity}
           />
           {panelOpen && (
             <Inspector

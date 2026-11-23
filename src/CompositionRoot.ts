@@ -17,6 +17,7 @@ import { LocalStoragePreferences } from "./data/LocalStoragePreferences";
 import { WindowConfirmDialog } from "./data/WindowConfirmDialog";
 import { TauriFolderPicker } from "./data/TauriFolderPicker";
 import { TauriUpdateGateway } from "./data/TauriUpdateGateway";
+import { TauriNotificationGateway } from "./data/TauriNotificationGateway";
 import { createChatGateway } from "./data/OpencodeChatGateway";
 import { DeleteWorkspace } from "./domain/usecases/DeleteWorkspace";
 import { CreateWorkspace } from "./domain/usecases/CreateWorkspace";
@@ -28,6 +29,7 @@ import type { ChatGateway, ChatServer } from "./domain/repositories/ChatGateway"
 import type { ConfirmDialog, FolderPicker } from "./domain/repositories/Dialogs";
 import type { LibraryGateway } from "./domain/repositories/LibraryGateway";
 import type { ModelCatalogGateway } from "./domain/repositories/ModelCatalogGateway";
+import type { NotificationGateway } from "./domain/repositories/NotificationGateway";
 import type { Preferences } from "./domain/repositories/Preferences";
 import type { RepoGateway } from "./domain/repositories/RepoGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
@@ -49,6 +51,7 @@ export type Ports = {
   confirm: ConfirmDialog;
   folderPicker: FolderPicker;
   updates: UpdateGateway;
+  notifications: NotificationGateway;
 };
 
 export class CompositionRoot {
@@ -66,6 +69,7 @@ export class CompositionRoot {
   readonly confirm: ConfirmDialog;
   readonly folderPicker: FolderPicker;
   readonly updates: UpdateGateway;
+  readonly notifications: NotificationGateway;
 
   constructor(overrides: Partial<Ports> = {}) {
     this.bootstrap = overrides.bootstrap ?? new TauriBootstrapGateway();
@@ -80,6 +84,7 @@ export class CompositionRoot {
     this.confirm = overrides.confirm ?? new WindowConfirmDialog();
     this.folderPicker = overrides.folderPicker ?? new TauriFolderPicker();
     this.updates = overrides.updates ?? new TauriUpdateGateway();
+    this.notifications = overrides.notifications ?? new TauriNotificationGateway();
   }
 
   static getInstance(): CompositionRoot {

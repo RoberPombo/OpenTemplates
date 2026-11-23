@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
+import { prefKeys } from "../../domain/repositories/Preferences";
+import { NOTIFICATIONS_ON, notificationsEnabled } from "../../domain/chat/notifications";
 import type { McpInfo, SkillInfo, SkillRef, Workspace } from "../../types";
 import type { ChatGateway as WorkspaceClient } from "../../domain/repositories/ChatGateway";
 
@@ -32,6 +34,10 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
   const [warnings, setWarnings] = useState<string[]>([]);
   const [applied, setApplied] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
+  const [notifications, setNotifications] = useState(() =>
+    notificationsEnabled(root.preferences.get(prefKeys.notifications)),
+  );
+  const [notificationError, setNotificationError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -87,6 +93,24 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
   useEffect(() => {
     void refreshStatuses();
   }, [workspace.id, workspace.projectPath, client]);
+
+  async function toggleNotifications() {
+    setNotificationError(null);
+    if (notifications) {
+      root.preferences.set(prefKeys.notifications, "0");
+      setNotifications(false);
+      return;
+    }
+    const permission = await root.notifications.requestPermission();
+    if (permission === "denied") {
+      setNotificationError(
+        "El sistema denegó el permiso de notificaciones. Actívalo en los ajustes del sistema y vuelve a intentarlo.",
+      );
+      return;
+    }
+    root.preferences.set(prefKeys.notifications, NOTIFICATIONS_ON);
+    setNotifications(true);
+  }
 
   function toggleMcp(name: string) {
     setSelectedMcps((prev) => {
@@ -180,6 +204,28 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
               </button>
             </section>
           )}
+
+          <section>
+            <div className="section-head">
+              <h3>Notificaciones</h3>
+              <span className="muted">{notifications ? "activadas" : "desactivadas"}</span>
+            </div>
+            <label className={`check ${notifications ? "on" : ""}`}>
+              <input
+                type="checkbox"
+                checked={notifications}
+                onChange={() => void toggleNotifications()}
+              />
+              <span className="check-main">
+                <span className="check-title">Avisarme cuando el agente termine o espere algo</span>
+                <span className="check-sub">
+                  Preferencia global. Solo avisa si la ventana no tiene el foco; pide permiso al
+                  sistema la primera vez.
+                </span>
+              </span>
+            </label>
+            {notificationError && <div className="inline-error">{notificationError}</div>}
+          </section>
 
           <section>
             <div className="section-head">

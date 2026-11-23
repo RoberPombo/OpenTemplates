@@ -2,6 +2,11 @@ import { vi } from "vitest";
 import type { Workspace } from "../types";
 import type { AgentForm } from "../domain/chat/forms";
 import type { PermissionRequest } from "../domain/chat/permissions";
+import type {
+  NotificationGateway,
+  NotificationInput,
+  NotificationPermission,
+} from "../domain/repositories/NotificationGateway";
 import { toServerEvent } from "../data/opencodePayloads";
 
 /** Workspace mínimo para tests. */
@@ -208,4 +213,12 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
   };
 
   return { client, hub };
+}
+
+/** Gateway de notificaciones fake: registra avisos y permite fijar el permiso. */
+export function makeNotificationGateway(permission: NotificationPermission = "granted") {
+  return {
+    requestPermission: vi.fn(async (): Promise<NotificationPermission> => permission),
+    notify: vi.fn(async (_input: NotificationInput) => undefined),
+  } satisfies NotificationGateway;
 }

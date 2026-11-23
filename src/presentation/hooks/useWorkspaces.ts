@@ -41,6 +41,8 @@ export function useWorkspaces() {
   const [startingId, setStartingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
+  // Avisos sin ver por workspace: turnos o peticiones terminadas sin foco.
+  const [unseen, setUnseen] = useState<Record<string, number>>({});
 
   const selected = useMemo(
     () => workspaces.find((workspace) => workspace.id === selectedId) ?? null,
@@ -98,9 +100,20 @@ export function useWorkspaces() {
       setSelectedId(id);
       root.preferences.set(prefKeys.selectedWorkspace, id);
       setNotice(null);
+      // Mirar el workspace limpia su marca de actividad pendiente.
+      setUnseen((prev) => {
+        if (!prev[id]) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     },
     [root],
   );
+
+  const markUnseen = useCallback((id: string) => {
+    setUnseen((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+  }, []);
 
   const start = useCallback(
     async (id: string) => {
@@ -143,6 +156,12 @@ export function useWorkspaces() {
         const { deleted } = await root.provideDeleteWorkspace().execute(workspace);
         if (!deleted) return;
         setWorkspaces((prev) => prev.filter((item) => item.id !== id));
+        setUnseen((prev) => {
+          if (!prev[id]) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
         setRunning((prev) => {
           const next = { ...prev };
           delete next[id];
@@ -189,8 +208,10 @@ export function useWorkspaces() {
     groups,
     startingId,
     notice,
+    unseen,
     fatal,
     select,
+    markUnseen,
     start,
     stop,
     remove,

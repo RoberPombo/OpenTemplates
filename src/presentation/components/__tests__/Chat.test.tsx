@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Chat } from "../Chat";
 import { AppProvider } from "../../context/AppContext";
+import { CompositionRoot } from "../../../CompositionRoot";
 import type { ChatServer } from "../../../domain/repositories/ChatGateway";
-import { makeFakeClient, makeWorkspace } from "../../../tests/fakes";
+import { makeFakeClient, makeNotificationGateway, makeWorkspace } from "../../../tests/fakes";
 
 // Caracterización del comportamiento interactivo de Chat con un cliente fake.
 // Protege el cableado del reducer de streaming (fase 1) y del hook (fase 2).
@@ -22,20 +23,28 @@ const rawMessages = [
 function renderChat(
   options: Parameters<typeof makeFakeClient>[0] = {},
   workspace = makeWorkspace(),
-  props: { sessionsOpen?: boolean; onCloseSessions?: () => void } = {},
+  props: {
+    sessionsOpen?: boolean;
+    onCloseSessions?: () => void;
+    onWorkspaceActivity?: (workspaceId: string) => void;
+    notifications?: ReturnType<typeof makeNotificationGateway>;
+  } = {},
 ) {
   const { client, hub } = makeFakeClient(options);
+  const notifications = props.notifications ?? makeNotificationGateway();
+  const root = new CompositionRoot({ notifications });
   const view = render(
-    <AppProvider>
+    <AppProvider root={root}>
       <Chat
         client={client as unknown as ChatServer}
         workspace={workspace}
         sessionsOpen={props.sessionsOpen}
         onCloseSessions={props.onCloseSessions}
+        onWorkspaceActivity={props.onWorkspaceActivity}
       />
     </AppProvider>,
   );
-  return { client, hub, view };
+  return { client, hub, view, notifications };
 }
 
 async function ready(client: ReturnType<typeof makeFakeClient>["client"]) {
@@ -512,5 +521,111 @@ describe("Chat — permisos y preguntas del agente", () => {
       hub.push({ type: "form.cancelled", data: { id: "frm_2", sessionID: "s1" } });
     });
     await waitFor(() => expect(screen.queryByText("Elige un nombre")).toBeNull());
+  });
+});
+
+describe("Chat — notificaciones nativas", () => {
+  const sessions = [
+    { id: "s1", title: "Diseño de API", time: { created: 1, updated: 2 }, cost: 0 },
+  ];
+
+  function focusOn(focused: boolean) {
+    return vi.spyOn(document, "hasFocus").mockReturnValue(focused);
+  }
+
+  beforeEach(() => {
+    localStorage.setItem("opentemplates:notifications", "1");
+    focusOn(false);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("avisa del turno terminado con workspace y sesión si no hay foco", async () => {
+    const onWorkspaceActivity = vi.fn();
+    const { client, hub, notifications } = renderChat({ sessions }, makeWorkspace(), {
+      onWorkspaceActivity,
+    });
+    await ready(client);
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+
+    await act(async () => {
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+    });
+
+    await waitFor(() =>
+      expect(notifications.notify).toHaveBeenCalledWith({
+        title: "Demo · Diseño de API",
+        body: "Turno terminado",
+        workspaceId: "w1",
+      }),
+    );
+    expect(onWorkspaceActivity).toHaveBeenCalledWith("w1");
+  });
+
+  test("con la ventana enfocada no avisa ni marca el workspace", async () => {
+    focusOn(true);
+    const onWorkspaceActivity = vi.fn();
+    const { client, hub, notifications } = renderChat({ sessions }, makeWorkspace(), {
+      onWorkspaceActivity,
+    });
+    await ready(client);
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+
+    await act(async () => {
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+    });
+
+    expect(notifications.notify).not.toHaveBeenCalled();
+    expect(onWorkspaceActivity).not.toHaveBeenCalled();
+  });
+
+  test("con la preferencia desactivada no avisa", async () => {
+    localStorage.setItem("opentemplates:notifications", "0");
+    const { client, hub, notifications } = renderChat({ sessions });
+    await ready(client);
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+
+    await act(async () => {
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+    });
+
+    expect(notifications.notify).not.toHaveBeenCalled();
+  });
+
+  test("un permiso pendiente avisa una sola vez aunque se reenvíe", async () => {
+    const { client, hub, notifications } = renderChat({ sessions });
+    await ready(client);
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+
+    const asked = {
+      type: "permission.asked",
+      data: { id: "per_9", sessionID: "s1", action: "bash", resources: ["pnpm test"] },
+    };
+    await act(async () => {
+      hub.push(asked);
+      hub.push(asked);
+    });
+
+    await waitFor(() => expect(notifications.notify).toHaveBeenCalledTimes(1));
+    expect(notifications.notify).toHaveBeenCalledWith({
+      title: "Demo · Diseño de API",
+      body: "Esperando tu aprobación",
+      workspaceId: "w1",
+    });
+  });
+
+  test("throttling: dos turnos seguidos generan un solo aviso", async () => {
+    const { client, hub, notifications } = renderChat({ sessions });
+    await ready(client);
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+
+    await act(async () => {
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+    });
+
+    await waitFor(() => expect(notifications.notify).toHaveBeenCalledTimes(1));
   });
 });
