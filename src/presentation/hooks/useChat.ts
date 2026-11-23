@@ -13,6 +13,18 @@ import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import { errorText as baseErrorText } from "../../domain/shared";
 import { toChatMessages, type ChatMessage } from "../../domain/chat/messages";
 import {
+  removeAgentForm,
+  upsertAgentForm,
+  type AgentForm,
+  type FormAnswer,
+} from "../../domain/chat/forms";
+import {
+  removePermissionRequest,
+  upsertPermissionRequest,
+  type PermissionDecision,
+  type PermissionRequest,
+} from "../../domain/chat/permissions";
+import {
   effectiveVariant as supportedVariant,
   toAgentOptions,
   toModelOptions,
@@ -49,6 +61,10 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
   const [sending, setSending] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
+  const [forms, setForms] = useState<AgentForm[]>([]);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [requestBusy, setRequestBusy] = useState<string | null>(null);
 
   const [stream, dispatch] = useReducer(chatStreamReducer, undefined, () =>
     initialChatStreamState({
@@ -117,6 +133,34 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
       dispatch({ kind: "error", error: errorText(err) });
     }
   }, [client, sessionId, storageKey, root]);
+
+  const loadPendingRequests = useCallback(
+    async (id: string) => {
+      try {
+        const [permissionResponse, formResponse] = await Promise.all([
+          client.permission.list({ sessionID: id }),
+          client.form.list({ sessionID: id }),
+        ]);
+        setPermissions(permissionResponse.data);
+        setForms(formResponse.data);
+        setRequestError(null);
+      } catch (err) {
+        setPermissions([]);
+        setForms([]);
+        setRequestError(errorText(err));
+      }
+    },
+    [client],
+  );
+
+  useEffect(() => {
+    setPermissions([]);
+    setForms([]);
+    setRequestError(null);
+    setRequestBusy(null);
+    if (!sessionId) return;
+    void loadPendingRequests(sessionId);
+  }, [sessionId, loadPendingRequests]);
 
   useEffect(() => {
     setSessionId(root.preferences.get(storageKey));
@@ -287,6 +331,22 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
           signal: abort.signal,
         })) {
           if (!alive) break;
+          const permission = event.permission;
+          if (permission && permission.sessionID === sessionId) {
+            setPermissions((prev) => upsertPermissionRequest(prev, permission));
+          }
+          const permissionReply = event.permissionReply;
+          if (permissionReply && permissionReply.sessionID === sessionId) {
+            setPermissions((prev) => removePermissionRequest(prev, permissionReply.requestID));
+          }
+          const form = event.form;
+          if (form && form.sessionID === sessionId) {
+            setForms((prev) => upsertAgentForm(prev, form));
+          }
+          const formSettled = event.formSettled;
+          if (formSettled && formSettled.sessionID === sessionId) {
+            setForms((prev) => removeAgentForm(prev, formSettled.formID));
+          }
           dispatch({ kind: "event", event, sessionId });
           if (eventRequestsReload(event, sessionId)) {
             void reload().finally(() => dispatch({ kind: "streamCleared" }));
@@ -372,9 +432,72 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     dispatch({ kind: "reset" });
   }
 
+  const replyPermission = useCallback(
+    async (request: PermissionRequest, decision: PermissionDecision) => {
+      setRequestBusy(request.id);
+      try {
+        await client.permission.reply({
+          sessionID: request.sessionID,
+          requestID: request.id,
+          decision,
+        });
+        setPermissions((prev) => removePermissionRequest(prev, request.id));
+        setRequestError(null);
+      } catch (err) {
+        setRequestError(errorText(err));
+        void loadPendingRequests(request.sessionID);
+      } finally {
+        setRequestBusy(null);
+      }
+    },
+    [client, loadPendingRequests],
+  );
+
+  const replyForm = useCallback(
+    async (form: AgentForm, answer: FormAnswer) => {
+      setRequestBusy(form.id);
+      try {
+        await client.form.reply({
+          sessionID: form.sessionID,
+          formID: form.id,
+          answer,
+        });
+        setForms((prev) => removeAgentForm(prev, form.id));
+        setRequestError(null);
+      } catch (err) {
+        setRequestError(errorText(err));
+        void loadPendingRequests(form.sessionID);
+      } finally {
+        setRequestBusy(null);
+      }
+    },
+    [client, loadPendingRequests],
+  );
+
+  const cancelForm = useCallback(
+    async (form: AgentForm) => {
+      setRequestBusy(form.id);
+      try {
+        await client.form.cancel({ sessionID: form.sessionID, formID: form.id });
+        setForms((prev) => removeAgentForm(prev, form.id));
+        setRequestError(null);
+      } catch (err) {
+        setRequestError(errorText(err));
+        void loadPendingRequests(form.sessionID);
+      } finally {
+        setRequestBusy(null);
+      }
+    },
+    [client, loadPendingRequests],
+  );
+
   return {
     sessionId,
     messages,
+    permissions,
+    forms,
+    requestError,
+    requestBusy,
     input,
     setInput,
     sending,
@@ -399,5 +522,8 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     send,
     stop,
     newConversation,
+    replyPermission,
+    replyForm,
+    cancelForm,
   };
 }
