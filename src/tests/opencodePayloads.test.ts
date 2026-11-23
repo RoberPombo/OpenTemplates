@@ -1,8 +1,13 @@
 // @vitest-environment node
 import { describe, expect, test } from "vitest";
 import {
+  toAgentForm,
+  toAgentForms,
   toCatalogAgents,
   toCatalogModels,
+  toPermissionRequest,
+  toPermissionRequests,
+  toServerEvent,
   toSessionMessages,
   toUsageLimits,
 } from "../data/opencodePayloads";
@@ -216,5 +221,146 @@ describe("toUsageLimits", () => {
     expect(
       toUsageLimits({ go: { rolling: { percent: 1 } }, budgets: [{ id: "sin-datos" }] }),
     ).toEqual({ go: { rolling: null, weekly: null, monthly: null }, budgets: [] });
+  });
+});
+
+describe("permisos", () => {
+  test("mapea una petición real con recursos, metadata y origen", () => {
+    const request = toPermissionRequest({
+      id: "per_1",
+      sessionID: "ses_1",
+      action: "read",
+      resources: ["config.env"],
+      save: ["config.env"],
+      message: "Leer variables de entorno",
+      metadata: { filepath: "/tmp/config.env", parentDir: "/tmp" },
+      source: { type: "tool", messageID: "msg_1", id: "tool_1" },
+    });
+
+    expect(request).toEqual({
+      id: "per_1",
+      sessionID: "ses_1",
+      action: "read",
+      resources: ["config.env"],
+      save: ["config.env"],
+      message: "Leer variables de entorno",
+      metadata: { filepath: "/tmp/config.env", parentDir: "/tmp" },
+      source: { type: "tool", messageID: "msg_1", id: "tool_1" },
+    });
+    expect(toPermissionRequests([{ id: "sin-sesion" }, null])).toEqual([]);
+  });
+
+  test("evento permission.asked trae la petición ya estrechada", () => {
+    const event = toServerEvent({
+      type: "permission.asked",
+      data: {
+        id: "per_2",
+        sessionID: "ses_1",
+        action: "bash",
+        resources: ["rm -rf dist"],
+      },
+    });
+    expect(event.permission).toMatchObject({
+      id: "per_2",
+      sessionID: "ses_1",
+      action: "bash",
+      resources: ["rm -rf dist"],
+    });
+  });
+
+  test("evento permission.replied identifica la petición resuelta", () => {
+    const event = toServerEvent({
+      type: "permission.replied",
+      data: { sessionID: "ses_1", requestID: "per_2", reply: "once" },
+    });
+    expect(event.permissionReply).toEqual({ sessionID: "ses_1", requestID: "per_2" });
+    expect(toServerEvent({ type: "permission.replied", data: {} }).permissionReply).toBeUndefined();
+  });
+});
+
+describe("formularios", () => {
+  test("mapea campos, opciones, condiciones y defaults del servidor", () => {
+    const [form] = toAgentForms([
+      {
+        id: "frm_1",
+        sessionID: "ses_1",
+        title: "¿Qué entorno?",
+        metadata: { origen: "prueba" },
+        fields: [
+          {
+            key: "entorno",
+            type: "string",
+            title: "Entorno",
+            required: true,
+            options: [
+              { value: "dev", label: "Desarrollo" },
+              { value: "prod", label: "Producción", description: "Cuidado" },
+            ],
+            default: "dev",
+          },
+          {
+            key: "incluir",
+            type: "multiselect",
+            options: [{ value: "tests", label: "Tests" }],
+            default: ["tests"],
+          },
+          { key: "otro", type: "string", when: [{ key: "entorno", op: "neq", value: "dev" }] },
+          { key: "roto", type: "desconocido" },
+        ],
+      },
+    ]);
+
+    expect(form).toMatchObject({
+      id: "frm_1",
+      sessionID: "ses_1",
+      title: "¿Qué entorno?",
+      metadata: { origen: "prueba" },
+    });
+    expect(form?.fields.map((field) => field.key)).toEqual(["entorno", "incluir", "otro"]);
+    expect(form?.fields[0]).toMatchObject({
+      type: "string",
+      options: [
+        { value: "dev", label: "Desarrollo" },
+        { value: "prod", label: "Producción", description: "Cuidado" },
+      ],
+      default: "dev",
+      required: true,
+    });
+    expect(form?.fields[1]).toMatchObject({ type: "multiselect", default: ["tests"] });
+    expect(form?.fields[2]).toMatchObject({
+      type: "string",
+      when: [{ key: "entorno", op: "neq", value: "dev" }],
+    });
+  });
+
+  test("descarta formularios sin id o sesión", () => {
+    expect(toAgentForms([null, { id: "x" }, { sessionID: "s" }])).toEqual([]);
+    expect(toAgentForm({ id: "frm", sessionID: "s", fields: [] })).toMatchObject({
+      title: "Pregunta del agente",
+    });
+  });
+
+  test("eventos form.created, form.replied y form.cancelled", () => {
+    const created = toServerEvent({
+      type: "form.created",
+      data: {
+        form: {
+          id: "frm_2",
+          sessionID: "ses_1",
+          title: "Elige",
+          fields: [{ key: "x", type: "boolean", default: true }],
+        },
+      },
+    });
+    expect(created.form).toMatchObject({ id: "frm_2", title: "Elige" });
+
+    expect(
+      toServerEvent({ type: "form.replied", data: { id: "frm_2", sessionID: "ses_1" } })
+        .formSettled,
+    ).toEqual({ sessionID: "ses_1", formID: "frm_2" });
+    expect(
+      toServerEvent({ type: "form.cancelled", data: { id: "frm_2", sessionID: "ses_1" } })
+        .formSettled,
+    ).toEqual({ sessionID: "ses_1", formID: "frm_2" });
   });
 });
