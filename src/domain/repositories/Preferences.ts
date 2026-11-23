@@ -10,6 +10,7 @@ export const prefKeys = {
   selectedWorkspace: "opentemplates:selected",
   panelOpen: "opentemplates:panel",
   sessionsOpen: "opentemplates:sessions",
+  panelTab: (workspaceId: string) => `opentemplates:panel-tab:${workspaceId}`,
   session: (workspaceId: string) => `opentemplates:session:${workspaceId}`,
   model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
   agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,

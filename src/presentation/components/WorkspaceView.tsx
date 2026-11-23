@@ -3,7 +3,7 @@ import type { ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import { Chat } from "./Chat";
-import { Inspector } from "./Inspector";
+import { Inspector, type InspectorTab } from "./Inspector";
 import { SettingsPanel } from "./SettingsPanel";
 import { Button } from "./ui";
 
@@ -60,6 +60,10 @@ export function WorkspaceView({
   const [panelOpen, setPanelOpen] = useState(
     () => root.preferences.get(prefKeys.panelOpen) !== "0",
   );
+  const [panelTab, setPanelTab] = useState<InspectorTab>(() => {
+    const saved = root.preferences.get(prefKeys.panelTab(workspace.id));
+    return saved === "cambios" || saved === "ficheros" ? saved : "resumen";
+  });
   const [sessionsOpen, setSessionsOpen] = useState(
     () => root.preferences.get(prefKeys.sessionsOpen) === "1",
   );
@@ -85,6 +89,15 @@ export function WorkspaceView({
       root.preferences.set(prefKeys.sessionsOpen, next ? "1" : "0");
       return next;
     });
+  }
+  function changePanelTab(tab: InspectorTab) {
+    setPanelTab(tab);
+    root.preferences.set(prefKeys.panelTab(workspace.id), tab);
+  }
+  function openChanges() {
+    setPanelOpen(true);
+    root.preferences.set(prefKeys.panelOpen, "1");
+    changePanelTab("cambios");
   }
 
   const folder = workspace.projectPath.split("/").filter(Boolean).pop();
@@ -125,11 +138,18 @@ export function WorkspaceView({
                 Sesiones
               </Button>
               <Button
-                className={panelOpen ? "active" : ""}
+                className={panelOpen && panelTab === "resumen" ? "active" : ""}
                 title={panelOpen ? "Ocultar panel" : "Mostrar panel"}
                 onClick={togglePanel}
               >
                 Panel
+              </Button>
+              <Button
+                className={panelOpen && panelTab === "cambios" ? "active" : ""}
+                title="Ver cambios del agente y del árbol de trabajo"
+                onClick={openChanges}
+              >
+                Cambios
               </Button>
               <Button onClick={() => setSettingsOpen(true)}>Ajustes</Button>
               <Button className="danger-text" onClick={onStop}>
@@ -174,6 +194,8 @@ export function WorkspaceView({
               client={client}
               server={server}
               sessionId={sessionId}
+              tab={panelTab}
+              onTabChange={changePanelTab}
               onUpdated={onUpdated}
               onClose={togglePanel}
             />

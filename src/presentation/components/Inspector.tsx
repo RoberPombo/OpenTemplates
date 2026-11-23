@@ -11,6 +11,10 @@ import {
 import type { CatalogModel } from "../../domain/chat/selection";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import type { ResourceUsage, ServerInfo, SkillRef, Workspace } from "../../types";
+import { ChangesPanel } from "./ChangesPanel";
+import { FilesPanel } from "./FilesPanel";
+
+export type InspectorTab = "resumen" | "cambios" | "ficheros";
 
 type Props = {
   workspace: Workspace;
@@ -19,6 +23,8 @@ type Props = {
   sessionId: string | null;
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
   onClose: () => void;
+  tab?: InspectorTab;
+  onTabChange?: (tab: InspectorTab) => void;
 };
 
 type ProjectSummary = {
@@ -93,7 +99,16 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function Inspector({ workspace, client, server, sessionId, onUpdated, onClose }: Props) {
+export function Inspector({
+  workspace,
+  client,
+  server,
+  sessionId,
+  onUpdated,
+  onClose,
+  tab = "resumen",
+  onTabChange,
+}: Props) {
   const root = useAppContext();
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [session, setSession] = useState<SessionUsage | null>(null);
@@ -185,7 +200,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
   useEffect(() => {
     let alive = true;
     const tick = () => {
-      if (!alive) return;
+      if (!alive || tab !== "resumen") return;
       void refresh();
       void refreshSession();
     };
@@ -195,7 +210,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
       alive = false;
       window.clearInterval(timer);
     };
-  }, [refresh, refreshSession]);
+  }, [refresh, refreshSession, tab]);
 
   const modelEntry = session?.model
     ? (models.find(
@@ -319,205 +334,235 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
   }
 
   return (
-    <aside className="inspector">
+    <aside className={`inspector ${tab === "resumen" ? "" : "inspector-wide"}`}>
       <header className="inspector-head">
         <strong>Panel</strong>
         <button className="icon-button" title="Ocultar panel" onClick={onClose}>
           ×
         </button>
       </header>
-      <div className="inspector-body">
-        {error && <div className="inline-error small-text">{error}</div>}
-
-        <section className="inspector-section">
-          <h3>Sesión</h3>
-          {session ? (
-            <>
-              <div className="inspector-line">
-                <span>Contexto</span>
-                <span className="inspector-value">
-                  {contextRatio === null ? "—" : percent(contextRatio * 100)}
-                </span>
-              </div>
-              <Bar ratio={contextRatio} />
-              <Line
-                label="Acierto de caché"
-                value={cacheRatio === null ? "—" : percent(cacheRatio * 100)}
-              />
-              <Line
-                label="Tokens"
-                value={`${tokens(session.input)} in · ${tokens(session.output)} out`}
-              />
-              <Line label="Coste" value={`$${session.cost.toFixed(3)}`} />
-              {modelEntry && (
-                <p
-                  className="inspector-note"
-                  title={`${modelEntry.providerID}/${modelEntry.modelID}`}
-                >
-                  {modelEntry.name ?? modelEntry.modelID}
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="inspector-empty">Sin actividad todavía.</p>
-          )}
-        </section>
-
-        <section className="inspector-section">
-          <h3>Proyecto</h3>
-          <div className="inspector-line">
-            <span className="inspector-strong" title={workspace.projectPath}>
-              {folder}
-            </span>
-            {project?.branch && <span className="inspector-tag">⎇ {project.branch}</span>}
-          </div>
-          <div className="inspector-line">
-            <span>
-              {project
-                ? `${project.files} ${project.files === 1 ? "archivo" : "archivos"} modificados`
-                : "Sin datos de git"}
-            </span>
-            {project && project.files > 0 && (
-              <span className="inspector-value">
-                <span className="inspector-add">+{project.additions}</span>{" "}
-                <span className="inspector-del">−{project.deletions}</span>
-              </span>
-            )}
-          </div>
-        </section>
-
-        {hasUsage && (
-          <section className="inspector-section">
-            <h3>Uso</h3>
-            {usage?.go?.rolling && (
-              <>
-                <div className="inspector-line">
-                  <span>5 h</span>
-                  <span className="inspector-value">
-                    {percent(usage.go.rolling.percent)}{" "}
-                    <span className="inspector-muted">{resetText(usage.go.rolling.resetsAt)}</span>
-                  </span>
-                </div>
-                <Bar ratio={usage.go.rolling.percent / 100} />
-              </>
-            )}
-            {usage?.go?.weekly && (
-              <>
-                <div className="inspector-line">
-                  <span>Semanal</span>
-                  <span className="inspector-value">
-                    {percent(usage.go.weekly.percent)}{" "}
-                    <span className="inspector-muted">{resetText(usage.go.weekly.resetsAt)}</span>
-                  </span>
-                </div>
-                <Bar ratio={usage.go.weekly.percent / 100} />
-              </>
-            )}
-            {usage?.go?.monthly && (
-              <>
-                <div className="inspector-line">
-                  <span>Mensual</span>
-                  <span className="inspector-value">
-                    {percent(usage.go.monthly.percent)}{" "}
-                    <span className="inspector-muted">{resetText(usage.go.monthly.resetsAt)}</span>
-                  </span>
-                </div>
-                <Bar ratio={usage.go.monthly.percent / 100} />
-              </>
-            )}
-            {budgets.map((budget) => {
-              const ratio = budget.limit > 0 ? budget.spent / budget.limit : null;
-              return (
-                <div key={budget.id}>
-                  <Line
-                    label="Saldo"
-                    value={`$${Math.max(0, budget.limit - budget.spent).toFixed(2)}`}
-                  />
-                  <Bar ratio={ratio} />
-                </div>
-              );
-            })}
-          </section>
-        )}
-
-        <section className="inspector-section">
-          <h3>Fuentes</h3>
-          <Line label="Habilidades" value={`${enabledSkills.length}/${activeSkills.length}`} />
-          <Line label="Servidores MCP" value={`${enabledMcps.length}/${mcpNames.length}`} />
-          <Line label="Agentes" value={String(workspace.agents.length)} />
-          <Line label="Plugins" value={String(workspace.plugins.length)} />
-        </section>
-
-        <section className="inspector-section">
-          <h3>
-            MCP
-            <span className="inspector-count">
-              {enabledMcps.length}/{mcpNames.length}
-            </span>
-          </h3>
-          {mcpNames.length === 0 && (
-            <p className="inspector-empty">
-              Ningún MCP en este workspace. Se añaden desde Ajustes o desde el template.
-            </p>
-          )}
-          {mcpNames.map((name) => mcpRow(name))}
-        </section>
-
-        <section className="inspector-section">
-          <h3>
-            Skills
-            <span className="inspector-count">
-              {enabledSkills.length}/{activeSkills.length}
-            </span>
-          </h3>
-          {activeSkills.length === 0 && (
-            <p className="inspector-empty">
-              Ninguna skill en este workspace. Se añaden desde Ajustes o desde el template.
-            </p>
-          )}
-          {activeSkills.map((skill) => skillRow(skill))}
-        </section>
-
-        {system && (
-          <section className="inspector-section">
-            <h3>Recursos</h3>
-            {resources?.app && (
-              <Line
-                label="App"
-                value={`${bytes(resources.app.memoryBytes)} · ${
-                  system.memoryTotalBytes > 0
-                    ? percent((resources.app.memoryBytes / system.memoryTotalBytes) * 100)
-                    : "—"
-                }`}
-              />
-            )}
-            {resources?.workspace && (
-              <Line
-                label="opencode"
-                value={`${bytes(resources.workspace.memoryBytes)} · ${percent(
-                  resources.workspace.cpuPercent,
-                )} CPU`}
-              />
-            )}
-            <div className="inspector-line">
-              <span>CPU</span>
-              <span className="inspector-value">{percent(system.cpuPercent)}</span>
-            </div>
-            <Bar ratio={system.cpuPercent / 100} />
-            <Line
-              label="Memoria"
-              value={`${bytes(system.memoryUsedBytes)} / ${bytes(system.memoryTotalBytes)}`}
-            />
-            <Bar
-              ratio={
-                system.memoryTotalBytes > 0
-                  ? system.memoryUsedBytes / system.memoryTotalBytes
-                  : null
-              }
-            />
-          </section>
-        )}
+      <div className="inspector-tabs" role="tablist" aria-label="Secciones del panel">
+        {(
+          [
+            ["resumen", "Resumen"],
+            ["cambios", "Cambios"],
+            ["ficheros", "Ficheros"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            type="button"
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            className={tab === id ? "active" : ""}
+            onClick={() => onTabChange?.(id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+      {tab === "cambios" ? (
+        <ChangesPanel client={client} workspace={workspace} sessionId={sessionId} />
+      ) : tab === "ficheros" ? (
+        <FilesPanel client={client} workspace={workspace} />
+      ) : (
+        <div className="inspector-body">
+          {error && <div className="inline-error small-text">{error}</div>}
+
+          <section className="inspector-section">
+            <h3>Sesión</h3>
+            {session ? (
+              <>
+                <div className="inspector-line">
+                  <span>Contexto</span>
+                  <span className="inspector-value">
+                    {contextRatio === null ? "—" : percent(contextRatio * 100)}
+                  </span>
+                </div>
+                <Bar ratio={contextRatio} />
+                <Line
+                  label="Acierto de caché"
+                  value={cacheRatio === null ? "—" : percent(cacheRatio * 100)}
+                />
+                <Line
+                  label="Tokens"
+                  value={`${tokens(session.input)} in · ${tokens(session.output)} out`}
+                />
+                <Line label="Coste" value={`$${session.cost.toFixed(3)}`} />
+                {modelEntry && (
+                  <p
+                    className="inspector-note"
+                    title={`${modelEntry.providerID}/${modelEntry.modelID}`}
+                  >
+                    {modelEntry.name ?? modelEntry.modelID}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="inspector-empty">Sin actividad todavía.</p>
+            )}
+          </section>
+
+          <section className="inspector-section">
+            <h3>Proyecto</h3>
+            <div className="inspector-line">
+              <span className="inspector-strong" title={workspace.projectPath}>
+                {folder}
+              </span>
+              {project?.branch && <span className="inspector-tag">⎇ {project.branch}</span>}
+            </div>
+            <div className="inspector-line">
+              <span>
+                {project
+                  ? `${project.files} ${project.files === 1 ? "archivo" : "archivos"} modificados`
+                  : "Sin datos de git"}
+              </span>
+              {project && project.files > 0 && (
+                <span className="inspector-value">
+                  <span className="inspector-add">+{project.additions}</span>{" "}
+                  <span className="inspector-del">−{project.deletions}</span>
+                </span>
+              )}
+            </div>
+          </section>
+
+          {hasUsage && (
+            <section className="inspector-section">
+              <h3>Uso</h3>
+              {usage?.go?.rolling && (
+                <>
+                  <div className="inspector-line">
+                    <span>5 h</span>
+                    <span className="inspector-value">
+                      {percent(usage.go.rolling.percent)}{" "}
+                      <span className="inspector-muted">
+                        {resetText(usage.go.rolling.resetsAt)}
+                      </span>
+                    </span>
+                  </div>
+                  <Bar ratio={usage.go.rolling.percent / 100} />
+                </>
+              )}
+              {usage?.go?.weekly && (
+                <>
+                  <div className="inspector-line">
+                    <span>Semanal</span>
+                    <span className="inspector-value">
+                      {percent(usage.go.weekly.percent)}{" "}
+                      <span className="inspector-muted">{resetText(usage.go.weekly.resetsAt)}</span>
+                    </span>
+                  </div>
+                  <Bar ratio={usage.go.weekly.percent / 100} />
+                </>
+              )}
+              {usage?.go?.monthly && (
+                <>
+                  <div className="inspector-line">
+                    <span>Mensual</span>
+                    <span className="inspector-value">
+                      {percent(usage.go.monthly.percent)}{" "}
+                      <span className="inspector-muted">
+                        {resetText(usage.go.monthly.resetsAt)}
+                      </span>
+                    </span>
+                  </div>
+                  <Bar ratio={usage.go.monthly.percent / 100} />
+                </>
+              )}
+              {budgets.map((budget) => {
+                const ratio = budget.limit > 0 ? budget.spent / budget.limit : null;
+                return (
+                  <div key={budget.id}>
+                    <Line
+                      label="Saldo"
+                      value={`$${Math.max(0, budget.limit - budget.spent).toFixed(2)}`}
+                    />
+                    <Bar ratio={ratio} />
+                  </div>
+                );
+              })}
+            </section>
+          )}
+
+          <section className="inspector-section">
+            <h3>Fuentes</h3>
+            <Line label="Habilidades" value={`${enabledSkills.length}/${activeSkills.length}`} />
+            <Line label="Servidores MCP" value={`${enabledMcps.length}/${mcpNames.length}`} />
+            <Line label="Agentes" value={String(workspace.agents.length)} />
+            <Line label="Plugins" value={String(workspace.plugins.length)} />
+          </section>
+
+          <section className="inspector-section">
+            <h3>
+              MCP
+              <span className="inspector-count">
+                {enabledMcps.length}/{mcpNames.length}
+              </span>
+            </h3>
+            {mcpNames.length === 0 && (
+              <p className="inspector-empty">
+                Ningún MCP en este workspace. Se añaden desde Ajustes o desde el template.
+              </p>
+            )}
+            {mcpNames.map((name) => mcpRow(name))}
+          </section>
+
+          <section className="inspector-section">
+            <h3>
+              Skills
+              <span className="inspector-count">
+                {enabledSkills.length}/{activeSkills.length}
+              </span>
+            </h3>
+            {activeSkills.length === 0 && (
+              <p className="inspector-empty">
+                Ninguna skill en este workspace. Se añaden desde Ajustes o desde el template.
+              </p>
+            )}
+            {activeSkills.map((skill) => skillRow(skill))}
+          </section>
+
+          {system && (
+            <section className="inspector-section">
+              <h3>Recursos</h3>
+              {resources?.app && (
+                <Line
+                  label="App"
+                  value={`${bytes(resources.app.memoryBytes)} · ${
+                    system.memoryTotalBytes > 0
+                      ? percent((resources.app.memoryBytes / system.memoryTotalBytes) * 100)
+                      : "—"
+                  }`}
+                />
+              )}
+              {resources?.workspace && (
+                <Line
+                  label="opencode"
+                  value={`${bytes(resources.workspace.memoryBytes)} · ${percent(
+                    resources.workspace.cpuPercent,
+                  )} CPU`}
+                />
+              )}
+              <div className="inspector-line">
+                <span>CPU</span>
+                <span className="inspector-value">{percent(system.cpuPercent)}</span>
+              </div>
+              <Bar ratio={system.cpuPercent / 100} />
+              <Line
+                label="Memoria"
+                value={`${bytes(system.memoryUsedBytes)} / ${bytes(system.memoryTotalBytes)}`}
+              />
+              <Bar
+                ratio={
+                  system.memoryTotalBytes > 0
+                    ? system.memoryUsedBytes / system.memoryTotalBytes
+                    : null
+                }
+              />
+            </section>
+          )}
+        </div>
+      )}
     </aside>
   );
 }
