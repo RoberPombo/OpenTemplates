@@ -263,6 +263,33 @@ Implementado (fases 1-4 + wizard básico):
   solo con la preferencia de avisos activa y la ventana sin foco. Si el coste
   salta varios umbrales a la vez se envía solo el mayor y se marcan todos.
 
+- **Exportar, importar y duplicar sesiones**: el panel de sesiones tiene
+  «Exportar» por fila (⤓), «Importar» en la cabecera (⤒) y «Duplicar» (⧉); el
+  timeline ofrece «Continuar desde aquí» por mensaje. La exportación pide el
+  fichero con el diálogo nativo (`@tauri-apps/plugin-dialog`), escribe con el
+  comando Tauri `write_text_file` (solo `.json`; devuelve `false` y la UI pide
+  confirmación antes de sobrescribir) y está saneada por defecto: sustituye
+  rutas personales (`/home/...`, `/Users/...`, `C:\Users\...`) y del workspace,
+  y credenciales conocidas (`sk-`, `ghp_`, `Bearer`, claves de autorización) por
+  `<ruta>` y `<credencial>`. La casilla «Exportar sin sanear» deja el JSON tal
+  cual. La importación lee con `read_text_file` (tope de 32 MiB) y valida el
+  sobre versionado en dominio antes de llamar a `session.import`; la sesión se
+  reasocia a la carpeta del workspace actual, se selecciona y la lista se
+  refresca. El fork usa `session.fork({sessionID, before})`, selecciona la
+  sesión nueva y se bloquea mientras hay un turno en curso. La lógica pura vive
+  en `domain/chat/transfer.ts` (formato `opentemplates.session` v1, validación,
+  saneado, título de reserva y mensajes de error de importación) y el estrechado
+  en `data/opencodePayloads.ts` (`toSessionTransfer`). Verificado contra
+  opencode v2.3.0 real: `GET /api/experimental/session/{id}/export` devuelve
+  `{info, messages}` sin sanear por defecto; `?sanitize=true` cambia el título y
+  la carpeta por `[redacted:session-...]` y **todos** los textos de los mensajes
+  por `[redacted:text:...]` (por eso se sanea en dominio y se pide en crudo);
+  `session.import` crea la sesión en la `location` indicada y devuelve `409
+  ConflictError` si el id existe (y `500` si los ids de mensaje ya están en esa
+  base); `session.fork` con `before` corta el historial en ese mensaje.
+  Limitación conocida: importar en el workspace del que salió la sesión falla
+  por los ids de mensaje; el mensaje de la UI lo explica.
+
 Pendiente de las fases 5-8:
 
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).
