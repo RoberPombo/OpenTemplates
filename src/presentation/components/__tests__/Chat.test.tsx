@@ -12,6 +12,7 @@ import {
   makeWorkspace,
 } from "../../../tests/fakes";
 import { createSessionFile, serializeSessionFile } from "../../../domain/chat/transfer";
+import type { GoalDecisionResult } from "../../../domain/chat/goals";
 
 // Caracterización del comportamiento interactivo de Chat con un cliente fake.
 // Protege el cableado del reducer de streaming (fase 1) y del hook (fase 2).
@@ -832,5 +833,113 @@ describe("Chat — notificaciones nativas", () => {
     });
 
     await waitFor(() => expect(notifications.notify).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("Chat — objetivo de sesión", () => {
+  async function createGoalViaDialog(
+    user: ReturnType<typeof userEvent.setup>,
+    client: ReturnType<typeof makeFakeClient>["client"],
+  ) {
+    await ready(client);
+    await user.click(screen.getByRole("button", { name: "Definir un objetivo para la sesión" }));
+    await user.type(screen.getByLabelText("Criterio de fin"), "deja los tests en verde");
+    await user.click(screen.getByRole("button", { name: "Crear objetivo" }));
+    await screen.findByText("deja los tests en verde");
+  }
+
+  test("al cerrar el turno evalúa con el modelo de decisión y continúa con el texto correcto", async () => {
+    const user = userEvent.setup();
+    const { client, hub } = renderChat({
+      decisionResults: [
+        {
+          verdict: "continue",
+          confidence: 0.9,
+          cost: 0.001,
+          tokens: { input: 10, output: 4 },
+          error: null,
+        },
+      ],
+    });
+    await createGoalViaDialog(user, client);
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+
+    await act(async () => {
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+    });
+
+    await waitFor(() => expect(client.generate.decisions).toHaveBeenCalled());
+    const request = vi.mocked(client.generate.decisions).mock.calls[0]?.[0];
+    expect(request?.model).toEqual({ providerID: "opencode", id: "jev-1.13-free" });
+    expect(request?.input[0]?.text).toContain("deja los tests en verde");
+    expect(request?.questions[0]?.choices.map((choice) => choice.value)).toEqual([
+      "continue",
+      "done",
+      "blocked",
+    ]);
+
+    await waitFor(() => expect(client.session.prompt).toHaveBeenCalled());
+    const prompt = vi.mocked(client.session.prompt).mock.calls.at(-1)?.[0];
+    expect(prompt).toMatchObject({ sessionID: "s1" });
+    expect(prompt?.text).toContain("Continúa con el objetivo: «deja los tests en verde»");
+    expect(prompt?.text).toContain("1 de 5 turnos");
+  });
+
+  test("no evalúa si hay un permiso pendiente", async () => {
+    const user = userEvent.setup();
+    const { client, hub } = renderChat({
+      permissions: [{ id: "per_1", sessionID: "s1", action: "bash", resources: ["pnpm test"] }],
+    });
+    await createGoalViaDialog(user, client);
+    await act(async () => {
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+    });
+    await waitFor(() => expect(client.permission.list).toHaveBeenCalled());
+    expect(client.generate.decisions).not.toHaveBeenCalled();
+    expect(client.session.prompt).not.toHaveBeenCalled();
+  });
+
+  test("cumplido: para el bucle y avisa", async () => {
+    localStorage.setItem("opentemplates:notifications", "1");
+    const decisions: GoalDecisionResult[] = [
+      {
+        verdict: "done",
+        confidence: 0.97,
+        cost: 0.001,
+        tokens: { input: 8, output: 2 },
+        error: null,
+      },
+    ];
+    const user = userEvent.setup();
+    const { client, hub, notifications } = renderChat({ decisionResults: decisions });
+    await createGoalViaDialog(user, client);
+    await act(async () => {
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+    });
+    await waitFor(() => expect(client.generate.decisions).toHaveBeenCalled());
+    expect(screen.getByText("cumplido")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        notifications.notify.mock.calls.some(([input]) =>
+          input.title.includes("Objetivo cumplido"),
+        ),
+      ).toBe(true),
+    );
+    expect(client.session.prompt).not.toHaveBeenCalled();
+  });
+
+  test("parar el turno a mano pausa el objetivo y lo persiste", async () => {
+    const user = userEvent.setup();
+    const { client, hub } = renderChat({ sessions: [{ id: "s1", title: "Sesión", cost: 0 }] });
+    await createGoalViaDialog(user, client);
+    await act(async () => {
+      hub.push({ type: "session.execution.started", data: { sessionID: "s1" } });
+    });
+    await user.click(screen.getByRole("button", { name: "Parar" }));
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem("opentemplates:goal:w1:s1") ?? "{}");
+      expect(stored.status).toBe("paused");
+    });
+    expect(screen.getByText("pausado")).toBeInTheDocument();
   });
 });
