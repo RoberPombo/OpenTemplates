@@ -6,6 +6,7 @@ import type { ToolActivity } from "../../domain/chat/messages";
 import { useChat } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
 import { ModelInfoCard } from "./ModelInfoCard";
+import { RequestDock } from "./RequestDock";
 import { SessionsPanel } from "./SessionsPanel";
 import { AsyncSearchableSelect, Select } from "./ui";
 
@@ -37,6 +38,10 @@ export function Chat({ client, workspace, onSessionChange, sessionsOpen, onClose
     messages,
     sessions,
     sessionsError,
+    permissions,
+    forms,
+    requestError,
+    requestBusy,
     input,
     setInput,
     models,
@@ -63,6 +68,9 @@ export function Chat({ client, workspace, onSessionChange, sessionsOpen, onClose
     selectSession,
     renameSession,
     deleteSession,
+    replyPermission,
+    replyForm,
+    cancelForm,
   } = useChat({ client, workspace, onSessionChange });
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -193,6 +201,16 @@ export function Chat({ client, workspace, onSessionChange, sessionsOpen, onClose
         </div>
 
         {error && <div className="inline-error">{error}</div>}
+
+        <RequestDock
+          permissions={permissions}
+          forms={forms}
+          busy={requestBusy}
+          error={requestError}
+          onPermission={(request, decision) => void replyPermission(request, decision)}
+          onFormReply={(form, answer) => void replyForm(form, answer)}
+          onFormCancel={(form) => void cancelForm(form)}
+        />
 
         <form
           className="composer"

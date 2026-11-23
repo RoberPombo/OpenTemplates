@@ -9,12 +9,29 @@
  * tipos del dominio, sin casts en los componentes. Los datos opacos (eventos,
  * configuración MCP) siguen en `unknown`.
  */
+import type { AgentForm, FormAnswer } from "../chat/forms";
 import type { RawSessionMessage } from "../chat/messages";
+import type { PermissionDecision, PermissionRequest } from "../chat/permissions";
 import type { CatalogAgent, CatalogModel } from "../chat/selection";
 import type { RawSessionSummary } from "../chat/sessions";
 import type { UsageLimits } from "../chat/usage";
 
 export type ServerLocation = { directory: string };
+
+/** Evento SSE crudo del servidor. */
+export type ChatGatewayEvent = { type: string; data?: unknown };
+
+/**
+ * Evento ya estrechado por el adaptador para la presentación. Los eventos de
+ * permisos y formularios traen su payload mapeado; el resto conserva `data`
+ * opaco para el reducer de streaming.
+ */
+export type ChatServerEvent = ChatGatewayEvent & {
+  permission?: PermissionRequest;
+  permissionReply?: { sessionID: string; requestID: string };
+  form?: AgentForm;
+  formSettled?: { sessionID: string; formID: string };
+};
 
 export interface ChatGateway {
   session: {
@@ -62,6 +79,20 @@ export interface ChatGateway {
   usage: {
     limits(): Promise<{ data: unknown }>;
   };
+  permission: {
+    list(input: { sessionID: string }): Promise<{ data: unknown[] }>;
+    reply(input: {
+      sessionID: string;
+      requestID: string;
+      decision: PermissionDecision;
+      message?: string;
+    }): Promise<unknown>;
+  };
+  form: {
+    list(input: { sessionID: string }): Promise<{ data: unknown[] }>;
+    reply(input: { sessionID: string; formID: string; answer: FormAnswer }): Promise<unknown>;
+    cancel(input: { sessionID: string; formID: string; message?: string }): Promise<unknown>;
+  };
   mcp: {
     list(input: {
       location: ServerLocation;
@@ -73,7 +104,7 @@ export interface ChatGateway {
     reload(): Promise<unknown>;
   };
   event: {
-    subscribe(input?: { signal?: AbortSignal }): AsyncIterable<{ type: string; data?: unknown }>;
+    subscribe(input?: { signal?: AbortSignal }): AsyncIterable<ChatGatewayEvent>;
   };
 }
 
@@ -104,5 +135,14 @@ export interface ChatServer extends ChatGateway {
   };
   usage: {
     limits(): Promise<{ data: UsageLimits | null }>;
+  };
+  permission: Omit<ChatGateway["permission"], "list"> & {
+    list(input: { sessionID: string }): Promise<{ data: PermissionRequest[] }>;
+  };
+  form: Omit<ChatGateway["form"], "list"> & {
+    list(input: { sessionID: string }): Promise<{ data: AgentForm[] }>;
+  };
+  event: {
+    subscribe(input?: { signal?: AbortSignal }): AsyncIterable<ChatServerEvent>;
   };
 }

@@ -255,3 +255,115 @@ describe("Chat — nueva conversación", () => {
     expect(client.message.list).toHaveBeenCalledWith(expect.objectContaining({ sessionID: "s2" }));
   });
 });
+
+describe("Chat — permisos y preguntas del agente", () => {
+  const pendingPermission = {
+    id: "per_1",
+    sessionID: "s1",
+    action: "bash",
+    resources: ["rm -rf dist"],
+    message: "Necesito limpiar el build",
+  };
+
+  const pendingForm = {
+    id: "frm_1",
+    sessionID: "s1",
+    title: "¿Qué entorno preparo?",
+    fields: [{ key: "entorno", type: "string" as const, title: "Entorno", required: true }],
+  };
+
+  test("carga los pendientes al montar y responde un permiso", async () => {
+    const user = userEvent.setup();
+    const { client } = renderChat({ permissions: [pendingPermission] });
+    await ready(client);
+
+    expect(client.permission.list).toHaveBeenCalledWith({ sessionID: "s1" });
+    expect(client.form.list).toHaveBeenCalledWith({ sessionID: "s1" });
+    expect(await screen.findByText("Ejecutar un comando")).toBeInTheDocument();
+    expect(screen.getByText("rm -rf dist")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Permitir una vez" }));
+    await waitFor(() =>
+      expect(client.permission.reply).toHaveBeenCalledWith({
+        sessionID: "s1",
+        requestID: "per_1",
+        decision: "once",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText("Ejecutar un comando")).toBeNull());
+  });
+
+  test("un evento permission.asked abre el dock y replied lo cierra", async () => {
+    const { client, hub } = renderChat();
+    await ready(client);
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+
+    await act(async () => {
+      hub.push({
+        type: "permission.asked",
+        data: {
+          id: "per_2",
+          sessionID: "s1",
+          action: "read",
+          resources: ["config.env"],
+        },
+      });
+    });
+    expect(await screen.findByText("Leer un archivo")).toBeInTheDocument();
+
+    await act(async () => {
+      hub.push({
+        type: "permission.replied",
+        data: { sessionID: "s1", requestID: "per_2", reply: "reject" },
+      });
+    });
+    await waitFor(() => expect(screen.queryByText("Leer un archivo")).toBeNull());
+  });
+
+  test("un formulario pendiente se responde y desaparece del dock", async () => {
+    const user = userEvent.setup();
+    const { client } = renderChat({ forms: [pendingForm] });
+    await ready(client);
+
+    expect(await screen.findByText("¿Qué entorno preparo?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Responder" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/Entorno/), "dev");
+    await user.click(screen.getByRole("button", { name: "Responder" }));
+
+    await waitFor(() =>
+      expect(client.form.reply).toHaveBeenCalledWith({
+        sessionID: "s1",
+        formID: "frm_1",
+        answer: { entorno: "dev" },
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText("¿Qué entorno preparo?")).toBeNull());
+  });
+
+  test("un evento form.created abre la pregunta y form.cancelled la cierra", async () => {
+    const { client, hub } = renderChat();
+    await ready(client);
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+
+    await act(async () => {
+      hub.push({
+        type: "form.created",
+        data: {
+          form: {
+            id: "frm_2",
+            sessionID: "s1",
+            title: "Elige un nombre",
+            fields: [{ key: "nombre", type: "string", title: "Nombre", required: true }],
+          },
+        },
+      });
+    });
+    expect(await screen.findByText("Elige un nombre")).toBeInTheDocument();
+
+    await act(async () => {
+      hub.push({ type: "form.cancelled", data: { id: "frm_2", sessionID: "s1" } });
+    });
+    await waitFor(() => expect(screen.queryByText("Elige un nombre")).toBeNull());
+  });
+});

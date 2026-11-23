@@ -2442,3 +2442,183 @@ p {
     font-size: 10.5px;
   }
 }
+
+/* Dock de permisos y preguntas del agente */
+
+.request-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(860px, calc(100% - 48px));
+  margin: 0 auto 8px;
+}
+
+.request-card {
+  padding: 10px 12px;
+  border: 1px solid #2a3541;
+  border-left: 3px solid var(--warning);
+  border-radius: 12px;
+  background: #131a21;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.request-card.question {
+  border-left-color: #7aa2ff;
+}
+
+.request-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.request-head strong {
+  font-weight: 600;
+}
+
+.request-badge {
+  padding: 2px 7px;
+  border: 1px solid rgba(245, 196, 81, 0.35);
+  border-radius: 999px;
+  background: rgba(245, 196, 81, 0.12);
+  color: var(--warning);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.request-badge.question {
+  border-color: rgba(122, 162, 255, 0.4);
+  background: rgba(122, 162, 255, 0.12);
+  color: #a9c2ff;
+}
+
+.request-action {
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 1px solid #2d3a47;
+  border-radius: 5px;
+  background: #10161d;
+  color: #91a0b0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 10px;
+}
+
+.request-resources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 132px;
+  margin: 8px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.request-resources code {
+  display: block;
+  padding: 5px 7px;
+  border: 1px solid #202a34;
+  border-radius: 6px;
+  background: #0d1319;
+  color: #c7d4e2;
+  font-size: 11.5px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.request-message {
+  margin-top: 7px;
+  color: #c2cfdc;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.request-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 9px;
+}
+
+.request-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.request-label {
+  color: #c7d4e2;
+  font-size: 11.5px;
+}
+
+.request-required {
+  margin-left: 2px;
+  color: var(--warning);
+}
+
+.request-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.request-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  color: #c7d4e2;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.request-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.request-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: #c7d4e2;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.request-option em {
+  display: block;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-style: normal;
+}
+
+.request-field input[type="checkbox"] {
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+
+.request-link {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.request-error {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 107, 107, 0.08);
+  color: #ffb1b1;
+  font-size: 12px;
+}
