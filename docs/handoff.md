@@ -166,6 +166,16 @@ Implementado (fases 1-4 + wizard básico):
   arrancar al crear.
 - **UI de gestión**: repos, templates (selección de biblioteca y AGENTS.md) y
   raíz de worktrees. Ajustes del workspace con «Reaplicar template».
+- **Dock de permisos y preguntas**: sobre el composer, sin modal. Carga los
+  pendientes con `permission.list` y `session.form.list` al montar y al cambiar
+  de sesión; sigue `permission.asked/replied` y
+  `form.created/replied/cancelled` por SSE. Permisos con «Permitir una vez»,
+  «Permitir siempre» y «Rechazar» (`permission.reply`), y preguntas del agente
+  como formularios (`session.form.reply/cancel`). Verificado contra opencode
+  v2.3.0: `session.form` es un endpoint estable del mismo SDK, así que el dock
+  cubre también las preguntas. El estrechado de payloads vive en
+  `data/opencodePayloads.ts` y el estado puro en `domain/chat/permissions.ts` y
+  `domain/chat/forms.ts`.
 
 Pendiente de las fases 5-8:
 
