@@ -216,6 +216,28 @@ Implementado (fases 1-4 + wizard básico):
   contenido de las skills; `session.prompt` acepta la misma lista. Los comandos
   personalizados se descubren en `<ws>/xdg/opencode/command/*.md` (singular).
 
+- **Notificaciones nativas**: avisos del sistema cuando el agente termina un
+  turno (`session.idle` y `session.execution.succeeded|failed|interrupted`) o se
+  queda esperando una aprobación o una respuesta (`permission.asked` y
+  `form.created`). Usa `@tauri-apps/plugin-notification` 2.8.1 con
+  `tauri-plugin-notification` registrado en `lib.rs` y `notification:default` en
+  la capability de la ventana. El puerto `NotificationGateway` vive en
+  `domain/repositories`; el adaptador `TauriNotificationGateway` degrada a no-op
+  fuera de Tauri (navegador, `pnpm dev`, tests), así que React nunca carga APIs
+  nativas reales. La decisión (tipo de evento, foco, preferencia y throttling)
+  es pura y está en `domain/chat/notifications.ts`: el título lleva workspace y
+  sesión, el cuerpo lo esencial, y los turnos encadenados de la misma sesión se
+  agrupan con 10 s de margen; permisos y preguntas no se throttlean, pero se
+  deduplican por `requestId`. El foco se consulta con `document.hasFocus()` en el
+  momento del evento. La preferencia es global
+  (`opentemplates:notifications`, desactivada por defecto) y su toggle en
+  «Ajustes del workspace» pide permiso al activarla, nunca al arrancar. Extra: el
+  sidebar marca con un contador los avisos sin ver del workspace y lo limpia al
+  seleccionarlo. Limitación conocida: cada workspace mantiene su propio SSE y
+  solo se observa el del workspace seleccionado, así que los avisos y la marca
+  cubren la sesión activa de ese workspace; para el resto haría falta un
+  suscriptor global por servidor.
+
 Pendiente de las fases 5-8:
 
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).
