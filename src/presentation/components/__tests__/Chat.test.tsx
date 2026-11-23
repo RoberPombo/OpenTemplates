@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Chat } from "../Chat";
@@ -22,11 +22,17 @@ const rawMessages = [
 function renderChat(
   options: Parameters<typeof makeFakeClient>[0] = {},
   workspace = makeWorkspace(),
+  props: { sessionsOpen?: boolean; onCloseSessions?: () => void } = {},
 ) {
   const { client, hub } = makeFakeClient(options);
   const view = render(
     <AppProvider>
-      <Chat client={client as unknown as ChatServer} workspace={workspace} />
+      <Chat
+        client={client as unknown as ChatServer}
+        workspace={workspace}
+        sessionsOpen={props.sessionsOpen}
+        onCloseSessions={props.onCloseSessions}
+      />
     </AppProvider>,
   );
   return { client, hub, view };
@@ -182,6 +188,55 @@ describe("Chat — streaming", () => {
       hub.push({ type: "vcs.branch.updated", data: { branch: "feature-y" } });
     });
     expect(await screen.findByText("feature-y")).toBeInTheDocument();
+  });
+});
+
+describe("Chat — historial de sesiones", () => {
+  const sessions = [
+    { id: "s2", title: "Diseño de API", time: { created: 1, updated: 3 }, cost: 0.5 },
+    { id: "s1", title: "Chat · Demo", time: { created: 1, updated: 2 }, cost: 0 },
+  ];
+
+  test("lista las sesiones del workspace y abre la elegida", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("opentemplates:session:w1", "s1");
+    const { client } = renderChat({ sessions }, makeWorkspace(), { sessionsOpen: true });
+
+    expect(await screen.findByText("Diseño de API")).toBeInTheDocument();
+    expect(client.session.list).toHaveBeenCalledWith({
+      directory: "/tmp/demo",
+      limit: 100,
+    });
+
+    client.message.list.mockResolvedValue({ data: [] });
+    await user.click(screen.getByRole("button", { name: /^Diseño de API/ }));
+
+    await waitFor(() =>
+      expect(client.message.list).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionID: "s2" }),
+      ),
+    );
+    expect(localStorage.getItem("opentemplates:session:w1")).toBe("s2");
+  });
+
+  test("recarga la lista cuando el servidor avisa de una sesión nueva", async () => {
+    const { client, hub } = renderChat({ sessions }, makeWorkspace(), { sessionsOpen: true });
+    await waitFor(() => expect(client.session.list).toHaveBeenCalled());
+
+    const before = client.session.list.mock.calls.length;
+    await act(async () => {
+      hub.push({ type: "session.created", data: { sessionID: "s3" } });
+    });
+    await waitFor(() => expect(client.session.list.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  test("cerrar el panel lo notifica al contenedor", async () => {
+    const user = userEvent.setup();
+    const onCloseSessions = vi.fn();
+    renderChat({ sessions }, makeWorkspace(), { sessionsOpen: true, onCloseSessions });
+
+    await user.click(screen.getByRole("button", { name: "Ocultar sesiones" }));
+    expect(onCloseSessions).toHaveBeenCalled();
   });
 });
 

@@ -9,6 +9,7 @@ export interface Preferences {
 export const prefKeys = {
   selectedWorkspace: "opentemplates:selected",
   panelOpen: "opentemplates:panel",
+  sessionsOpen: "opentemplates:sessions",
   session: (workspaceId: string) => `opentemplates:session:${workspaceId}`,
   model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
   agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,

@@ -166,11 +166,18 @@ Implementado (fases 1-4 + wizard básico):
   arrancar al crear.
 - **UI de gestión**: repos, templates (selección de biblioteca y AGENTS.md) y
   raíz de worktrees. Ajustes del workspace con «Reaplicar template».
+- **Historial de sesiones**: panel lateral del chat (botón «Sesiones») con la
+  lista de sesiones del workspace (`session.list` por `directory`), búsqueda por
+  título, cambio de sesión, renombrado en línea (`session.update`) y borrado con
+  confirmación (`session.remove`). La lista se refresca al crear, renombrar,
+  borrar y al terminar cada turno (el coste cambia). Verificado contra opencode
+  v2.3.0: `list` devuelve `{data, cursor}` y cada sesión trae `title`, `cost`,
+  `tokens` y `time.created/updated`.
 
 Pendiente de las fases 5-8:
 
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).
-- Lista de sesiones por workspace (crear/cambiar/renombrar/archivar).
+- Archivar sesiones (la lista ya no muestra archivadas; falta el gesto).
 - Reparar workspaces `missing` recreando su worktree.
 - Selector de modelo/agentes por workspace como overrides explícitos (hoy se
   editan en el template y se reaplican).

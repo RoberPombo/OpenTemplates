@@ -9,6 +9,7 @@ import type { ServerInfo } from "../types";
 import {
   toCatalogAgents,
   toCatalogModels,
+  toRawSessionSummaries,
   toSessionMessages,
   toUsageLimits,
 } from "./opencodePayloads";
@@ -21,7 +22,19 @@ export function createChatGateway(server: ServerInfo): ChatServer {
   });
 
   return {
-    session: sdk.session,
+    session: {
+      create: (input) => sdk.session.create(input),
+      get: (input) => sdk.session.get(input),
+      prompt: (input) => sdk.session.prompt(input),
+      interrupt: (input) => sdk.session.interrupt(input),
+      switchModel: (input) => sdk.session.switchModel(input),
+      switchAgent: (input) => sdk.session.switchAgent(input),
+      update: (input) => sdk.session.update(input),
+      remove: (input) => sdk.session.remove(input),
+      list: async (input) => ({
+        data: toRawSessionSummaries((await sdk.session.list(input)).data),
+      }),
+    },
     message: {
       list: async (input) => ({
         data: toSessionMessages((await sdk.message.list(input)).data),

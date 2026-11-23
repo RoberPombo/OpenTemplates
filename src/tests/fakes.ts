@@ -88,6 +88,7 @@ export type FakeClientOptions = {
   agents?: unknown[];
   defaultModel?: { providerID: string; id: string } | null;
   branch?: string | null;
+  sessions?: unknown[];
 };
 
 /**
@@ -113,9 +114,24 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
     { id: "build", name: "Build", hidden: false, mode: "primary" },
     { id: "plan", name: "Plan", hidden: false, mode: "primary" },
   ];
+  // Lista de sesiones viva: renombrar y eliminar se reflejan en el siguiente list.
+  let sessionList = (options.sessions ?? []).map((item) => ({
+    ...(item as Record<string, unknown>),
+  }));
 
   const client = {
     session: {
+      list: vi.fn(async () => ({ data: sessionList })),
+      update: vi.fn(async (input: { sessionID: string; title: string }) => {
+        sessionList = sessionList.map((session) =>
+          session.id === input.sessionID
+            ? { ...session, title: input.title, time: { ...(session.time as object), updated: 2 } }
+            : session,
+        );
+      }),
+      remove: vi.fn(async (input: { sessionID: string }) => {
+        sessionList = sessionList.filter((session) => session.id !== input.sessionID);
+      }),
       create: vi.fn(async () => ({ id: `s${++sessionCounter}` })),
       prompt: vi.fn(async () => undefined),
       interrupt: vi.fn(async () => undefined),

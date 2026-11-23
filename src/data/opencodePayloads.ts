@@ -9,6 +9,7 @@
 import type { RawPart, RawSessionMessage } from "../domain/chat/messages";
 import type { CatalogAgent, CatalogModel } from "../domain/chat/selection";
 import type { ModelCost, ModelDetails } from "../domain/models/details";
+import type { RawSessionSummary } from "../domain/chat/sessions";
 import type { UsageBudget, UsageLimits, UsageMeter } from "../domain/chat/usage";
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -227,6 +228,29 @@ export function toSessionMessages(payload: unknown): RawSessionMessage[] {
           cacheWrite !== undefined
             ? { input, output, cache: { read: cacheRead, write: cacheWrite } }
             : undefined,
+      },
+    ];
+  });
+}
+
+/** Sesiones del workspace: solo los campos que pinta el panel de historial. */
+export function toRawSessionSummaries(payload: unknown): RawSessionSummary[] {
+  return list(payload).flatMap((item) => {
+    const session = record(item);
+    if (!session) return [];
+    const id = text(session.id);
+    if (!id) return [];
+    const time = record(session.time);
+    const tokens = record(session.tokens);
+    const input = count(tokens?.input);
+    const output = count(tokens?.output);
+    return [
+      {
+        id,
+        title: text(session.title),
+        cost: count(session.cost),
+        tokens: input !== undefined || output !== undefined ? { input, output } : undefined,
+        time: time ? { created: count(time.created), updated: count(time.updated) } : undefined,
       },
     ];
   });
