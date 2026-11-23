@@ -60,6 +60,9 @@ export function WorkspaceView({
   const [panelOpen, setPanelOpen] = useState(
     () => root.preferences.get(prefKeys.panelOpen) !== "0",
   );
+  const [sessionsOpen, setSessionsOpen] = useState(
+    () => root.preferences.get(prefKeys.sessionsOpen) === "1",
+  );
   const [sessionId, setSessionId] = useState<string | null>(() =>
     root.preferences.get(prefKeys.session(workspace.id)),
   );
@@ -72,6 +75,14 @@ export function WorkspaceView({
     setPanelOpen((prev) => {
       const next = !prev;
       root.preferences.set(prefKeys.panelOpen, next ? "1" : "0");
+      return next;
+    });
+  }
+
+  function toggleSessions() {
+    setSessionsOpen((prev) => {
+      const next = !prev;
+      root.preferences.set(prefKeys.sessionsOpen, next ? "1" : "0");
       return next;
     });
   }
@@ -106,6 +117,13 @@ export function WorkspaceView({
         <div className="row">
           {server ? (
             <>
+              <Button
+                className={sessionsOpen ? "active" : ""}
+                title={sessionsOpen ? "Ocultar sesiones" : "Mostrar sesiones"}
+                onClick={toggleSessions}
+              >
+                Sesiones
+              </Button>
               <Button
                 className={panelOpen ? "active" : ""}
                 title={panelOpen ? "Ocultar panel" : "Mostrar panel"}
@@ -143,7 +161,13 @@ export function WorkspaceView({
 
       {server && client ? (
         <div className="workspace-body">
-          <ProfiledChat client={client} workspace={workspace} onSessionChange={setSessionId} />
+          <ProfiledChat
+            client={client}
+            workspace={workspace}
+            onSessionChange={setSessionId}
+            sessionsOpen={sessionsOpen}
+            onCloseSessions={toggleSessions}
+          />
           {panelOpen && (
             <Inspector
               workspace={workspace}

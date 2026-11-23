@@ -7,12 +7,15 @@ import { useChat } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
 import { ModelInfoCard } from "./ModelInfoCard";
 import { RequestDock } from "./RequestDock";
+import { SessionsPanel } from "./SessionsPanel";
 import { AsyncSearchableSelect, Select } from "./ui";
 
 type Props = {
   client: ChatServer;
   workspace: Workspace;
   onSessionChange?: (sessionId: string | null) => void;
+  sessionsOpen?: boolean;
+  onCloseSessions?: () => void;
 };
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -29,10 +32,12 @@ function effortLabel(id: string) {
   return EFFORT_LABELS[id] ?? id;
 }
 
-export function Chat({ client, workspace, onSessionChange }: Props) {
+export function Chat({ client, workspace, onSessionChange, sessionsOpen, onCloseSessions }: Props) {
   const {
     sessionId,
     messages,
+    sessions,
+    sessionsError,
     permissions,
     forms,
     requestError,
@@ -60,6 +65,9 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
     send,
     stop,
     newConversation,
+    selectSession,
+    renameSession,
+    deleteSession,
     replyPermission,
     replyForm,
     cancelForm,
@@ -105,212 +113,227 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
   );
 
   return (
-    <section className="chat">
-      <div className="messages">
-        {messages.length === 0 && streaming.length === 0 && (
-          <div className="empty-chat">
-            <p>Pregunta, planifica o pide cambios en {workspace.name}.</p>
-            <p className="muted small-text">
-              {workspace.mcpNames.length} MCPs · {workspace.skills.length} skills ·{" "}
-              {workspace.agents.length} agentes
-            </p>
-          </div>
-        )}
+    <div className="chat-shell">
+      {sessionsOpen && (
+        <SessionsPanel
+          sessions={sessions}
+          activeId={sessionId}
+          busy={busy}
+          error={sessionsError}
+          onSelect={selectSession}
+          onRename={renameSession}
+          onDelete={deleteSession}
+          onNew={newConversation}
+          onClose={() => onCloseSessions?.()}
+        />
+      )}
+      <section className="chat">
+        <div className="messages">
+          {messages.length === 0 && streaming.length === 0 && (
+            <div className="empty-chat">
+              <p>Pregunta, planifica o pide cambios en {workspace.name}.</p>
+              <p className="muted small-text">
+                {workspace.mcpNames.length} MCPs · {workspace.skills.length} skills ·{" "}
+                {workspace.agents.length} agentes
+              </p>
+            </div>
+          )}
 
-        {messages.map((message) =>
-          message.role === "user" ? (
-            <article key={message.id} className="msg user">
-              <div className="user-bubble">
-                <Markdown text={message.text} />
-              </div>
-            </article>
-          ) : (
-            <article key={message.id} className="msg assistant">
-              {message.tools.length > 0 && <Activity tools={message.tools} />}
-              {message.reasoning && (
+          {messages.map((message) =>
+            message.role === "user" ? (
+              <article key={message.id} className="msg user">
+                <div className="user-bubble">
+                  <Markdown text={message.text} />
+                </div>
+              </article>
+            ) : (
+              <article key={message.id} className="msg assistant">
+                {message.tools.length > 0 && <Activity tools={message.tools} />}
+                {message.reasoning && (
+                  <details className="reasoning">
+                    <summary>Razonamiento</summary>
+                    <Markdown text={message.reasoning} />
+                  </details>
+                )}
+                {message.text && <Markdown text={message.text} />}
+                <MessageMeta
+                  model={modelName(message.model)}
+                  agent={agentName(message.agent)}
+                  duration={formatDuration((message.completed ?? 0) - message.created)}
+                />
+              </article>
+            ),
+          )}
+
+          {streaming.map((part) => (
+            <article key={`stream-${part.id}`} className="msg assistant streaming">
+              {part.reasoning && (
                 <details className="reasoning">
                   <summary>Razonamiento</summary>
-                  <Markdown text={message.reasoning} />
+                  <Markdown text={part.reasoning} />
                 </details>
               )}
-              {message.text && <Markdown text={message.text} />}
+              {part.text ? <Markdown text={part.text} /> : null}
               <MessageMeta
-                model={modelName(message.model)}
-                agent={agentName(message.agent)}
-                duration={formatDuration((message.completed ?? 0) - message.created)}
+                model={selectedModel?.name ?? ""}
+                agent={agentName(agentChoice)}
+                status={
+                  part.text
+                    ? "escribiendo…"
+                    : liveTools > 0
+                      ? `ejecutando ${liveTools} comando${liveTools === 1 ? "" : "s"}…`
+                      : "pensando…"
+                }
               />
             </article>
-          ),
-        )}
+          ))}
 
-        {streaming.map((part) => (
-          <article key={`stream-${part.id}`} className="msg assistant streaming">
-            {part.reasoning && (
-              <details className="reasoning">
-                <summary>Razonamiento</summary>
-                <Markdown text={part.reasoning} />
-              </details>
-            )}
-            {part.text ? <Markdown text={part.text} /> : null}
-            <MessageMeta
-              model={selectedModel?.name ?? ""}
-              agent={agentName(agentChoice)}
-              status={
-                part.text
-                  ? "escribiendo…"
-                  : liveTools > 0
-                    ? `ejecutando ${liveTools} comando${liveTools === 1 ? "" : "s"}…`
-                    : "pensando…"
-              }
-            />
-          </article>
-        ))}
+          {busy && streaming.length === 0 && (
+            <article className="msg assistant streaming">
+              <div className="thinking">
+                {liveTools > 0
+                  ? `Ejecutando ${liveTools} comando${liveTools === 1 ? "" : "s"}…`
+                  : "Pensando…"}
+              </div>
+            </article>
+          )}
+          <div ref={bottomRef} />
+        </div>
 
-        {busy && streaming.length === 0 && (
-          <article className="msg assistant streaming">
-            <div className="thinking">
-              {liveTools > 0
-                ? `Ejecutando ${liveTools} comando${liveTools === 1 ? "" : "s"}…`
-                : "Pensando…"}
-            </div>
-          </article>
-        )}
-        <div ref={bottomRef} />
-      </div>
+        {error && <div className="inline-error">{error}</div>}
 
-      {error && <div className="inline-error">{error}</div>}
+        <RequestDock
+          permissions={permissions}
+          forms={forms}
+          busy={requestBusy}
+          error={requestError}
+          onPermission={(request, decision) => void replyPermission(request, decision)}
+          onFormReply={(form, answer) => void replyForm(form, answer)}
+          onFormCancel={(form) => void cancelForm(form)}
+        />
 
-      <RequestDock
-        permissions={permissions}
-        forms={forms}
-        busy={requestBusy}
-        error={requestError}
-        onPermission={(request, decision) => void replyPermission(request, decision)}
-        onFormReply={(form, answer) => void replyForm(form, answer)}
-        onFormCancel={(form) => void cancelForm(form)}
-      />
-
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send();
-        }}
-      >
-        <div className="composer-card">
-          <div className="composer-project">
-            <span className="context-chip" title={`Proyecto: ${workspace.projectPath}`}>
-              <FolderIcon />
-              <span className="context-key">Proyecto</span>
-              <span className="context-label">{folder}</span>
-            </span>
-            {branch && (
-              <span className="context-chip branch" title={`Rama ${branch}`}>
-                <BranchIcon />
-                <span className="context-key">Rama</span>
-                <span className="context-label">{branch}</span>
+        <form
+          className="composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send();
+          }}
+        >
+          <div className="composer-card">
+            <div className="composer-project">
+              <span className="context-chip" title={`Proyecto: ${workspace.projectPath}`}>
+                <FolderIcon />
+                <span className="context-key">Proyecto</span>
+                <span className="context-label">{folder}</span>
               </span>
-            )}
-          </div>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            rows={1}
-            placeholder={
-              sessionId
-                ? "Planifica, construye o pregunta. @ menciona archivos, / usa comandos"
-                : "Preparando sesión…"
-            }
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <div className="composer-bar">
-            <div className="composer-context">
-              <button
-                type="button"
-                className="composer-icon"
-                title="Nueva conversación"
-                aria-label="Nueva conversación"
-                onClick={newConversation}
-                disabled={busy}
-              >
-                <PlusIcon />
-              </button>
-            </div>
-
-            <div className="composer-controls">
-              <div className="select-chip" title="Modelo">
-                <SparkIcon />
-                <AsyncSearchableSelect
-                  aria-label="Modelo"
-                  value={modelChoice}
-                  placeholder={models.length === 0 ? "Cargando modelos…" : "Buscar modelo…"}
-                  disabled={models.length === 0 || busy}
-                  options={modelSelectOptions}
-                  variant="chip"
-                  onValueChange={chooseModel}
-                />
-              </div>
-
-              {variants.length > 0 && (
-                <div className="select-chip" title="Razonamiento">
-                  <BrainIcon />
-                  <Select
-                    aria-label="Razonamiento"
-                    value={effectiveVariant || ""}
-                    placeholder="predeterminado"
-                    disabled={busy}
-                    options={variantSelectOptions}
-                    variant="chip"
-                    onValueChange={chooseVariant}
-                  />
-                </div>
+              {branch && (
+                <span className="context-chip branch" title={`Rama ${branch}`}>
+                  <BranchIcon />
+                  <span className="context-key">Rama</span>
+                  <span className="context-label">{branch}</span>
+                </span>
               )}
-
-              <div className="select-chip" title="Agente">
-                <AgentIcon />
-                <Select
-                  aria-label="Agente"
-                  value={agentChoice}
-                  placeholder="Cargando agentes…"
-                  disabled={agents.length === 0 || busy}
-                  options={agentSelectOptions}
-                  variant="chip"
-                  onValueChange={chooseAgent}
-                />
-              </div>
-
-              {busy ? (
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={input}
+              rows={1}
+              placeholder={
+                sessionId
+                  ? "Planifica, construye o pregunta. @ menciona archivos, / usa comandos"
+                  : "Preparando sesión…"
+              }
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+            />
+            <div className="composer-bar">
+              <div className="composer-context">
                 <button
                   type="button"
-                  className="send-button stop"
-                  title="Parar"
-                  aria-label="Parar"
-                  onClick={() => void stop()}
+                  className="composer-icon"
+                  title="Nueva conversación"
+                  aria-label="Nueva conversación"
+                  onClick={newConversation}
+                  disabled={busy}
                 >
-                  <StopIcon />
+                  <PlusIcon />
                 </button>
-              ) : (
-                <button
-                  type="submit"
-                  className="send-button"
-                  title="Enviar"
-                  aria-label="Enviar"
-                  disabled={!canSend}
-                >
-                  <ArrowUpIcon />
-                </button>
-              )}
+              </div>
+
+              <div className="composer-controls">
+                <div className="select-chip" title="Modelo">
+                  <SparkIcon />
+                  <AsyncSearchableSelect
+                    aria-label="Modelo"
+                    value={modelChoice}
+                    placeholder={models.length === 0 ? "Cargando modelos…" : "Buscar modelo…"}
+                    disabled={models.length === 0 || busy}
+                    options={modelSelectOptions}
+                    variant="chip"
+                    onValueChange={chooseModel}
+                  />
+                </div>
+
+                {variants.length > 0 && (
+                  <div className="select-chip" title="Razonamiento">
+                    <BrainIcon />
+                    <Select
+                      aria-label="Razonamiento"
+                      value={effectiveVariant || ""}
+                      placeholder="predeterminado"
+                      disabled={busy}
+                      options={variantSelectOptions}
+                      variant="chip"
+                      onValueChange={chooseVariant}
+                    />
+                  </div>
+                )}
+
+                <div className="select-chip" title="Agente">
+                  <AgentIcon />
+                  <Select
+                    aria-label="Agente"
+                    value={agentChoice}
+                    placeholder="Cargando agentes…"
+                    disabled={agents.length === 0 || busy}
+                    options={agentSelectOptions}
+                    variant="chip"
+                    onValueChange={chooseAgent}
+                  />
+                </div>
+
+                {busy ? (
+                  <button
+                    type="button"
+                    className="send-button stop"
+                    title="Parar"
+                    aria-label="Parar"
+                    onClick={() => void stop()}
+                  >
+                    <StopIcon />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="send-button"
+                    title="Enviar"
+                    aria-label="Enviar"
+                    disabled={!canSend}
+                  >
+                    <ArrowUpIcon />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </form>
-    </section>
+        </form>
+      </section>
+    </div>
   );
 }
 

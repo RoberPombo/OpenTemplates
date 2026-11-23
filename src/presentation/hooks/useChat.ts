@@ -36,6 +36,12 @@ import {
   eventRequestsReload,
   initialChatStreamState,
 } from "../../domain/chat/stream";
+import {
+  eventTouchesSessionList,
+  sortSessionsByRecent,
+  toSessionSummaries,
+  type SessionSummary,
+} from "../../domain/chat/sessions";
 
 type UseChatInput = {
   client: ChatServer;
@@ -57,6 +63,8 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
 
   const [sessionId, setSessionId] = useState<string | null>(() => root.preferences.get(storageKey));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -134,6 +142,66 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     }
   }, [client, sessionId, storageKey, root]);
 
+  const refreshSessions = useCallback(async () => {
+    try {
+      const response = await client.session.list({
+        directory: workspace.projectPath,
+        limit: 100,
+      });
+      setSessions(sortSessionsByRecent(toSessionSummaries(response.data)));
+      setSessionsError(null);
+    } catch (err) {
+      setSessionsError(errorText(err));
+    }
+  }, [client, workspace.projectPath]);
+
+  useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
+
+  const selectSession = useCallback(
+    (id: string) => {
+      if (id === sessionId) return;
+      root.preferences.set(storageKey, id);
+      setSessionId(id);
+      setMessages([]);
+      dispatch({ kind: "reset" });
+    },
+    [sessionId, storageKey, root],
+  );
+
+  const renameSession = useCallback(
+    async (id: string, title: string) => {
+      const next = title.trim();
+      if (!next) return;
+      try {
+        await client.session.update({ sessionID: id, title: next });
+        await refreshSessions();
+      } catch (err) {
+        setSessionsError(errorText(err));
+      }
+    },
+    [client, refreshSessions],
+  );
+
+  const deleteSession = useCallback(
+    async (id: string) => {
+      try {
+        await client.session.remove({ sessionID: id });
+        if (id === sessionId) {
+          root.preferences.remove(storageKey);
+          setSessionId(null);
+          setMessages([]);
+          dispatch({ kind: "reset" });
+        }
+        await refreshSessions();
+      } catch (err) {
+        setSessionsError(errorText(err));
+      }
+    },
+    [client, sessionId, storageKey, root, refreshSessions],
+  );
+
   const loadPendingRequests = useCallback(
     async (id: string) => {
       try {
@@ -193,6 +261,7 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
         if (!alive) return;
         setSessionId(session.id);
         root.preferences.set(storageKey, session.id);
+        void refreshSessions();
       } catch (err) {
         if (alive) dispatch({ kind: "error", error: errorText(err) });
       }
@@ -200,7 +269,7 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     return () => {
       alive = false;
     };
-  }, [client, sessionId, storageKey, workspace.name, workspace.projectPath, root]);
+  }, [client, sessionId, storageKey, workspace.name, workspace.projectPath, root, refreshSessions]);
 
   // Catálogo de modelos y agentes del workspace.
   useEffect(() => {
@@ -351,6 +420,9 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
           if (eventRequestsReload(event, sessionId)) {
             void reload().finally(() => dispatch({ kind: "streamCleared" }));
           }
+          if (eventTouchesSessionList(event)) {
+            void refreshSessions();
+          }
         }
       } catch (err) {
         if (alive && !abort.signal.aborted) {
@@ -362,7 +434,7 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
       alive = false;
       abort.abort();
     };
-  }, [client, sessionId, reload]);
+  }, [client, sessionId, reload, refreshSessions]);
 
   const chooseModel = useCallback(
     (key: string) => {
@@ -494,6 +566,8 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
   return {
     sessionId,
     messages,
+    sessions,
+    sessionsError,
     permissions,
     forms,
     requestError,
@@ -522,6 +596,9 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     send,
     stop,
     newConversation,
+    selectSession,
+    renameSession,
+    deleteSession,
     replyPermission,
     replyForm,
     cancelForm,

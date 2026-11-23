@@ -470,6 +470,134 @@ p {
   background: var(--bg);
 }
 
+/* Sesiones */
+
+.chat-shell {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sessions-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 248px;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.sessions-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.sessions-head > span:first-child {
+  flex: 1;
+}
+
+.sessions-tools {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sessions-tools .text-input {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.session-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.session-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.session-row.active {
+  background: #1a222c;
+  border-color: #2a3542;
+}
+
+.session-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.session-title {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-meta {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.session-actions {
+  display: flex;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.session-row:hover .session-actions,
+.session-row:focus-within .session-actions {
+  opacity: 1;
+}
+
+.session-actions .icon-button {
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+}
+
+.session-rename {
+  padding: 5px 8px;
+  font-size: 12.5px;
+}
+
+.sessions-empty {
+  padding: 12px;
+}
+
+.sessions-error {
+  margin: 8px 10px;
+  font-size: 11.5px;
+}
+
 .messages {
   display: flex;
   flex-direction: column;

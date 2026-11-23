@@ -13,6 +13,7 @@ import type { AgentForm, FormAnswer } from "../chat/forms";
 import type { RawSessionMessage } from "../chat/messages";
 import type { PermissionDecision, PermissionRequest } from "../chat/permissions";
 import type { CatalogAgent, CatalogModel } from "../chat/selection";
+import type { RawSessionSummary } from "../chat/sessions";
 import type { UsageLimits } from "../chat/usage";
 
 export type ServerLocation = { directory: string };
@@ -34,6 +35,13 @@ export type ChatServerEvent = ChatGatewayEvent & {
 
 export interface ChatGateway {
   session: {
+    list(input: {
+      directory: string;
+      limit?: number;
+      search?: string;
+    }): Promise<{ data: unknown[] }>;
+    update(input: { sessionID: string; title: string }): Promise<unknown>;
+    remove(input: { sessionID: string }): Promise<unknown>;
     create(input: { location: ServerLocation; title?: string }): Promise<{ id: string }>;
     get(input: { sessionID: string }): Promise<{ cost?: number } | null>;
     prompt(input: { sessionID: string; text: string }): Promise<unknown>;
@@ -102,6 +110,13 @@ export interface ChatGateway {
 
 /** Payloads estrechados por el adaptador opencode para la presentación. */
 export interface ChatServer extends ChatGateway {
+  session: Omit<ChatGateway["session"], "list"> & {
+    list(input: {
+      directory: string;
+      limit?: number;
+      search?: string;
+    }): Promise<{ data: RawSessionSummary[] }>;
+  };
   message: {
     list(input: {
       sessionID: string;
