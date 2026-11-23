@@ -13,6 +13,15 @@ import type { CatalogAgent, CatalogModel } from "../domain/chat/selection";
 import type { ModelCost, ModelDetails } from "../domain/models/details";
 import type { RawSessionSummary } from "../domain/chat/sessions";
 import type { UsageBudget, UsageLimits, UsageMeter } from "../domain/chat/usage";
+import type {
+  FileChange,
+  FileChangeStatus,
+  FileChangeSummary,
+  FileContent,
+  FileEntryType,
+  FileTreeEntry,
+} from "../domain/workspace/changes";
+import { decodeFileContent } from "../domain/workspace/changes";
 import type { ChatServerEvent } from "../domain/repositories/ChatGateway";
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -257,6 +266,66 @@ export function toRawSessionSummaries(payload: unknown): RawSessionSummary[] {
       },
     ];
   });
+}
+
+function toChangeStatus(value: unknown): FileChangeStatus | undefined {
+  return value === "added" || value === "deleted" || value === "modified" ? value : undefined;
+}
+
+/**
+ * Ficheros de `session.diff`/`vcs.diff` con su parche. La forma es la misma en
+ * ambos endpoints (`FileDiff.Info`): el parche puede venir vacío si el servidor
+ * solo lista el estado.
+ */
+export function toFileChanges(payload: unknown): FileChange[] {
+  return list(payload).flatMap((item) => {
+    const change = record(item);
+    const file = text(change?.file);
+    const status = toChangeStatus(change?.status);
+    if (!change || !file || !status) return [];
+    const summary: FileChangeSummary = {
+      file,
+      additions: count(change.additions) ?? 0,
+      deletions: count(change.deletions) ?? 0,
+      status,
+    };
+    return [
+      {
+        ...summary,
+        patch: text(change.patch) ?? "",
+        ...(change.more === true ? { more: true } : {}),
+      },
+    ];
+  });
+}
+
+/** Ficheros de `vcs.status`: mismo estado y contadores, sin parche. */
+export function toFileChangeSummaries(payload: unknown): FileChangeSummary[] {
+  return toFileChanges(payload).map(({ file, additions, deletions, status }) => ({
+    file,
+    additions,
+    deletions,
+    status,
+  }));
+}
+
+function toEntryType(value: unknown): FileEntryType | undefined {
+  return value === "file" || value === "directory" ? value : undefined;
+}
+
+/** Hijos de una carpeta (`file.list`), con la ruta relativa que devuelve el servidor. */
+export function toFileTreeEntries(payload: unknown): FileTreeEntry[] {
+  return list(payload).flatMap((item) => {
+    const entry = record(item);
+    const path = text(entry?.path);
+    const type = toEntryType(entry?.type);
+    return path && type ? [{ path, type }] : [];
+  });
+}
+
+/** Contenido de `file.read`: el SDK entrega bytes; aquí se decide texto o binario. */
+export function toFileContent(payload: unknown): FileContent {
+  return decodeFileContent(payload);
 }
 
 function toPermissionSource(value: unknown): PermissionSource | undefined {

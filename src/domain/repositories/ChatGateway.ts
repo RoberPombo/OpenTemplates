@@ -15,6 +15,12 @@ import type { PermissionDecision, PermissionRequest } from "../chat/permissions"
 import type { CatalogAgent, CatalogModel } from "../chat/selection";
 import type { RawSessionSummary } from "../chat/sessions";
 import type { UsageLimits } from "../chat/usage";
+import type {
+  FileChange,
+  FileChangeSummary,
+  FileContent,
+  FileTreeEntry,
+} from "../workspace/changes";
 
 export type ServerLocation = { directory: string };
 
@@ -44,6 +50,12 @@ export interface ChatGateway {
     remove(input: { sessionID: string }): Promise<unknown>;
     create(input: { location: ServerLocation; title?: string }): Promise<{ id: string }>;
     get(input: { sessionID: string }): Promise<{ cost?: number } | null>;
+    diff(input: {
+      sessionID: string;
+      from?: string;
+      to?: string;
+      context?: number;
+    }): Promise<{ data: unknown[] }>;
     prompt(input: { sessionID: string; text: string }): Promise<unknown>;
     interrupt(input: { sessionID: string }): Promise<unknown>;
     switchModel(input: {
@@ -72,9 +84,18 @@ export interface ChatGateway {
     get(input: {
       location: ServerLocation;
     }): Promise<{ data: { branch: { current?: string | null } } }>;
-    status(input: {
+    status(input: { location: ServerLocation }): Promise<{ data: unknown[] }>;
+    diff(input: {
       location: ServerLocation;
-    }): Promise<{ data: { additions: number; deletions: number }[] }>;
+      mode: "working" | "branch" | "committed";
+      base?: string;
+      context?: number;
+      untracked?: "files" | "folders";
+    }): Promise<{ data: unknown[] }>;
+  };
+  file: {
+    list(input: { location?: ServerLocation; path?: string }): Promise<{ data: unknown[] }>;
+    read(input: { location?: ServerLocation; path: string }): Promise<{ data: unknown }>;
   };
   usage: {
     limits(): Promise<{ data: unknown }>;
@@ -110,12 +131,18 @@ export interface ChatGateway {
 
 /** Payloads estrechados por el adaptador opencode para la presentación. */
 export interface ChatServer extends ChatGateway {
-  session: Omit<ChatGateway["session"], "list"> & {
+  session: Omit<ChatGateway["session"], "list" | "diff"> & {
     list(input: {
       directory: string;
       limit?: number;
       search?: string;
     }): Promise<{ data: RawSessionSummary[] }>;
+    diff(input: {
+      sessionID: string;
+      from?: string;
+      to?: string;
+      context?: number;
+    }): Promise<{ data: FileChange[] }>;
   };
   message: {
     list(input: {
@@ -132,6 +159,20 @@ export interface ChatServer extends ChatGateway {
   };
   agent: {
     list(input: { location: ServerLocation }): Promise<{ data: CatalogAgent[] }>;
+  };
+  vcs: Omit<ChatGateway["vcs"], "status" | "diff"> & {
+    status(input: { location: ServerLocation }): Promise<{ data: FileChangeSummary[] }>;
+    diff(input: {
+      location: ServerLocation;
+      mode: "working" | "branch" | "committed";
+      base?: string;
+      context?: number;
+      untracked?: "files" | "folders";
+    }): Promise<{ data: FileChange[] }>;
+  };
+  file: {
+    list(input: { location?: ServerLocation; path?: string }): Promise<{ data: FileTreeEntry[] }>;
+    read(input: { location?: ServerLocation; path: string }): Promise<{ data: FileContent }>;
   };
   usage: {
     limits(): Promise<{ data: UsageLimits | null }>;
