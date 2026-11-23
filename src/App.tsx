@@ -28,6 +28,7 @@ function App() {
     groups,
     startingId,
     notice,
+    unseen,
     fatal,
     select,
     start,
@@ -35,6 +36,7 @@ function App() {
     remove,
     updated,
     created,
+    markUnseen,
     setNotice,
     setRepos,
     setTemplates,
@@ -93,6 +95,14 @@ function App() {
           </span>
         </span>
         {isRunning && <span className="live-label">live</span>}
+        {unseen[workspace.id] > 0 && (
+          <span
+            className="unseen-badge"
+            title={`${unseen[workspace.id]} aviso${unseen[workspace.id] === 1 ? "" : "s"} sin ver`}
+          >
+            {unseen[workspace.id]}
+          </span>
+        )}
       </button>
     );
   }
@@ -160,6 +170,7 @@ function App() {
             onStop={() => void stop(selected.id)}
             onDelete={() => void remove(selected.id)}
             onUpdated={updated}
+            onWorkspaceActivity={markUnseen}
           />
         ) : (
           <div className="start-pane">

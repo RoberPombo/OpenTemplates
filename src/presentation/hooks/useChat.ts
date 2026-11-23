@@ -5,7 +5,7 @@
  * El reducer de eventos es dominio (`domain/chat/stream`); aquí quedan los
  * efectos secundarios (I/O, preferencias y ciclo de vida de React).
  */
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import type { Workspace } from "../../types";
@@ -43,6 +43,13 @@ import {
   initialChatStreamState,
 } from "../../domain/chat/stream";
 import {
+  decideNotification,
+  describeNotification,
+  eventSessionId,
+  isThrottledKind,
+  notificationsEnabled,
+} from "../../domain/chat/notifications";
+import {
   eventTouchesSessionList,
   sortSessionsByRecent,
   toSessionSummaries,
@@ -53,6 +60,8 @@ type UseChatInput = {
   client: ChatServer;
   workspace: Workspace;
   onSessionChange?: (sessionId: string | null) => void;
+  /** Marca actividad de este workspace terminada sin foco (aviso en el sidebar). */
+  onWorkspaceActivity?: (workspaceId: string) => void;
 };
 
 function errorText(error: unknown): string {
@@ -60,7 +69,7 @@ function errorText(error: unknown): string {
   return baseErrorText(error);
 }
 
-export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
+export function useChat({ client, workspace, onSessionChange, onWorkspaceActivity }: UseChatInput) {
   const root = useAppContext();
   const storageKey = prefKeys.session(workspace.id);
   const modelStorageKey = prefKeys.model(workspace.id);
@@ -83,6 +92,10 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
   const [forms, setForms] = useState<AgentForm[]>([]);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestBusy, setRequestBusy] = useState<string | null>(null);
+  // Avisos: último turno avisado por sesión y permisos ya avisados (sin repetir).
+  const lastNotifiedAt = useRef<Record<string, number>>({});
+  const notifiedRequests = useRef<Set<string>>(new Set());
+  const sessionsRef = useRef<SessionSummary[]>([]);
 
   const [stream, dispatch] = useReducer(chatStreamReducer, undefined, () =>
     initialChatStreamState({
@@ -172,6 +185,10 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
   useEffect(() => {
     void refreshSessions();
   }, [refreshSessions]);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   const selectSession = useCallback(
     (id: string) => {
@@ -435,11 +452,45 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
           signal: abort.signal,
         })) {
           if (!alive) break;
+          // Aviso nativo y marca del sidebar: se evalúa con el foco actual.
+          const now = Date.now();
+          const focused = typeof document === "undefined" ? true : document.hasFocus();
+          const eventSession = eventSessionId(event);
+          const sessionTitle = eventSession
+            ? (sessionsRef.current.find((item) => item.id === eventSession)?.title ?? null)
+            : null;
+          const context = {
+            workspace: { id: workspace.id, name: workspace.name },
+            sessionTitle,
+          };
+          const activity = describeNotification(event, context);
+          if (activity && !focused) onWorkspaceActivity?.(workspace.id);
+          const payload = decideNotification(event, context, {
+            enabled: notificationsEnabled(root.preferences.get(prefKeys.notifications)),
+            focused,
+            now,
+            lastNotifiedAt: activity ? (lastNotifiedAt.current[activity.sessionId] ?? null) : null,
+          });
+          const duplicate = Boolean(
+            payload?.requestId && notifiedRequests.current.has(payload.requestId),
+          );
+          if (payload && !duplicate) {
+            if (payload.requestId) notifiedRequests.current.add(payload.requestId);
+            if (isThrottledKind(payload.kind)) {
+              lastNotifiedAt.current[payload.sessionId] = now;
+            }
+            void root.notifications.notify({
+              title: payload.title,
+              body: payload.body,
+              workspaceId: payload.workspaceId,
+            });
+          }
           const permission = event.permission;
           if (permission && permission.sessionID === sessionId) {
             setPermissions((prev) => upsertPermissionRequest(prev, permission));
           }
           const permissionReply = event.permissionReply;
+          if (permissionReply) notifiedRequests.current.delete(permissionReply.requestID);
           if (permissionReply && permissionReply.sessionID === sessionId) {
             setPermissions((prev) => removePermissionRequest(prev, permissionReply.requestID));
           }
@@ -448,6 +499,7 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
             setForms((prev) => upsertAgentForm(prev, form));
           }
           const formSettled = event.formSettled;
+          if (formSettled) notifiedRequests.current.delete(formSettled.formID);
           if (formSettled && formSettled.sessionID === sessionId) {
             setForms((prev) => removeAgentForm(prev, formSettled.formID));
           }
@@ -469,7 +521,16 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
       alive = false;
       abort.abort();
     };
-  }, [client, sessionId, reload, refreshSessions]);
+  }, [
+    client,
+    sessionId,
+    reload,
+    refreshSessions,
+    root,
+    workspace.id,
+    workspace.name,
+    onWorkspaceActivity,
+  ]);
 
   const chooseModel = useCallback(
     (key: string) => {
