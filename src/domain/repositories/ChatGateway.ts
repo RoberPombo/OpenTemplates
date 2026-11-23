@@ -9,6 +9,7 @@
  * tipos del dominio, sin casts en los componentes. Los datos opacos (eventos,
  * configuración MCP) siguen en `unknown`.
  */
+import type { ChatCommand, ChatSkill } from "../chat/commands";
 import type { AgentForm, FormAnswer } from "../chat/forms";
 import type { RawSessionMessage } from "../chat/messages";
 import type { PermissionDecision, PermissionRequest } from "../chat/permissions";
@@ -56,7 +57,13 @@ export interface ChatGateway {
       to?: string;
       context?: number;
     }): Promise<{ data: unknown[] }>;
-    prompt(input: { sessionID: string; text: string }): Promise<unknown>;
+    prompt(input: { sessionID: string; text: string; skills?: { id: string }[] }): Promise<unknown>;
+    command(input: {
+      sessionID: string;
+      name: string;
+      text: string;
+      skills?: { id: string }[];
+    }): Promise<unknown>;
     interrupt(input: { sessionID: string }): Promise<unknown>;
     switchModel(input: {
       sessionID: string;
@@ -78,6 +85,12 @@ export interface ChatGateway {
     }): Promise<{ data: { providerID: string; id: string } | null }>;
   };
   agent: {
+    list(input: { location: ServerLocation }): Promise<{ data: unknown[] }>;
+  };
+  command: {
+    list(input: { location: ServerLocation }): Promise<{ data: unknown[] }>;
+  };
+  skill: {
     list(input: { location: ServerLocation }): Promise<{ data: unknown[] }>;
   };
   vcs: {
@@ -159,6 +172,12 @@ export interface ChatServer extends ChatGateway {
   };
   agent: {
     list(input: { location: ServerLocation }): Promise<{ data: CatalogAgent[] }>;
+  };
+  command: {
+    list(input: { location: ServerLocation }): Promise<{ data: ChatCommand[] }>;
+  };
+  skill: {
+    list(input: { location: ServerLocation }): Promise<{ data: ChatSkill[] }>;
   };
   vcs: Omit<ChatGateway["vcs"], "status" | "diff"> & {
     status(input: { location: ServerLocation }): Promise<{ data: FileChangeSummary[] }>;

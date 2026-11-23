@@ -1,13 +1,22 @@
-import { useEffect, useMemo, useRef } from "react";
+// oxlint-disable jsx-a11y/prefer-tag-over-role -- El textarea del composer es un combobox con aria-activedescendant.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import type { Workspace } from "../../types";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import { folderName, formatDuration } from "../../domain/shared";
+import {
+  detectSlashTrigger,
+  filterChatMenu,
+  stripSlashTrigger,
+  type ChatMenuItem,
+} from "../../domain/chat/commands";
 import type { ToolActivity } from "../../domain/chat/messages";
 import { useChat } from "../hooks/useChat";
 import { Markdown } from "./Markdown";
 import { ModelInfoCard } from "./ModelInfoCard";
 import { RequestDock } from "./RequestDock";
 import { SessionsPanel } from "./SessionsPanel";
+import { SLASH_MENU_ID, SlashMenu, slashOptionId } from "./SlashMenu";
 import { AsyncSearchableSelect, Select } from "./ui";
 
 type Props = {
@@ -46,6 +55,10 @@ export function Chat({ client, workspace, onSessionChange, sessionsOpen, onClose
     setInput,
     models,
     agents,
+    commands,
+    skills,
+    command,
+    selectedSkills,
     streaming,
     busy,
     liveTools,
@@ -62,6 +75,10 @@ export function Chat({ client, workspace, onSessionChange, sessionsOpen, onClose
     chooseModel,
     chooseVariant,
     chooseAgent,
+    chooseCommand,
+    clearCommand,
+    chooseSkill,
+    removeSkill,
     send,
     stop,
     newConversation,
@@ -75,6 +92,93 @@ export function Chat({ client, workspace, onSessionChange, sessionsOpen, onClose
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [caret, setCaret] = useState(0);
+  const [menuStart, setMenuStart] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [pendingCaret, setPendingCaret] = useState<number | null>(null);
+
+  const trigger = useMemo(() => detectSlashTrigger(input, caret), [input, caret]);
+  const menuOpen = trigger !== null && menuStart === trigger.start;
+  const menuGroups = useMemo(
+    () => filterChatMenu(commands, skills, trigger?.query ?? ""),
+    [commands, skills, trigger?.query],
+  );
+  const menuItems = useMemo(() => menuGroups.flatMap((group) => group.items), [menuGroups]);
+  const activeItem =
+    menuItems.length === 0
+      ? null
+      : (menuItems[Math.min(activeIndex, menuItems.length - 1)] ?? null);
+  const resultCount = menuItems.length;
+  const resultLabel =
+    resultCount === 0
+      ? "Sin resultados"
+      : `${resultCount} ${resultCount === 1 ? "resultado" : "resultados"}${
+          trigger?.query ? ` para «${trigger.query}»` : ""
+        }`;
+
+  useEffect(() => {
+    if (pendingCaret === null) return;
+    const element = textareaRef.current;
+    if (!element) return;
+    element.focus();
+    element.setSelectionRange(pendingCaret, pendingCaret);
+    setPendingCaret(null);
+  }, [pendingCaret, input]);
+
+  const chooseMenuItem = useCallback(
+    (item: ChatMenuItem) => {
+      if (!trigger) return;
+      setInput(stripSlashTrigger(input, trigger));
+      setCaret(trigger.start);
+      setPendingCaret(trigger.start);
+      if (item.kind === "command") chooseCommand(item.command);
+      else chooseSkill(item.skill);
+      setMenuStart(null);
+      setActiveIndex(0);
+    },
+    [chooseCommand, chooseSkill, input, setInput, trigger],
+  );
+
+  function syncTrigger(value: string, position: number) {
+    const next = detectSlashTrigger(value, position);
+    setMenuStart(next ? next.start : null);
+    if (next) setActiveIndex(0);
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (menuOpen) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuStart(null);
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((prev) => (menuItems.length === 0 ? 0 : (prev + 1) % menuItems.length));
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((prev) =>
+          menuItems.length === 0 ? 0 : (prev - 1 + menuItems.length) % menuItems.length,
+        );
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        if (activeItem) chooseMenuItem(activeItem);
+        else {
+          setMenuStart(null);
+          void send();
+        }
+        return;
+      }
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void send();
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -234,22 +338,80 @@ export function Chat({ client, workspace, onSessionChange, sessionsOpen, onClose
                 </span>
               )}
             </div>
+            {(command || selectedSkills.length > 0) && (
+              <div className="composer-tokens">
+                {command && (
+                  <span className="composer-token command">
+                    <TerminalIcon />
+                    <span className="composer-token-name">/{command.name}</span>
+                    <button
+                      type="button"
+                      className="composer-token-remove"
+                      aria-label={`Quitar comando /${command.name}`}
+                      onClick={clearCommand}
+                    >
+                      <CloseIcon />
+                    </button>
+                  </span>
+                )}
+                {selectedSkills.map((skill) => (
+                  <span className="composer-token skill" key={skill.id}>
+                    <SparkIcon />
+                    <span className="composer-token-name">{skill.name}</span>
+                    <button
+                      type="button"
+                      className="composer-token-remove"
+                      aria-label={`Quitar skill ${skill.name}`}
+                      onClick={() => removeSkill(skill.id)}
+                    >
+                      <CloseIcon />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {menuOpen && (
+              <SlashMenu
+                groups={menuGroups}
+                activeKey={activeItem?.key ?? null}
+                query={trigger?.query ?? ""}
+                onHover={(key) => {
+                  const index = menuItems.findIndex((item) => item.key === key);
+                  if (index >= 0) setActiveIndex(index);
+                }}
+                onChoose={chooseMenuItem}
+              />
+            )}
+            <output className="sr-only" aria-live="polite">
+              {menuOpen ? resultLabel : ""}
+            </output>
             <textarea
               ref={textareaRef}
               value={input}
               rows={1}
+              role="combobox"
+              aria-label="Mensaje"
+              aria-expanded={menuOpen}
+              aria-autocomplete="list"
+              aria-controls={menuOpen ? SLASH_MENU_ID : undefined}
+              aria-activedescendant={
+                menuOpen && activeItem ? slashOptionId(activeItem.key) : undefined
+              }
               placeholder={
                 sessionId
-                  ? "Planifica, construye o pregunta. @ menciona archivos, / usa comandos"
+                  ? "Planifica, construye o pregunta. @ menciona archivos, / comandos y skills"
                   : "Preparando sesión…"
               }
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void send();
-                }
+              onChange={(event) => {
+                const value = event.target.value;
+                const position = event.target.selectionStart ?? value.length;
+                setInput(value);
+                setCaret(position);
+                syncTrigger(value, position);
               }}
+              onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+              onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+              onKeyDown={handleComposerKeyDown}
             />
             <div className="composer-bar">
               <div className="composer-context">
@@ -472,6 +634,14 @@ function PlusIcon() {
   return (
     <svg {...iconProps()}>
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg {...iconProps()}>
+      <path d="M6 6l12 12M18 6 6 18" />
     </svg>
   );
 }

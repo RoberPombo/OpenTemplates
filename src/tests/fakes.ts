@@ -93,6 +93,8 @@ export type FakeClientOptions = {
   messages?: unknown[];
   models?: unknown[];
   agents?: unknown[];
+  commands?: unknown[];
+  skillsCatalog?: unknown[];
   defaultModel?: { providerID: string; id: string } | null;
   branch?: string | null;
   sessions?: unknown[];
@@ -148,6 +150,7 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       }),
       create: vi.fn(async () => ({ id: `s${++sessionCounter}` })),
       prompt: vi.fn(async () => undefined),
+      command: vi.fn(async () => undefined),
       interrupt: vi.fn(async () => undefined),
       switchModel: vi.fn(async () => undefined),
       switchAgent: vi.fn(async () => undefined),
@@ -167,6 +170,12 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
     },
     agent: {
       list: vi.fn(async () => ({ data: agents })),
+    },
+    command: {
+      list: vi.fn(async () => ({ data: options.commands ?? [] })),
+    },
+    skill: {
+      list: vi.fn(async () => ({ data: options.skillsCatalog ?? [] })),
     },
     vcs: {
       get: vi.fn(async () => ({ data: { branch: { current: options.branch ?? null } } })),

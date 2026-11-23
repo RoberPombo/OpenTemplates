@@ -200,6 +200,22 @@ Implementado (fases 1-4 + wizard básico):
   `file.read` entrega `Uint8Array`. `file.watch` se deja fuera: el refresco por
   fin de turno ya cubre el caso y evita duplicar watchers por workspace.
 
+- **Comandos y skills en el composer**: al escribir `/` al principio o tras un
+  espacio se abre un menú con los comandos del servidor (`command.list`) y las
+  skills que el workspace permite (`skill.list` filtrado por `workspace.skills`
+  y `disabledSkills`). Tiene filtro incremental (sin distinguir mayúsculas ni
+  acentos), navegación con flechas, Enter para elegir, Escape para cerrar y
+  anuncio del filtro para lectores de pantalla; el textarea actúa como
+  `combobox` con `aria-activedescendant` sobre el `listbox`. El comando elegido
+  queda como chip y se envía con `session.command({name, text})`; las skills
+  seleccionadas se adjuntan como `skills: [{id}]`. Si solo se elige una skill,
+  se envía con `session.prompt` y la misma lista `skills`. La lógica pura vive
+  en `domain/chat/commands.ts` y el estrechado en `data/opencodePayloads.ts`.
+  Verificado contra opencode v2.3.0 real: `command.list` devuelve
+  `{name, description}`; `session.command` expande `$ARGUMENTS` y adjunta el
+  contenido de las skills; `session.prompt` acepta la misma lista. Los comandos
+  personalizados se descubren en `<ws>/xdg/opencode/command/*.md` (singular).
+
 Pendiente de las fases 5-8:
 
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).

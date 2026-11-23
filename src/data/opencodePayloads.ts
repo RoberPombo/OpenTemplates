@@ -6,6 +6,7 @@
  * estructurales del dominio. Ante un payload inválido devuelven una entrada
  * vacía en vez de romper la UI.
  */
+import type { ChatCommand, ChatSkill } from "../domain/chat/commands";
 import type { AgentForm, FormField, FormOption, FormWhen } from "../domain/chat/forms";
 import type { RawPart, RawSessionMessage } from "../domain/chat/messages";
 import type { PermissionRequest, PermissionSource } from "../domain/chat/permissions";
@@ -509,6 +510,40 @@ export function toFormSettled(payload: unknown): { sessionID: string; formID: st
   const formID = text(data?.id);
   if (!sessionID || !formID) return null;
   return { sessionID, formID };
+}
+
+/**
+ * Comandos de `command.list`. Descarta entradas sin nombre y conserva la
+ * descripción solo cuando el servidor la trae.
+ */
+export function toChatCommands(value: unknown): ChatCommand[] {
+  const seen = new Set<string>();
+  return list(value).flatMap((item) => {
+    const entry = record(item);
+    const name = text(entry?.name)?.trim();
+    if (!name || seen.has(name)) return [];
+    seen.add(name);
+    const description = text(entry?.description)?.trim();
+    return [description ? { name, description } : { name }];
+  });
+}
+
+/**
+ * Skills de `skill.list`. El catálogo descubre más skills de las que el
+ * workspace permite; el filtro por selección se hace en dominio. Se deduplica
+ * por id porque opencode puede listar la misma skill desde varias raíces.
+ */
+export function toChatSkills(value: unknown): ChatSkill[] {
+  const seen = new Set<string>();
+  return list(value).flatMap((item) => {
+    const entry = record(item);
+    const id = text(entry?.id)?.trim();
+    if (!id || seen.has(id)) return [];
+    seen.add(id);
+    const name = text(entry?.name)?.trim() || id;
+    const description = text(entry?.description)?.trim();
+    return [description ? { id, name, description } : { id, name }];
+  });
 }
 
 /**

@@ -104,6 +104,153 @@ describe("Chat — envío", () => {
   });
 });
 
+describe("Chat — comandos y skills", () => {
+  const commands = [
+    { name: "review", description: "Revisa cambios" },
+    { name: "init", description: "Prepara AGENTS.md" },
+  ];
+
+  test("abre el menú con «/», filtra, navega con flechas y elige con Enter", async () => {
+    const user = userEvent.setup();
+    const { client } = renderChat({ commands });
+    await ready(client);
+    await waitFor(() => expect(client.command.list).toHaveBeenCalled());
+    const textarea = screen.getByPlaceholderText(/Planifica/);
+
+    await user.type(textarea, "/");
+    expect(await screen.findByRole("listbox", { name: "Comandos y skills" })).toBeInTheDocument();
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "/initcomandoPrepara AGENTS.md",
+      "/reviewcomandoRevisa cambios",
+    ]);
+    expect(textarea).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("2 resultados");
+
+    await user.type(textarea, "review");
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
+    expect(screen.getByRole("status")).toHaveTextContent("1 resultado para «review»");
+
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(await screen.findByLabelText("Quitar comando /review")).toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).toBeNull();
+
+    await user.type(textarea, "rama main");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() =>
+      expect(client.session.command).toHaveBeenCalledWith({
+        sessionID: "s1",
+        name: "review",
+        text: "rama main",
+      }),
+    );
+    expect(client.session.prompt).not.toHaveBeenCalled();
+  });
+
+  test("un comando escrito a mano se envía con session.command", async () => {
+    const user = userEvent.setup();
+    const { client } = renderChat({ commands });
+    await ready(client);
+    await waitFor(() => expect(client.command.list).toHaveBeenCalled());
+
+    await user.type(screen.getByPlaceholderText(/Planifica/), "/review rama main");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() =>
+      expect(client.session.command).toHaveBeenCalledWith({
+        sessionID: "s1",
+        name: "review",
+        text: "rama main",
+      }),
+    );
+    expect(client.session.prompt).not.toHaveBeenCalled();
+  });
+
+  test("Escape cierra el menú sin enviar", async () => {
+    const user = userEvent.setup();
+    const { client } = renderChat({ commands });
+    await ready(client);
+    await waitFor(() => expect(client.command.list).toHaveBeenCalled());
+
+    await user.type(screen.getByPlaceholderText(/Planifica/), "/");
+    expect(await screen.findByRole("listbox")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(client.session.prompt).not.toHaveBeenCalled();
+    expect(client.session.command).not.toHaveBeenCalled();
+  });
+
+  test("ofrece las skills permitidas y las envía como adjuntas al comando", async () => {
+    const user = userEvent.setup();
+    const workspace = makeWorkspace({
+      skills: [
+        { id: "testing", path: "/skills/testing" },
+        { id: "prohibida", path: "/skills/prohibida" },
+      ],
+      disabledSkills: ["prohibida"],
+    });
+    const { client } = renderChat(
+      {
+        commands,
+        skillsCatalog: [
+          { id: "testing", name: "Testing", description: "Diseña pruebas" },
+          { id: "prohibida", name: "Prohibida", description: "No disponible" },
+        ],
+      },
+      workspace,
+    );
+    await ready(client);
+    await waitFor(() => expect(client.skill.list).toHaveBeenCalled());
+
+    const textarea = screen.getByPlaceholderText(/Planifica/);
+    await user.type(textarea, "/");
+    const listbox = await screen.findByRole("listbox");
+    expect(listbox).toHaveTextContent("Skills");
+    expect(screen.getByRole("option", { name: /Testing/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Prohibida/ })).toBeNull();
+
+    await user.click(screen.getByRole("option", { name: /review/i }));
+    await user.type(textarea, "/test");
+    await user.click(await screen.findByRole("option", { name: /Testing/ }));
+    expect(await screen.findByLabelText("Quitar skill Testing")).toBeInTheDocument();
+
+    await user.type(textarea, "revisa esto");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() =>
+      expect(client.session.command).toHaveBeenCalledWith({
+        sessionID: "s1",
+        name: "review",
+        text: "revisa esto",
+        skills: [{ id: "testing" }],
+      }),
+    );
+  });
+
+  test("una skill sin comando se envía con session.prompt y skills", async () => {
+    const user = userEvent.setup();
+    const workspace = makeWorkspace({ skills: [{ id: "testing", path: "/skills/testing" }] });
+    const { client } = renderChat(
+      { skillsCatalog: [{ id: "testing", name: "Testing", description: "Diseña pruebas" }] },
+      workspace,
+    );
+    await ready(client);
+    await waitFor(() => expect(client.skill.list).toHaveBeenCalled());
+
+    const textarea = screen.getByPlaceholderText(/Planifica/);
+    await user.type(textarea, "/testing");
+    await user.click(await screen.findByRole("option", { name: /Testing/ }));
+    await user.type(textarea, "prueba esto");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+
+    await waitFor(() =>
+      expect(client.session.prompt).toHaveBeenCalledWith({
+        sessionID: "s1",
+        text: "prueba esto",
+        skills: [{ id: "testing" }],
+      }),
+    );
+    expect(client.session.command).not.toHaveBeenCalled();
+  });
+});
+
 describe("Chat — streaming", () => {
   test("execution.started muestra Pensando, los deltas se acumulan y idle recarga", async () => {
     const { client, hub } = renderChat();

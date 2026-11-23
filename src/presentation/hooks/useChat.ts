@@ -11,6 +11,12 @@ import { prefKeys } from "../../domain/repositories/Preferences";
 import type { Workspace } from "../../types";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import { errorText as baseErrorText } from "../../domain/shared";
+import {
+  resolveCommandInvocation,
+  selectWorkspaceSkills,
+  type ChatCommand,
+  type ChatSkill,
+} from "../../domain/chat/commands";
 import { toChatMessages, type ChatMessage } from "../../domain/chat/messages";
 import {
   removeAgentForm,
@@ -69,6 +75,10 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
   const [sending, setSending] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [commands, setCommands] = useState<ChatCommand[]>([]);
+  const [skillCatalog, setSkillCatalog] = useState<ChatSkill[]>([]);
+  const [command, setCommand] = useState<ChatCommand | null>(null);
+  const [selectedSkills, setSelectedSkills] = useState<ChatSkill[]>([]);
   const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
   const [forms, setForms] = useState<AgentForm[]>([]);
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -100,6 +110,10 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
   const effectiveVariant = useMemo(
     () => supportedVariant(variant, selectedModel),
     [selectedModel, variant],
+  );
+  const skills = useMemo(
+    () => selectWorkspaceSkills(skillCatalog, workspace.skills, workspace.disabledSkills),
+    [skillCatalog, workspace.skills, workspace.disabledSkills],
   );
 
   const modelName = useCallback(
@@ -233,6 +247,8 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
   useEffect(() => {
     setSessionId(root.preferences.get(storageKey));
     setMessages([]);
+    setCommand(null);
+    setSelectedSkills([]);
     dispatch({
       kind: "workspaceChanged",
       modelChoice: root.preferences.get(modelStorageKey) ?? "",
@@ -318,6 +334,25 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     agentStorageKey,
     root,
   ]);
+
+  // Catálogo de comandos y skills del servidor. Si falla, el composer sigue
+  // funcionando: sin comandos y con las skills seleccionadas por id.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const location = { directory: workspace.projectPath };
+      const [commandResponse, skillResponse] = await Promise.allSettled([
+        client.command.list({ location }),
+        client.skill.list({ location }),
+      ]);
+      if (!alive) return;
+      setCommands(commandResponse.status === "fulfilled" ? commandResponse.value.data : []);
+      setSkillCatalog(skillResponse.status === "fulfilled" ? skillResponse.value.data : []);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [client, workspace.projectPath]);
 
   useEffect(() => {
     if (modelChoice) root.preferences.set(modelStorageKey, modelChoice);
@@ -452,12 +487,35 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     dispatch({ kind: "choices", agentChoice: id });
   }, []);
 
+  const chooseCommand = useCallback((next: ChatCommand) => {
+    setCommand(next);
+  }, []);
+
+  const clearCommand = useCallback(() => setCommand(null), []);
+
+  const chooseSkill = useCallback((skill: ChatSkill) => {
+    setSelectedSkills((prev) =>
+      prev.some((item) => item.id === skill.id) ? prev : [...prev, skill],
+    );
+  }, []);
+
+  const removeSkill = useCallback((id: string) => {
+    setSelectedSkills((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
   async function send() {
     const text = input.trim();
-    if (!text || sending || busy || !sessionId) return;
+    const invocation = resolveCommandInvocation({ text, selected: command, commands });
+    if ((!text && !invocation) || sending || busy || !sessionId) return;
     setSending(true);
     dispatch({ kind: "error", error: null });
+    const attachedSkills = selectedSkills.map((skill) => ({ id: skill.id }));
+    const bubbleText = invocation
+      ? `/${invocation.command.name}${invocation.args ? ` ${invocation.args}` : ""}`
+      : text;
     setInput("");
+    setCommand(null);
+    setSelectedSkills([]);
     try {
       const id = sessionId;
       setMessages((prev) => [
@@ -465,7 +523,7 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
         {
           id: `local-${Date.now()}`,
           role: "user",
-          text,
+          text: bubbleText,
           reasoning: "",
           tools: [],
           created: Date.now(),
@@ -477,7 +535,20 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
       } catch (err) {
         dispatch({ kind: "error", error: errorText(err) });
       }
-      await client.session.prompt({ sessionID: id, text });
+      if (invocation) {
+        await client.session.command({
+          sessionID: id,
+          name: invocation.command.name,
+          text: invocation.args,
+          ...(attachedSkills.length > 0 ? { skills: attachedSkills } : {}),
+        });
+      } else {
+        await client.session.prompt({
+          sessionID: id,
+          text,
+          ...(attachedSkills.length > 0 ? { skills: attachedSkills } : {}),
+        });
+      }
     } catch (err) {
       dispatch({ kind: "error", error: errorText(err) });
       dispatch({ kind: "busy", busy: false });
@@ -577,6 +648,10 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     sending,
     models,
     agents,
+    commands,
+    skills,
+    command,
+    selectedSkills,
     streaming,
     busy,
     liveTools,
@@ -589,10 +664,14 @@ export function useChat({ client, workspace, onSessionChange }: UseChatInput) {
     modelGroups,
     modelName,
     agentName,
-    canSend: Boolean(input.trim() && sessionId && !sending && !busy),
+    canSend: Boolean((input.trim() || command) && sessionId && !sending && !busy),
     chooseModel,
     chooseVariant,
     chooseAgent,
+    chooseCommand,
+    clearCommand,
+    chooseSkill,
+    removeSkill,
     send,
     stop,
     newConversation,
