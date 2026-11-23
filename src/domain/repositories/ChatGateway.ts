@@ -21,6 +21,7 @@ import type {
   SessionTransferMessage,
 } from "../chat/transfer";
 import type { UsageLimits, UsageStatsInput, WorkspaceStats } from "../chat/usage";
+import type { McpServerStatus } from "../chat/mcp";
 import type {
   FileChange,
   FileChangeSummary,
@@ -43,6 +44,7 @@ export type ChatServerEvent = ChatGatewayEvent & {
   permissionReply?: { sessionID: string; requestID: string };
   form?: AgentForm;
   formSettled?: { sessionID: string; formID: string };
+  mcp?: { server: string };
 };
 
 export interface ChatGateway {
@@ -141,11 +143,12 @@ export interface ChatGateway {
     cancel(input: { sessionID: string; formID: string; message?: string }): Promise<unknown>;
   };
   mcp: {
-    list(input: {
-      location: ServerLocation;
-    }): Promise<{ data: { name: string; status: unknown }[] }>;
+    list(input: { location: ServerLocation }): Promise<{ data: McpServerStatus[] }>;
     add(input: { server: string; config: unknown; location: ServerLocation }): Promise<unknown>;
     remove(input: { server: string; location: ServerLocation }): Promise<unknown>;
+    /** Reconecta en caliente sin reescribir la config ni recargar la location. */
+    connect(input: { server: string; location: ServerLocation }): Promise<unknown>;
+    disconnect(input: { server: string; location: ServerLocation }): Promise<unknown>;
   };
   location: {
     reload(): Promise<unknown>;

@@ -17,6 +17,7 @@ import {
   toFileChanges,
   toFileContent,
   toFileTreeEntries,
+  toMcpServerStatuses,
   toPermissionRequests,
   toRawSessionSummaries,
   toServerEvent,
@@ -133,15 +134,18 @@ export function createChatGateway(server: ServerInfo): ChatServer {
       cancel: (input) => sdk.session.form.cancel(input),
     },
     mcp: {
-      list: async (input) => {
-        const response = await sdk.mcp.list(input);
-        return { data: response.data.map((item) => ({ name: item.name, status: item.status })) };
-      },
+      list: async (input) => ({
+        data: toMcpServerStatuses(await sdk.mcp.list(input)),
+      }),
       // El SDK tipa `mcp.add` con una unión discriminada experimental, pero la
       // app reenvía la config opaca que devuelve mcp.list (McpInfo.config). La
       // coerción vive aquí, en la frontera.
       add: (input) => sdk.mcp.add(input as Parameters<typeof sdk.mcp.add>[0]),
       remove: (input) => sdk.mcp.remove(input),
+      // Conectar/desconectar en caliente vive en `experimental.mcp`; los
+      // métodos de `mcp` están deprecados en el SDK 2.3.2.
+      connect: (input) => sdk.experimental.mcp.connect(input),
+      disconnect: (input) => sdk.experimental.mcp.disconnect(input),
     },
     location: sdk.location,
     event: {

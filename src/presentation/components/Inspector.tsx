@@ -3,6 +3,12 @@ import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { notificationsEnabled } from "../../domain/chat/notifications";
 import {
+  mcpAction,
+  mcpStateLabel,
+  readableMcpError,
+  type McpServerStatus,
+} from "../../domain/chat/mcp";
+import {
   activityBars,
   budgetAlertMessage,
   budgetDay,
@@ -81,19 +87,7 @@ function resetText(at: number) {
   return `en ${Math.round(hours / 24)} d`;
 }
 
-function statusOf(status: unknown) {
-  if (typeof status === "string") return status;
-  const value = (status as { status?: string } | null)?.status;
-  return value ?? "unknown";
-}
-
-function statusTone(status: string) {
-  if (status === "connected") return "ok";
-  if (status === "failed") return "bad";
-  if (status === "needs_auth" || status === "pending") return "warn";
-  return "";
-}
-
+/* El estado de cada MCP se normaliza en domain/chat/mcp. */
 function Bar({ ratio }: { ratio: number | null }) {
   const value = ratio === null ? 0 : Math.max(0, Math.min(1, ratio));
   return (
@@ -127,7 +121,7 @@ export function Inspector({
   const [session, setSession] = useState<SessionUsage | null>(null);
   const [usage, setUsage] = useState<UsageLimits | null>(null);
   const [models, setModels] = useState<CatalogModel[]>([]);
-  const [statuses, setStatuses] = useState<Record<string, string>>({});
+  const [statuses, setStatuses] = useState<Record<string, McpServerStatus>>({});
   const [resources, setResources] = useState<ResourceUsage | null>(null);
   const [savingMcp, setSavingMcp] = useState<string | null>(null);
   const [savingSkill, setSavingSkill] = useState<string | null>(null);
@@ -201,13 +195,35 @@ export function Inspector({
     }
 
     if (mcpList.status === "fulfilled") {
-      const next: Record<string, string> = {};
-      for (const item of mcpList.value.data) next[item.name] = statusOf(item.status);
-      setStatuses(next);
+      setStatuses(Object.fromEntries(mcpList.value.data.map((item) => [item.name, item])));
     }
 
     setResources(resourcesNow.status === "fulfilled" ? resourcesNow.value : null);
   }, [client, location, server.pid, root]);
+  const refreshMcp = useCallback(async () => {
+    try {
+      const result = await client.mcp.list({ location });
+      setStatuses(Object.fromEntries(result.data.map((item) => [item.name, item])));
+    } catch {
+      // El servidor puede estar parando; el siguiente ciclo reintenta.
+    }
+  }, [client, location]);
+  // `mcp.status.changed` avisa cuando un servidor se conecta, falla o cierra:
+  // se relee el estado sin esperar al sondeo de 5 s.
+  useEffect(() => {
+    const abort = new AbortController();
+    (async () => {
+      try {
+        for await (const event of client.event.subscribe({ signal: abort.signal })) {
+          if (event.type !== "mcp.status.changed") continue;
+          await refreshMcp();
+        }
+      } catch {
+        // El cierre de la suscripción no es un error de la vista.
+      }
+    })();
+    return () => abort.abort();
+  }, [client, refreshMcp]);
 
   const refreshSession = useCallback(async () => {
     if (!sessionId) {
@@ -353,6 +369,20 @@ export function Inspector({
     }
   }
 
+  /** Conecta o desconecta en caliente; no reescribe config ni recarga la location. */
+  async function toggleMcpRuntime(name: string, action: "connect" | "disconnect") {
+    setSavingMcp(name);
+    setError(null);
+    try {
+      if (action === "connect") await client.mcp.connect({ server: name, location });
+      else await client.mcp.disconnect({ server: name, location });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      await refreshMcp();
+      setSavingMcp(null);
+    }
+  }
   async function toggleSkill(skill: SkillRef, enabled: boolean) {
     setSavingSkill(skill.id);
     setError(null);
@@ -376,23 +406,54 @@ export function Inspector({
   function mcpRow(name: string) {
     const enabled = !workspace.disabledMcps.includes(name);
     const status = statuses[name];
+    const state = status?.state ?? "unknown";
+    const action = mcpAction(state);
+    const mcpError = readableMcpError(status?.error);
     return (
-      <div className="inspector-switch-row" key={name}>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          aria-label={`${enabled ? "Desactivar" : "Activar"} ${name}`}
-          className={`switch ${enabled ? "on" : ""}`}
-          disabled={savingMcp !== null}
-          onClick={() => void toggleMcp(name, !enabled)}
-        >
-          <span />
-        </button>
-        <span className="inspector-switch-label" title={name}>
-          {name}
-        </span>
-        {status && <span className={`inspector-dot ${statusTone(status)}`} title={status} />}
+      <div className="inspector-mcp-row" key={name}>
+        <div className="inspector-switch-row">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label={`${enabled ? "Desactivar" : "Activar"} ${name}`}
+            className={`switch ${enabled ? "on" : ""}`}
+            disabled={savingMcp !== null}
+            onClick={() => void toggleMcp(name, !enabled)}
+          >
+            <span />
+          </button>
+          <span className="inspector-switch-label" title={status?.title ?? name}>
+            {name}
+          </span>
+          <span className={`mcp-status ${state}`} title={mcpStateLabel(state)}>
+            {mcpStateLabel(state)}
+          </span>
+          {enabled && (
+            <button
+              type="button"
+              className="ghost mcp-action"
+              disabled={savingMcp !== null}
+              title={
+                action === "connect"
+                  ? `Conectar ${name} sin reaplicar el template`
+                  : `Desconectar ${name} sin borrar su configuración`
+              }
+              onClick={() => void toggleMcpRuntime(name, action)}
+            >
+              {action === "connect"
+                ? state === "failed"
+                  ? "Reintentar"
+                  : "Conectar"
+                : "Desconectar"}
+            </button>
+          )}
+        </div>
+        {mcpError && (
+          <p className="mcp-error" title={status?.error}>
+            {mcpError}
+          </p>
+        )}
       </div>
     );
   }

@@ -11,6 +11,7 @@ import type { AgentForm, FormField, FormOption, FormWhen } from "../domain/chat/
 import type { RawPart, RawSessionMessage } from "../domain/chat/messages";
 import type { PermissionRequest, PermissionSource } from "../domain/chat/permissions";
 import type { CatalogAgent, CatalogModel } from "../domain/chat/selection";
+import type { McpServerStatus, McpState } from "../domain/chat/mcp";
 import type { ModelCost, ModelDetails } from "../domain/models/details";
 import type { RawSessionSummary } from "../domain/chat/sessions";
 import type { SessionTransfer } from "../domain/chat/transfer";
@@ -32,6 +33,7 @@ import type {
   FileTreeEntry,
 } from "../domain/workspace/changes";
 import { decodeFileContent } from "../domain/workspace/changes";
+import type { TerminalInfo } from "../domain/terminal/terminals";
 import type { ChatServerEvent } from "../domain/repositories/ChatGateway";
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -652,6 +654,85 @@ export function toChatSkills(value: unknown): ChatSkill[] {
 }
 
 /**
+ * PTY de `pty.create`/`pty.get`. El SDK envuelve la respuesta en
+ * `{location,data}`; se acepta también el objeto suelto.
+ */
+export function toTerminalInfo(payload: unknown): TerminalInfo | null {
+  const wrapper = record(payload);
+  const info = record(wrapper && "data" in wrapper ? wrapper.data : payload);
+  if (!info) return null;
+  const id = text(info.id);
+  if (!id) return null;
+  const status = info.status === "exited" ? "exited" : "running";
+  return {
+    id,
+    title: text(info.title) ?? "Terminal",
+    status,
+    cwd: text(info.cwd) ?? "",
+    pid: count(info.pid) ?? 0,
+    exitCode: count(info.exitCode),
+  };
+}
+
+/** Lista de PTYs de `pty.list`, incluidos los terminados sin borrar. */
+export function toTerminalInfos(payload: unknown): TerminalInfo[] {
+  const entries = Array.isArray(payload) ? payload : list(record(payload)?.data);
+  return entries.flatMap((item) => {
+    const info = toTerminalInfo(item);
+    return info ? [info] : [];
+  });
+}
+
+/** Ticket efímero de `pty.connect.token`; el servidor lo gasta al conectar. */
+export function toTerminalTicket(payload: unknown): { ticket: string; expiresIn: number } | null {
+  const wrapper = record(payload);
+  const data = record(wrapper && "data" in wrapper ? wrapper.data : payload);
+  const ticket = text(data?.ticket);
+  if (!ticket) return null;
+  return { ticket, expiresIn: count(data?.expires_in) ?? 0 };
+}
+
+function toMcpState(value: unknown): McpState {
+  switch (value) {
+    case "connected":
+    case "pending":
+    case "disabled":
+    case "failed":
+    case "unknown":
+      return value;
+    case "needs_auth":
+    case "needsAuth":
+      return "needs_auth";
+    default:
+      return "unknown";
+  }
+}
+
+/**
+ * Servidores de `mcp.list`. El estado llega como unión etiquetada
+ * (`{status, error?}`); se aplana a un tipo estable para la UI.
+ */
+export function toMcpServerStatuses(payload: unknown): McpServerStatus[] {
+  const entries = Array.isArray(payload) ? payload : list(record(payload)?.data);
+  return entries.flatMap((item) => {
+    const server = record(item);
+    const name = text(server?.name);
+    if (!name) return [];
+    const status = server?.status;
+    const detail = record(status);
+    const state = toMcpState(typeof status === "string" ? status : detail?.status);
+    return [
+      {
+        name,
+        state,
+        error: text(detail?.error) ?? undefined,
+        title: text(server?.title),
+      },
+    ];
+  });
+}
+
+/**
  * Estrecha los eventos que la presentación consume tipados. El resto se deja
  * intacto: el reducer de streaming sigue leyendo `data` como `unknown`.
  */
@@ -673,6 +754,10 @@ export function toServerEvent(event: { type: string; data?: unknown }): ChatServ
     case "form.cancelled": {
       const formSettled = toFormSettled(event.data);
       return formSettled ? { ...event, formSettled } : event;
+    }
+    case "mcp.status.changed": {
+      const server = text(record(event.data)?.server);
+      return server ? { ...event, mcp: { server } } : event;
     }
     default:
       return event;
