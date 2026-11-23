@@ -238,6 +238,31 @@ Implementado (fases 1-4 + wizard básico):
   cubren la sesión activa de ese workspace; para el resto haría falta un
   suscriptor global por servidor.
 
+- **Consumo acumulado por workspace**: la sección «Uso» del Inspector pasa a
+  «Consumo del workspace» y consulta `session.stats` con selector de rango
+  (7 días, 30 días o total), coste, tokens de entrada/salida/caché, sesiones,
+  prompts, pasos/subagentes, días activos, racha, barras de actividad por día
+  (últimos 30 días activos) y desglose por modelo ordenado por coste. Los
+  límites del proveedor (`usage.limits`) quedan en su propia sección para no
+  mezclar el gasto del workspace con las cuotas de la cuenta. Verificado contra
+  opencode v2.3.0 real: `session.stats({from, to, timezone, tools})` devuelve
+  `{range, sessions, subagents, prompts, steps, tokens{input, output, reasoning,
+  cache{read, write}}, cost, tools, activeDays, streak, activity[{date, steps}],
+  models[{model{id, providerID}, steps, tokens, cost}]}`; `from`/`to` son epoch
+  en ms, `tools: "none"` evita el detalle de tools y `total` omite los extremos.
+  La agregación y el formato viven en `domain/chat/usage.ts`
+  (`usageStatsInput`, `activityBars`, `sortModelUsage`, `formatCost`,
+  `formatTokens`, `formatCount`) y el estrechado en
+  `data/opencodePayloads.ts`; sin dependencias de gráficas.
+- **Presupuesto mensual por workspace**: campo opcional en «Ajustes del
+  workspace» persistido en la preferencia existente
+  `opentemplates:budget:<workspaceId>` (no crea store nuevo ni toca la config
+  del servidor). El Inspector muestra el gasto frente al umbral, avisa al 80 %
+  y al superarlo, y reutiliza las notificaciones nativas de la PR #35: como
+  mucho un aviso por umbral y día (`opentemplates:budget-alert:<workspaceId>:<umbral>`),
+  solo con la preferencia de avisos activa y la ventana sin foco. Si el coste
+  salta varios umbrales a la vez se envía solo el mayor y se marcan todos.
+
 Pendiente de las fases 5-8:
 
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).
