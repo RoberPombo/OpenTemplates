@@ -86,6 +86,9 @@ Todo lo marcado como disponible en SDK existe ya en `@opencode/client` 2.3.2
 | 7 | Coste y uso por workspace acumulado | El Inspector da la sesión; falta serie temporal y presupuesto por template | `session.stats`, `usage.limits` | S |
 | 8 | Export/import y fork de sesión | Compartir una sesión reproducible entre templates/workspaces | `session.export/import/fork` | S |
 
+Estado: la fase 1 (#1–#8) está implementada; ver `docs/handoff.md` para el detalle
+y las limitaciones verificadas de cada entrega.
+
 ### Fase 2 — el diferenciador propio
 
 | # | Feature | Por qué encaja | API | Esfuerzo |

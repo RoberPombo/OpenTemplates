@@ -2,12 +2,14 @@ import { vi } from "vitest";
 import type { Workspace } from "../types";
 import type { AgentForm } from "../domain/chat/forms";
 import type { PermissionRequest } from "../domain/chat/permissions";
+import type { SessionTransfer } from "../domain/chat/transfer";
 import type { WorkspaceStats } from "../domain/chat/usage";
 import type {
   NotificationGateway,
   NotificationInput,
   NotificationPermission,
 } from "../domain/repositories/NotificationGateway";
+import type { SaveSessionFileResult, SessionFiles } from "../domain/repositories/SessionFiles";
 import { toServerEvent } from "../data/opencodePayloads";
 
 /** Workspace mínimo para tests. */
@@ -112,6 +114,10 @@ export type FakeClientOptions = {
   vcsDiff?: unknown[];
   fileEntries?: Record<string, unknown[]>;
   fileContents?: Record<string, unknown>;
+  exportTransfer?: SessionTransfer;
+  exportError?: unknown;
+  importError?: unknown;
+  forkError?: unknown;
 };
 
 /**
@@ -156,6 +162,47 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
         sessionList = sessionList.filter((session) => session.id !== input.sessionID);
       }),
       create: vi.fn(async () => ({ id: `s${++sessionCounter}` })),
+      export: vi.fn(async (input: { sessionID: string; sanitize?: boolean }) => {
+        if (options.exportError) throw options.exportError;
+        if (options.exportTransfer) return options.exportTransfer;
+        const source = sessionList.find((session) => session.id === input.sessionID);
+        return {
+          info: {
+            id: input.sessionID,
+            title: (source?.title as string | undefined) ?? "Sesión",
+            location: { directory: "/tmp/demo" },
+          },
+          messages: [],
+        };
+      }),
+      import: vi.fn(async (input: { info: { id: string; title?: string } }) => {
+        if (options.importError) throw options.importError;
+        sessionList = [
+          ...sessionList,
+          {
+            id: input.info.id,
+            title: input.info.title,
+            cost: 0,
+            time: { created: 5, updated: 5 },
+          },
+        ];
+        return { id: input.info.id };
+      }),
+      fork: vi.fn(async (input: { sessionID: string; before?: string }) => {
+        if (options.forkError) throw options.forkError;
+        const id = `fork${++sessionCounter}`;
+        const source = sessionList.find((session) => session.id === input.sessionID);
+        sessionList = [
+          ...sessionList,
+          {
+            id,
+            title: `${(source?.title as string | undefined) ?? "Sesión"} (fork)`,
+            cost: 0,
+            time: { created: 6, updated: 6 },
+          },
+        ];
+        return { id };
+      }),
       prompt: vi.fn(async () => undefined),
       command: vi.fn(async () => undefined),
       interrupt: vi.fn(async () => undefined),
@@ -224,4 +271,42 @@ export function makeNotificationGateway(permission: NotificationPermission = "gr
     requestPermission: vi.fn(async (): Promise<NotificationPermission> => permission),
     notify: vi.fn(async (_input: NotificationInput) => undefined),
   } satisfies NotificationGateway;
+}
+
+/**
+ * Ficheros de sesión fake: el diálogo devuelve lo que fije el test y las
+ * escrituras quedan registradas para inspeccionar el JSON.
+ */
+export function makeSessionFiles(
+  options: {
+    file?: { path: string; contents: string } | null;
+    saved?: SaveSessionFileResult["status"];
+  } = {},
+): SessionFiles & {
+  saved: string[];
+  saves: Array<{ suggestedName: string; contents: string; overwrite?: boolean }>;
+  setResult: (status: SaveSessionFileResult["status"]) => void;
+  save: ReturnType<typeof vi.fn>;
+  open: ReturnType<typeof vi.fn>;
+} {
+  let result = options.saved ?? "saved";
+  const saved: string[] = [];
+  const saves: Array<{ suggestedName: string; contents: string; overwrite?: boolean }> = [];
+  return {
+    saved,
+    saves,
+    setResult(status) {
+      result = status;
+    },
+    save: vi.fn(async (input: { suggestedName: string; contents: string; overwrite?: boolean }) => {
+      saves.push(input);
+      if (result === "cancelled") return { status: "cancelled" } as SaveSessionFileResult;
+      if (result === "exists" && !input.overwrite) {
+        return { status: "exists", path: "/tmp/sesion.json" } as SaveSessionFileResult;
+      }
+      saved.push(input.contents);
+      return { status: "saved", path: "/tmp/sesion.json" } as SaveSessionFileResult;
+    }),
+    open: vi.fn(async () => options.file ?? null),
+  };
 }

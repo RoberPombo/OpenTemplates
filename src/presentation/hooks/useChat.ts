@@ -55,6 +55,14 @@ import {
   toSessionSummaries,
   type SessionSummary,
 } from "../../domain/chat/sessions";
+import {
+  createSessionFile,
+  importErrorMessage,
+  parseSessionFile,
+  prepareImport,
+  serializeSessionFile,
+  suggestedSessionFileName,
+} from "../../domain/chat/transfer";
 
 type UseChatInput = {
   client: ChatServer;
@@ -80,6 +88,7 @@ export function useChat({ client, workspace, onSessionChange, onWorkspaceActivit
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [sessionsNotice, setSessionsNotice] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -193,6 +202,7 @@ export function useChat({ client, workspace, onSessionChange, onWorkspaceActivit
   const selectSession = useCallback(
     (id: string) => {
       if (id === sessionId) return;
+      setSessionsNotice(null);
       root.preferences.set(storageKey, id);
       setSessionId(id);
       setMessages([]);
@@ -231,6 +241,81 @@ export function useChat({ client, workspace, onSessionChange, onWorkspaceActivit
       }
     },
     [client, sessionId, storageKey, root, refreshSessions],
+  );
+
+  const exportSession = useCallback(
+    async (id: string, sanitize: boolean) => {
+      setSessionsError(null);
+      setSessionsNotice(null);
+      const title = sessionsRef.current.find((session) => session.id === id)?.title ?? "";
+      try {
+        const transfer = await client.session.export({ sessionID: id, sanitize });
+        const contents = serializeSessionFile(createSessionFile(transfer, { sanitized: sanitize }));
+        const suggestedName = suggestedSessionFileName(title);
+        let result = await root.sessionFiles.save({ suggestedName, contents });
+        if (result.status === "exists") {
+          const overwrite = root.confirm.confirm(
+            `Ya existe un archivo en ${result.path}. ¿Sobrescribirlo?`,
+          );
+          if (!overwrite) return;
+          result = await root.sessionFiles.save({ suggestedName, contents, overwrite: true });
+        }
+        if (result.status === "saved") {
+          setSessionsNotice(`Sesión exportada en ${result.path}`);
+        }
+      } catch (err) {
+        setSessionsError(errorText(err));
+      }
+    },
+    [client, root],
+  );
+
+  const importSession = useCallback(async () => {
+    setSessionsError(null);
+    setSessionsNotice(null);
+    try {
+      const picked = await root.sessionFiles.open();
+      if (!picked) return;
+      const parsed = parseSessionFile(picked.contents);
+      if (!parsed.ok) {
+        setSessionsError(parsed.error);
+        return;
+      }
+      const payload = prepareImport(parsed.file, {
+        directory: workspace.projectPath,
+        title: `Importada · ${workspace.name}`,
+      });
+      try {
+        const created = await client.session.import(payload);
+        await refreshSessions();
+        selectSession(created.id);
+        setSessionsNotice(`Sesión importada desde ${picked.path}`);
+      } catch (err) {
+        setSessionsError(importErrorMessage(err, payload.info.id));
+      }
+    } catch (err) {
+      setSessionsError(errorText(err));
+    }
+  }, [client, root, refreshSessions, selectSession, workspace.name, workspace.projectPath]);
+
+  const forkSession = useCallback(
+    async (id: string, before?: string) => {
+      if (busy) {
+        setSessionsError("Espera a que termine el turno en curso para duplicar la sesión.");
+        return;
+      }
+      setSessionsError(null);
+      setSessionsNotice(null);
+      try {
+        const created = await client.session.fork({ sessionID: id, before });
+        await refreshSessions();
+        selectSession(created.id);
+        setSessionsNotice(before ? "Sesión duplicada hasta ese mensaje." : "Sesión duplicada.");
+      } catch (err) {
+        setSessionsError(errorText(err));
+      }
+    },
+    [busy, client, refreshSessions, selectSession],
   );
 
   const loadPendingRequests = useCallback(
@@ -633,6 +718,7 @@ export function useChat({ client, workspace, onSessionChange, onWorkspaceActivit
     root.preferences.remove(storageKey);
     setSessionId(null);
     setMessages([]);
+    setSessionsNotice(null);
     dispatch({ kind: "reset" });
   }
 
@@ -700,6 +786,7 @@ export function useChat({ client, workspace, onSessionChange, onWorkspaceActivit
     messages,
     sessions,
     sessionsError,
+    sessionsNotice,
     permissions,
     forms,
     requestError,
@@ -739,6 +826,9 @@ export function useChat({ client, workspace, onSessionChange, onWorkspaceActivit
     selectSession,
     renameSession,
     deleteSession,
+    exportSession,
+    importSession,
+    forkSession,
     replyPermission,
     replyForm,
     cancelForm,

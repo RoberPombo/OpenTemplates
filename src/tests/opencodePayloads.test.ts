@@ -15,6 +15,7 @@ import {
   toPermissionRequests,
   toServerEvent,
   toSessionMessages,
+  toSessionTransfer,
   toUsageLimits,
   toWorkspaceStats,
 } from "../data/opencodePayloads";
@@ -587,5 +588,38 @@ describe("toWorkspaceStats", () => {
     expect(toWorkspaceStats({})).toBeNull();
     expect(toWorkspaceStats({ range: { from: 1 } })).toBeNull();
     expect(toWorkspaceStats({ range: { from: "1", to: 2 } })).toBeNull();
+  });
+});
+
+describe("toSessionTransfer", () => {
+  test("conserva info y mensajes con id y tipo", () => {
+    expect(
+      toSessionTransfer({
+        info: { id: "ses_1", title: "Hola", location: { directory: "/tmp/demo" }, cost: 1 },
+        messages: [
+          { id: "msg_1", type: "user", text: "hola" },
+          { id: "msg_2", type: "assistant", content: [] },
+        ],
+      }),
+    ).toEqual({
+      info: { id: "ses_1", title: "Hola", location: { directory: "/tmp/demo" }, cost: 1 },
+      messages: [
+        { id: "msg_1", type: "user", text: "hola" },
+        { id: "msg_2", type: "assistant", content: [] },
+      ],
+    });
+  });
+
+  test("descarta mensajes sin id o tipo y tolera un payload vacío", () => {
+    expect(
+      toSessionTransfer({
+        info: { id: "ses_1" },
+        messages: [{ type: "user" }, { id: "msg_2" }, "basura"],
+      }).messages,
+    ).toEqual([]);
+    expect(toSessionTransfer(null)).toEqual({
+      info: { id: "", title: undefined, location: undefined },
+      messages: [],
+    });
   });
 });

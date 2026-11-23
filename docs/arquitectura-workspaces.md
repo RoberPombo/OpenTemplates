@@ -132,8 +132,15 @@ La biblioteca de skills de la app escanea como mínimo:
 - Cada workspace tiene su propia DB, así que su lista de sesiones es independiente.
 - Ambos procesos calculan el mismo `projectID` (misma carpeta). La app debe usar su
   propio `workspaceId` como clave de UI, no el `projectID` de opencode.
-- Mover una sesión entre workspaces no es parte del MVP; más adelante se puede
-  exportar/importar (`/api/experimental/session/export|import`).
+- Mover una sesión entre workspaces se hace exportando e importando
+  (`/api/experimental/session/{id}/export` y `/api/experimental/session/import`,
+  más `session.fork` para duplicar): el export sanea rutas y credenciales en
+  dominio, y el import reasocia la sesión a la carpeta del workspace de destino.
+  El `sanitize` del servidor no se usa: sustituye el título, la carpeta y todos
+  los textos por `[redacted:...]`, así que la sesión deja de ser legible.
+  Limitación verificada del servidor: reimportar una sesión en el mismo
+  workspace falla (409 si repite el id de sesión y 500 si repite los ids de
+  mensaje); la UI lo explica en vez de ocultarlo.
 
 ## Supervisor en Tauri
 

@@ -15,6 +15,11 @@ import type { RawSessionMessage } from "../chat/messages";
 import type { PermissionDecision, PermissionRequest } from "../chat/permissions";
 import type { CatalogAgent, CatalogModel } from "../chat/selection";
 import type { RawSessionSummary } from "../chat/sessions";
+import type {
+  SessionTransfer,
+  SessionTransferInfo,
+  SessionTransferMessage,
+} from "../chat/transfer";
 import type { UsageLimits, UsageStatsInput, WorkspaceStats } from "../chat/usage";
 import type {
   FileChange,
@@ -58,6 +63,13 @@ export interface ChatGateway {
       context?: number;
     }): Promise<{ data: unknown[] }>;
     stats(input?: UsageStatsInput): Promise<unknown>;
+    export(input: { sessionID: string; sanitize?: boolean }): Promise<unknown>;
+    import(input: {
+      info: unknown;
+      messages: unknown[];
+      location: ServerLocation;
+    }): Promise<unknown>;
+    fork(input: { sessionID: string; before?: string }): Promise<{ id: string }>;
     prompt(input: { sessionID: string; text: string; skills?: { id: string }[] }): Promise<unknown>;
     command(input: {
       sessionID: string;
@@ -145,7 +157,7 @@ export interface ChatGateway {
 
 /** Payloads estrechados por el adaptador opencode para la presentación. */
 export interface ChatServer extends ChatGateway {
-  session: Omit<ChatGateway["session"], "list" | "diff" | "stats"> & {
+  session: Omit<ChatGateway["session"], "list" | "diff" | "stats" | "export" | "import"> & {
     list(input: {
       directory: string;
       limit?: number;
@@ -158,6 +170,13 @@ export interface ChatServer extends ChatGateway {
       context?: number;
     }): Promise<{ data: FileChange[] }>;
     stats(input?: UsageStatsInput): Promise<{ data: WorkspaceStats | null }>;
+    /** Transferencia ya saneada si se pide; siempre lista para reimportar. */
+    export(input: { sessionID: string; sanitize?: boolean }): Promise<SessionTransfer>;
+    import(input: {
+      info: SessionTransferInfo;
+      messages: SessionTransferMessage[];
+      location: ServerLocation;
+    }): Promise<{ id: string }>;
   };
   message: {
     list(input: {

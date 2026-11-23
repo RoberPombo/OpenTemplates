@@ -18,6 +18,7 @@ import { WindowConfirmDialog } from "./data/WindowConfirmDialog";
 import { TauriFolderPicker } from "./data/TauriFolderPicker";
 import { TauriUpdateGateway } from "./data/TauriUpdateGateway";
 import { TauriNotificationGateway } from "./data/TauriNotificationGateway";
+import { TauriSessionFiles } from "./data/TauriSessionFiles";
 import { createChatGateway } from "./data/OpencodeChatGateway";
 import { DeleteWorkspace } from "./domain/usecases/DeleteWorkspace";
 import { CreateWorkspace } from "./domain/usecases/CreateWorkspace";
@@ -33,6 +34,7 @@ import type { NotificationGateway } from "./domain/repositories/NotificationGate
 import type { Preferences } from "./domain/repositories/Preferences";
 import type { RepoGateway } from "./domain/repositories/RepoGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
+import type { SessionFiles } from "./domain/repositories/SessionFiles";
 import type { TemplateGateway } from "./domain/repositories/TemplateGateway";
 import type { UpdateGateway } from "./domain/repositories/UpdateGateway";
 import type { WorkspaceGateway } from "./domain/repositories/WorkspaceGateway";
@@ -52,6 +54,7 @@ export type Ports = {
   folderPicker: FolderPicker;
   updates: UpdateGateway;
   notifications: NotificationGateway;
+  sessionFiles: SessionFiles;
 };
 
 export class CompositionRoot {
@@ -70,6 +73,7 @@ export class CompositionRoot {
   readonly folderPicker: FolderPicker;
   readonly updates: UpdateGateway;
   readonly notifications: NotificationGateway;
+  readonly sessionFiles: SessionFiles;
 
   constructor(overrides: Partial<Ports> = {}) {
     this.bootstrap = overrides.bootstrap ?? new TauriBootstrapGateway();
@@ -85,6 +89,7 @@ export class CompositionRoot {
     this.folderPicker = overrides.folderPicker ?? new TauriFolderPicker();
     this.updates = overrides.updates ?? new TauriUpdateGateway();
     this.notifications = overrides.notifications ?? new TauriNotificationGateway();
+    this.sessionFiles = overrides.sessionFiles ?? new TauriSessionFiles();
   }
 
   static getInstance(): CompositionRoot {
