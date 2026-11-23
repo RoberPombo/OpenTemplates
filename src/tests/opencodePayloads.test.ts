@@ -5,6 +5,8 @@ import {
   toAgentForms,
   toCatalogAgents,
   toCatalogModels,
+  toChatCommands,
+  toChatSkills,
   toFileChangeSummaries,
   toFileChanges,
   toFileContent,
@@ -436,6 +438,35 @@ describe("toFileChanges", () => {
     ]);
   });
 });
+describe("comandos y skills", () => {
+  test("estrecha command.list y descarta entradas sin nombre", () => {
+    expect(
+      toChatCommands([
+        { name: "review", description: "Revisa cambios" },
+        { name: "init" },
+        { description: "sin nombre" },
+        null,
+      ]),
+    ).toEqual([{ name: "review", description: "Revisa cambios" }, { name: "init" }]);
+    expect(toChatCommands(undefined)).toEqual([]);
+  });
+
+  test("estrecha skill.list, usa el id como nombre y deduplica por id", () => {
+    expect(
+      toChatSkills([
+        { id: "testing", name: "Testing", description: "Diseña pruebas" },
+        { id: "testing", name: "Testing repetida" },
+        { id: "sin-nombre" },
+        { name: "sin id" },
+      ]),
+    ).toEqual([
+      { id: "testing", name: "Testing", description: "Diseña pruebas" },
+      { id: "sin-nombre", name: "sin-nombre" },
+    ]);
+    expect(toChatSkills(null)).toEqual([]);
+  });
+});
+
 describe("ficheros", () => {
   test("mapea los hijos de una carpeta y descarta entradas inválidas", () => {
     expect(

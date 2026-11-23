@@ -10,6 +10,8 @@ import {
   toAgentForms,
   toCatalogAgents,
   toCatalogModels,
+  toChatCommands,
+  toChatSkills,
   toFileChangeSummaries,
   toFileChanges,
   toFileContent,
@@ -36,6 +38,7 @@ export function createChatGateway(server: ServerInfo): ChatServer {
         data: toFileChanges(await sdk.session.diff(input)),
       }),
       prompt: (input) => sdk.session.prompt(input),
+      command: (input) => sdk.session.command(input),
       interrupt: (input) => sdk.session.interrupt(input),
       switchModel: (input) => sdk.session.switchModel(input),
       switchAgent: (input) => sdk.session.switchAgent(input),
@@ -59,6 +62,16 @@ export function createChatGateway(server: ServerInfo): ChatServer {
     agent: {
       list: async (input) => ({
         data: toCatalogAgents((await sdk.agent.list(input)).data),
+      }),
+    },
+    command: {
+      list: async (input) => ({
+        data: toChatCommands((await sdk.command.list(input)).data),
+      }),
+    },
+    skill: {
+      list: async (input) => ({
+        data: toChatSkills((await sdk.skill.list(input)).data),
       }),
     },
     vcs: {
