@@ -1183,3 +1183,131 @@ pub fn save_settings(
     state.save()?;
     Ok(stored)
 }
+
+// ---------------------------------------------------------------------------
+// Ficheros de sesión
+// ---------------------------------------------------------------------------
+
+/// Tope de lectura: un export con muchas herramientas crece, pero no debe
+/// permitir cargar un fichero arbitrario en memoria.
+const SESSION_FILE_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Solo se leen y escriben ficheros `.json`; el diálogo nativo ya filtra, pero
+/// la ruta también puede llegar manipulada.
+fn session_file_path(raw: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(raw);
+    let is_json = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
+    if !is_json {
+        return Err("El archivo debe tener extensión .json".into());
+    }
+    Ok(path)
+}
+
+/// Escribe un export de sesión. Devuelve `false` si el fichero ya existe y no
+/// se pidió sobrescribir: el frontend pregunta y reintenta con `overwrite`.
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String, overwrite: bool) -> Result<bool, String> {
+    let path = session_file_path(&path)?;
+    if path.exists() && !overwrite {
+        return Ok(false);
+    }
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("No se pudo crear {}: {e}", parent.display()))?;
+    }
+    fs::write(&path, contents)
+        .map_err(|e| format!("No se pudo escribir {}: {e}", path.display()))?;
+    Ok(true)
+}
+
+/// Lee un export de sesión desde una ruta elegida en el diálogo nativo.
+#[tauri::command]
+pub fn read_text_file(path: String) -> Result<String, String> {
+    let path = session_file_path(&path)?;
+    let metadata =
+        fs::metadata(&path).map_err(|e| format!("No se pudo leer {}: {e}", path.display()))?;
+    if metadata.len() > SESSION_FILE_MAX_BYTES {
+        return Err(format!(
+            "El archivo supera el máximo de {} MiB",
+            SESSION_FILE_MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    fs::read_to_string(&path).map_err(|e| format!("No se pudo leer {}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "opentemplates-sesion-{label}-{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn escribe_y_lee_un_json() {
+        let dir = temp_dir("escribe");
+        let path = dir.join("sesion.json");
+        let contents = "{\"hola\":\"mundo\"}\n".to_string();
+
+        assert_eq!(
+            write_text_file(path.to_string_lossy().into(), contents.clone(), false),
+            Ok(true)
+        );
+        assert_eq!(read_text_file(path.to_string_lossy().into()), Ok(contents));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn no_sobrescribe_sin_permiso() {
+        let dir = temp_dir("sobrescribe");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sesion.json");
+        fs::write(&path, "previo").unwrap();
+
+        assert_eq!(
+            write_text_file(path.to_string_lossy().into(), "nuevo".into(), false),
+            Ok(false)
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "previo");
+
+        assert_eq!(
+            write_text_file(path.to_string_lossy().into(), "nuevo".into(), true),
+            Ok(true)
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "nuevo");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rechaza_extensiones_que_no_son_json() {
+        let dir = temp_dir("extension");
+        let path = dir.join("sesion.txt");
+
+        assert!(write_text_file(path.to_string_lossy().into(), "{}".into(), false).is_err());
+        assert!(read_text_file(path.to_string_lossy().into()).is_err());
+    }
+
+    #[test]
+    fn lee_extension_en_mayusculas() {
+        let dir = temp_dir("mayusculas");
+        let path = dir.join("sesion.JSON");
+        assert_eq!(
+            write_text_file(path.to_string_lossy().into(), "{}".into(), false),
+            Ok(true)
+        );
+        assert_eq!(
+            read_text_file(path.to_string_lossy().into()),
+            Ok("{}".to_string())
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
