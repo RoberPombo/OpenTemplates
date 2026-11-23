@@ -10,6 +10,10 @@ import {
   toAgentForms,
   toCatalogAgents,
   toCatalogModels,
+  toFileChangeSummaries,
+  toFileChanges,
+  toFileContent,
+  toFileTreeEntries,
   toPermissionRequests,
   toRawSessionSummaries,
   toServerEvent,
@@ -28,6 +32,9 @@ export function createChatGateway(server: ServerInfo): ChatServer {
     session: {
       create: (input) => sdk.session.create(input),
       get: (input) => sdk.session.get(input),
+      diff: async (input) => ({
+        data: toFileChanges(await sdk.session.diff(input)),
+      }),
       prompt: (input) => sdk.session.prompt(input),
       interrupt: (input) => sdk.session.interrupt(input),
       switchModel: (input) => sdk.session.switchModel(input),
@@ -54,7 +61,23 @@ export function createChatGateway(server: ServerInfo): ChatServer {
         data: toCatalogAgents((await sdk.agent.list(input)).data),
       }),
     },
-    vcs: sdk.vcs,
+    vcs: {
+      get: (input) => sdk.vcs.get(input),
+      status: async (input) => ({
+        data: toFileChangeSummaries((await sdk.vcs.status(input)).data),
+      }),
+      diff: async (input) => ({
+        data: toFileChanges((await sdk.vcs.diff(input)).data),
+      }),
+    },
+    file: {
+      list: async (input) => ({
+        data: toFileTreeEntries((await sdk.file.list(input)).data),
+      }),
+      read: async (input) => ({
+        data: toFileContent(await sdk.file.read(input)),
+      }),
+    },
     usage: {
       limits: async () => ({ data: toUsageLimits((await sdk.usage.limits()).data) }),
     },

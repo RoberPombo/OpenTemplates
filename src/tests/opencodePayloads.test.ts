@@ -5,6 +5,10 @@ import {
   toAgentForms,
   toCatalogAgents,
   toCatalogModels,
+  toFileChangeSummaries,
+  toFileChanges,
+  toFileContent,
+  toFileTreeEntries,
   toPermissionRequest,
   toPermissionRequests,
   toServerEvent,
@@ -362,5 +366,96 @@ describe("formularios", () => {
       toServerEvent({ type: "form.cancelled", data: { id: "frm_2", sessionID: "ses_1" } })
         .formSettled,
     ).toEqual({ sessionID: "ses_1", formID: "frm_2" });
+  });
+});
+describe("toFileChanges", () => {
+  test("mapea la forma real de session.diff y vcs.diff", () => {
+    const payload = [
+      {
+        file: "notas.txt",
+        patch: "diff --git a/notas.txt b/notas.txt\n@@ -1 +1 @@\n-dos\n+dos cambiado\n",
+        additions: 1,
+        deletions: 1,
+        status: "modified",
+      },
+      {
+        file: "nuevo.txt",
+        patch: "diff --git a/nuevo.txt b/nuevo.txt\n@@ -0,0 +1 @@\n+nuevo\n",
+        additions: 1,
+        deletions: 0,
+        status: "added",
+        more: true,
+      },
+    ];
+    expect(toFileChanges(payload)).toEqual([
+      {
+        file: "notas.txt",
+        patch: "diff --git a/notas.txt b/notas.txt\n@@ -1 +1 @@\n-dos\n+dos cambiado\n",
+        additions: 1,
+        deletions: 1,
+        status: "modified",
+      },
+      {
+        file: "nuevo.txt",
+        patch: "diff --git a/nuevo.txt b/nuevo.txt\n@@ -0,0 +1 @@\n+nuevo\n",
+        additions: 1,
+        deletions: 0,
+        status: "added",
+        more: true,
+      },
+    ]);
+  });
+  test("descarta entradas sin fichero o con estado desconocido y rellena huecos", () => {
+    expect(
+      toFileChanges([
+        null,
+        { status: "added" },
+        { file: "raro.txt", status: "renamed" },
+        { file: "sin-contadores.txt", status: "deleted", patch: 4 },
+      ]),
+    ).toEqual([
+      {
+        file: "sin-contadores.txt",
+        additions: 0,
+        deletions: 0,
+        status: "deleted",
+        patch: "",
+      },
+    ]);
+    expect(toFileChanges(undefined)).toEqual([]);
+  });
+  test("vcs.status comparte estado pero no arrastra el parche", () => {
+    expect(
+      toFileChangeSummaries([
+        { file: "a.ts", additions: 2, deletions: 1, status: "modified" },
+        { file: "b.ts", additions: 0, deletions: 3, status: "deleted" },
+      ]),
+    ).toEqual([
+      { file: "a.ts", additions: 2, deletions: 1, status: "modified" },
+      { file: "b.ts", additions: 0, deletions: 3, status: "deleted" },
+    ]);
+  });
+});
+describe("ficheros", () => {
+  test("mapea los hijos de una carpeta y descarta entradas inválidas", () => {
+    expect(
+      toFileTreeEntries([
+        { path: "src/", type: "directory" },
+        { path: "README.md", type: "file" },
+        null,
+        { path: "raro", type: "socket" },
+      ]),
+    ).toEqual([
+      { path: "src/", type: "directory" },
+      { path: "README.md", type: "file" },
+    ]);
+  });
+  test("decodifica el contenido de file.read", () => {
+    const content = toFileContent(new TextEncoder().encode("hola\n"));
+    expect(content).toMatchObject({ kind: "text", text: "hola\n", truncated: false });
+    expect(toFileContent(new Uint8Array([0, 1]))).toMatchObject({
+      kind: "binary",
+      text: "",
+    });
   });
 });

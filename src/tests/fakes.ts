@@ -98,6 +98,11 @@ export type FakeClientOptions = {
   sessions?: unknown[];
   permissions?: PermissionRequest[];
   forms?: AgentForm[];
+  sessionDiff?: unknown[];
+  vcsStatus?: unknown[];
+  vcsDiff?: unknown[];
+  fileEntries?: Record<string, unknown[]>;
+  fileContents?: Record<string, unknown>;
 };
 
 /**
@@ -147,6 +152,7 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       switchModel: vi.fn(async () => undefined),
       switchAgent: vi.fn(async () => undefined),
       get: vi.fn(async () => null),
+      diff: vi.fn(async () => ({ data: options.sessionDiff ?? [] })),
     },
     message: {
       list: vi.fn(async () => ({ data: messages })),
@@ -164,7 +170,16 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
     },
     vcs: {
       get: vi.fn(async () => ({ data: { branch: { current: options.branch ?? null } } })),
-      status: vi.fn(async () => ({ data: [] })),
+      status: vi.fn(async () => ({ data: options.vcsStatus ?? [] })),
+      diff: vi.fn(async () => ({ data: options.vcsDiff ?? [] })),
+    },
+    file: {
+      list: vi.fn(async (input?: { path?: string }) => ({
+        data: options.fileEntries?.[input?.path ?? ""] ?? [],
+      })),
+      read: vi.fn(async (input: { path: string }) => ({
+        data: options.fileContents?.[input.path] ?? "",
+      })),
     },
     event: {
       subscribe: vi.fn((opts?: { signal?: AbortSignal }) => narrowEvents(hub.subscribe(opts))),
