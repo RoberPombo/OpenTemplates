@@ -2103,6 +2103,125 @@ p {
   letter-spacing: 0;
 }
 
+.usage-range {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+
+.usage-range button {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.usage-range button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+}
+
+.usage-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px 0 6px;
+}
+
+.usage-total-value {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.inspector-subhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.usage-activity,
+.usage-models {
+  margin-top: 4px;
+}
+
+.usage-activity-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  gap: 6px;
+}
+
+.usage-activity-row .inspector-bar {
+  margin: 2px 0;
+}
+
+.usage-activity-day,
+.usage-activity-count {
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-activity-count {
+  text-align: right;
+}
+
+.usage-model {
+  margin-bottom: 6px;
+}
+
+.usage-model .inspector-bar {
+  margin: 2px 0 3px;
+}
+
+.usage-budget {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.usage-budget.warning .inspector-bar span {
+  background: var(--warning, #d69e2e);
+}
+
+.usage-budget.over .inspector-bar span {
+  background: var(--danger);
+}
+
+.usage-budget-alert,
+.usage-budget-warning {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+
+.usage-budget-alert {
+  color: var(--danger);
+}
+
+.usage-budget-warning {
+  color: var(--warning, #d69e2e);
+}
+
 .inspector-switch-row {
   display: flex;
   align-items: center;

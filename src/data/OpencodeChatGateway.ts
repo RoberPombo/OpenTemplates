@@ -21,6 +21,7 @@ import {
   toServerEvent,
   toSessionMessages,
   toUsageLimits,
+  toWorkspaceStats,
 } from "./opencodePayloads";
 
 export function createChatGateway(server: ServerInfo): ChatServer {
@@ -36,6 +37,9 @@ export function createChatGateway(server: ServerInfo): ChatServer {
       get: (input) => sdk.session.get(input),
       diff: async (input) => ({
         data: toFileChanges(await sdk.session.diff(input)),
+      }),
+      stats: async (input) => ({
+        data: toWorkspaceStats(await sdk.session.stats(input)),
       }),
       prompt: (input) => sdk.session.prompt(input),
       command: (input) => sdk.session.command(input),

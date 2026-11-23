@@ -203,3 +203,32 @@ describe("SettingsPanel — reaplicar template", () => {
     ]);
   });
 });
+
+describe("SettingsPanel — presupuesto", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test("guarda el presupuesto por workspace y lo borra al vaciar el campo", async () => {
+    const user = userEvent.setup();
+    setup(makeWorkspace({ mcpNames: [], skills: [] }), null);
+
+    const input = screen.getByLabelText("Presupuesto mensual en dólares");
+    await user.type(input, "12.5");
+    expect(localStorage.getItem("opentemplates:budget:w1")).toBe("12.5");
+
+    await user.clear(input);
+    expect(localStorage.getItem("opentemplates:budget:w1")).toBeNull();
+  });
+
+  test("no persiste importes no positivos y muestra el error", async () => {
+    const user = userEvent.setup();
+    setup(makeWorkspace({ mcpNames: [], skills: [] }), null);
+
+    await user.type(screen.getByLabelText("Presupuesto mensual en dólares"), "0");
+    expect(
+      await screen.findByText("Introduce un importe mayor que 0 o deja el campo vacío."),
+    ).toBeInTheDocument();
+    expect(localStorage.getItem("opentemplates:budget:w1")).toBeNull();
+  });
+});

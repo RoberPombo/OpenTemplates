@@ -1,14 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
+import { notificationsEnabled } from "../../domain/chat/notifications";
 import {
+  activityBars,
+  budgetAlertMessage,
+  budgetDay,
+  budgetLevel,
+  budgetRatio,
   cacheRatio as computeCacheRatio,
   contextRatio as computeContextRatio,
+  crossedBudgetThresholds,
+  formatActivityDay,
+  formatCost,
+  formatCount,
+  formatTokens,
+  parseBudgetUsd,
+  sortModelUsage,
+  totalTokens,
   toSessionUsage,
+  usageModelKey,
+  usageStatsInput,
   type SessionUsage,
   type UsageLimits,
+  type UsageRange,
+  type WorkspaceStats,
 } from "../../domain/chat/usage";
 import type { CatalogModel } from "../../domain/chat/selection";
+import { prefKeys } from "../../domain/repositories/Preferences";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import type { ResourceUsage, ServerInfo, SkillRef, Workspace } from "../../types";
 import { ChangesPanel } from "./ChangesPanel";
@@ -44,12 +63,6 @@ function safe<T>(call: () => Promise<T>): Promise<T> {
 
 function percent(value: number) {
   return `${value.toFixed(1)}%`;
-}
-
-function tokens(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return String(value);
 }
 
 function bytes(value: number) {
@@ -119,8 +132,27 @@ export function Inspector({
   const [savingMcp, setSavingMcp] = useState<string | null>(null);
   const [savingSkill, setSavingSkill] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [usageRange, setUsageRange] = useState<UsageRange>("30d");
+  const [stats, setStats] = useState<WorkspaceStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [monthlyBudget, setMonthlyBudget] = useState<number | null>(() =>
+    parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))),
+  );
 
   const location = useMemo(() => ({ directory: workspace.projectPath }), [workspace.projectPath]);
+  const timeZone = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return undefined;
+    }
+  }, []);
+
+  useEffect(() => {
+    setStats(null);
+    setStatsError(null);
+    setMonthlyBudget(parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))));
+  }, [root, workspace.id]);
 
   useEffect(() => {
     let alive = true;
@@ -136,7 +168,7 @@ export function Inspector({
   }, [client, location]);
 
   const refresh = useCallback(async () => {
-    const [vcs, vcsInfo, limits, mcpList, stats] = await Promise.allSettled([
+    const [vcs, vcsInfo, limits, mcpList, resourcesNow] = await Promise.allSettled([
       safe(() => client.vcs.status({ location })),
       safe(() => client.vcs.get({ location })),
       safe(() => client.usage.limits()),
@@ -174,7 +206,7 @@ export function Inspector({
       setStatuses(next);
     }
 
-    setResources(stats.status === "fulfilled" ? stats.value : null);
+    setResources(resourcesNow.status === "fulfilled" ? resourcesNow.value : null);
   }, [client, location, server.pid, root]);
 
   const refreshSession = useCallback(async () => {
@@ -197,12 +229,25 @@ export function Inspector({
     }
   }, [client, sessionId]);
 
+  const refreshStats = useCallback(async () => {
+    setMonthlyBudget(parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))));
+    try {
+      const result = await client.session.stats(usageStatsInput(usageRange, Date.now(), timeZone));
+      setStats(result.data);
+      setStatsError(null);
+    } catch (err) {
+      setStats(null);
+      setStatsError(errorText(err));
+    }
+  }, [client, root, timeZone, usageRange, workspace.id]);
+
   useEffect(() => {
     let alive = true;
     const tick = () => {
       if (!alive || tab !== "resumen") return;
       void refresh();
       void refreshSession();
+      void refreshStats();
     };
     tick();
     const timer = window.setInterval(tick, 5000);
@@ -210,7 +255,35 @@ export function Inspector({
       alive = false;
       window.clearInterval(timer);
     };
-  }, [refresh, refreshSession, tab]);
+  }, [refresh, refreshSession, refreshStats, tab]);
+
+  // Un aviso nativo por umbral y día: la marca vive en preferencias para que
+  // no se repita aunque el inspector se vuelva a montar o la app se reinicie.
+  useEffect(() => {
+    if (!stats || monthlyBudget === null) return;
+    const thresholds = crossedBudgetThresholds(stats.cost, monthlyBudget);
+    if (thresholds.length === 0) return;
+    if (!notificationsEnabled(root.preferences.get(prefKeys.notifications))) return;
+    if (typeof document !== "undefined" && document.hasFocus()) return;
+    const day = budgetDay(Date.now(), timeZone);
+    const pending = thresholds.filter(
+      (threshold) => root.preferences.get(prefKeys.budgetAlert(workspace.id, threshold)) !== day,
+    );
+    // Si el coste salta varios umbrales a la vez, se avisa solo del mayor y se
+    // marcan todos: un único aviso por evaluación y umbral, sin repetir ese día.
+    const threshold = pending[pending.length - 1];
+    if (threshold === undefined) return;
+    for (const reached of pending) {
+      root.preferences.set(prefKeys.budgetAlert(workspace.id, reached), day);
+    }
+    const message = budgetAlertMessage({
+      workspaceName: workspace.name,
+      threshold,
+      cost: stats.cost,
+      budget: monthlyBudget,
+    });
+    void root.notifications.notify({ ...message, workspaceId: workspace.id });
+  }, [monthlyBudget, root, stats, timeZone, workspace.id, workspace.name]);
 
   const modelEntry = session?.model
     ? (models.find(
@@ -225,6 +298,19 @@ export function Inspector({
   );
 
   const cacheRatio = useMemo(() => computeCacheRatio(session), [session]);
+
+  const usageActivity = useMemo(() => activityBars(stats?.activity ?? []), [stats]);
+  const usageModels = useMemo(() => sortModelUsage(stats?.models ?? []), [stats]);
+  const budgetState = budgetLevel(stats?.cost ?? 0, monthlyBudget);
+  const budgetShare = budgetRatio(stats?.cost ?? 0, monthlyBudget);
+  const modelNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const model of models) {
+      const id = model.modelID ?? model.id;
+      names.set(`${model.providerID}/${id}`, model.name);
+    }
+    return names;
+  }, [models]);
 
   const mcpNames = useMemo(
     () => [...workspace.mcpNames].sort((a, b) => a.localeCompare(b)),
@@ -311,6 +397,10 @@ export function Inspector({
     );
   }
 
+  function usageModelName(model: { providerID: string; id: string }) {
+    return modelNames.get(usageModelKey(model)) ?? usageModelKey(model);
+  }
+
   function skillRow(skill: SkillRef) {
     const enabled = !workspace.disabledSkills.includes(skill.id);
     return (
@@ -386,9 +476,9 @@ export function Inspector({
                 />
                 <Line
                   label="Tokens"
-                  value={`${tokens(session.input)} in · ${tokens(session.output)} out`}
+                  value={`${formatTokens(session.input)} in · ${formatTokens(session.output)} out`}
                 />
-                <Line label="Coste" value={`$${session.cost.toFixed(3)}`} />
+                <Line label="Coste" value={formatCost(session.cost)} />
                 {modelEntry && (
                   <p
                     className="inspector-note"
@@ -426,9 +516,150 @@ export function Inspector({
             </div>
           </section>
 
+          <section className="inspector-section">
+            <h3>
+              Consumo del workspace
+              <span className="inspector-count">
+                {usageRange === "7d" ? "7 días" : usageRange === "30d" ? "30 días" : "total"}
+              </span>
+            </h3>
+            <fieldset className="usage-range">
+              <legend className="sr-only">Rango de consumo</legend>
+              {(
+                [
+                  ["7d", "7 días"],
+                  ["30d", "30 días"],
+                  ["total", "Total"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  type="button"
+                  key={id}
+                  aria-pressed={usageRange === id}
+                  className={usageRange === id ? "active" : ""}
+                  onClick={() => setUsageRange(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </fieldset>
+            {stats ? (
+              <>
+                <div className="usage-total">
+                  <span className="usage-total-value">{formatCost(stats.cost)}</span>
+                  <span className="inspector-muted">coste del rango</span>
+                </div>
+                <Line
+                  label="Tokens"
+                  value={`${formatTokens(stats.tokens.input)} in · ${formatTokens(stats.tokens.output)} out`}
+                />
+                <Line
+                  label="Caché"
+                  value={`${formatTokens(stats.tokens.cache.read)} lectura · ${formatTokens(
+                    stats.tokens.cache.write,
+                  )} escritura`}
+                />
+                {stats.tokens.reasoning > 0 && (
+                  <Line label="Razonamiento" value={formatTokens(stats.tokens.reasoning)} />
+                )}
+                <Line
+                  label="Actividad"
+                  value={`${formatCount(stats.sessions)} sesiones · ${formatCount(
+                    stats.prompts,
+                  )} prompts`}
+                />
+                {(stats.steps > 0 || stats.subagents > 0) && (
+                  <Line
+                    label="Trabajo"
+                    value={`${formatCount(stats.steps)} pasos${
+                      stats.subagents > 0 ? ` · ${formatCount(stats.subagents)} subagentes` : ""
+                    }`}
+                  />
+                )}
+                <Line
+                  label="Días activos"
+                  value={`${formatCount(stats.activeDays)} · racha ${formatCount(stats.streak)}`}
+                />
+
+                {usageActivity.length > 0 && (
+                  <div className="usage-activity">
+                    <div className="inspector-subhead">
+                      <span>Actividad por día</span>
+                      <span className="inspector-muted">pasos</span>
+                    </div>
+                    {usageActivity.map((day) => (
+                      <div
+                        className="usage-activity-row"
+                        key={day.date}
+                        title={`${day.date}: ${formatCount(day.steps)} pasos`}
+                      >
+                        <span className="usage-activity-day">{formatActivityDay(day.date)}</span>
+                        <div className="inspector-bar">
+                          <span style={{ width: `${Math.round(day.ratio * 100)}%` }} />
+                        </div>
+                        <span className="usage-activity-count">{formatCount(day.steps)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {usageModels.length > 0 && (
+                  <div className="usage-models">
+                    <div className="inspector-subhead">
+                      <span>Por modelo</span>
+                      <span className="inspector-muted">coste</span>
+                    </div>
+                    {usageModels.map((entry) => {
+                      const peak = usageModels[0]?.cost ?? 0;
+                      return (
+                        <div className="usage-model" key={usageModelKey(entry.model)}>
+                          <div className="inspector-line">
+                            <span title={usageModelKey(entry.model)}>
+                              {usageModelName(entry.model)}
+                            </span>
+                            <span className="inspector-value">{formatCost(entry.cost)}</span>
+                          </div>
+                          <div className="inspector-bar">
+                            <span
+                              style={{
+                                width: `${peak > 0 ? Math.min(100, (entry.cost / peak) * 100) : 0}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="inspector-muted">
+                            {formatCount(entry.steps)} pasos ·{" "}
+                            {formatTokens(totalTokens(entry.tokens))} tokens
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {monthlyBudget !== null && (
+                  <div className={`usage-budget ${budgetState ?? "ok"}`}>
+                    <Line
+                      label="Presupuesto mensual"
+                      value={`${formatCost(stats.cost)} de ${formatCost(monthlyBudget)}`}
+                    />
+                    <Bar ratio={budgetShare} />
+                    {budgetState === "over" && (
+                      <p className="usage-budget-alert">Has superado el presupuesto mensual.</p>
+                    )}
+                    {budgetState === "warning" && (
+                      <p className="usage-budget-warning">Te acercas al presupuesto mensual.</p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="inspector-empty">{statsError ?? "Sin datos de consumo todavía."}</p>
+            )}
+          </section>
+
           {hasUsage && (
             <section className="inspector-section">
-              <h3>Uso</h3>
+              <h3>Límites del proveedor</h3>
               {usage?.go?.rolling && (
                 <>
                   <div className="inspector-line">
@@ -475,7 +706,7 @@ export function Inspector({
                   <div key={budget.id}>
                     <Line
                       label="Saldo"
-                      value={`$${Math.max(0, budget.limit - budget.spent).toFixed(2)}`}
+                      value={formatCost(Math.max(0, budget.limit - budget.spent))}
                     />
                     <Bar ratio={ratio} />
                   </div>

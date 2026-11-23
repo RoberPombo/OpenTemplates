@@ -12,6 +12,9 @@ export const prefKeys = {
   sessionsOpen: "opentemplates:sessions",
   notifications: "opentemplates:notifications",
   panelTab: (workspaceId: string) => `opentemplates:panel-tab:${workspaceId}`,
+  budget: (workspaceId: string) => `opentemplates:budget:${workspaceId}`,
+  budgetAlert: (workspaceId: string, threshold: number) =>
+    `opentemplates:budget-alert:${workspaceId}:${threshold}`,
   session: (workspaceId: string) => `opentemplates:session:${workspaceId}`,
   model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
   agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,

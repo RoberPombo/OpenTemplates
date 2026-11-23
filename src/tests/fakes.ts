@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import type { Workspace } from "../types";
 import type { AgentForm } from "../domain/chat/forms";
 import type { PermissionRequest } from "../domain/chat/permissions";
+import type { WorkspaceStats } from "../domain/chat/usage";
 import type {
   NotificationGateway,
   NotificationInput,
@@ -103,6 +104,7 @@ export type FakeClientOptions = {
   defaultModel?: { providerID: string; id: string } | null;
   branch?: string | null;
   sessions?: unknown[];
+  stats?: WorkspaceStats | null;
   permissions?: PermissionRequest[];
   forms?: AgentForm[];
   sessionDiff?: unknown[];
@@ -161,6 +163,7 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       switchAgent: vi.fn(async () => undefined),
       get: vi.fn(async () => null),
       diff: vi.fn(async () => ({ data: options.sessionDiff ?? [] })),
+      stats: vi.fn(async () => ({ data: options.stats ?? null })),
     },
     message: {
       list: vi.fn(async () => ({ data: messages })),

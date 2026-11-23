@@ -15,7 +15,7 @@ import type { RawSessionMessage } from "../chat/messages";
 import type { PermissionDecision, PermissionRequest } from "../chat/permissions";
 import type { CatalogAgent, CatalogModel } from "../chat/selection";
 import type { RawSessionSummary } from "../chat/sessions";
-import type { UsageLimits } from "../chat/usage";
+import type { UsageLimits, UsageStatsInput, WorkspaceStats } from "../chat/usage";
 import type {
   FileChange,
   FileChangeSummary,
@@ -57,6 +57,7 @@ export interface ChatGateway {
       to?: string;
       context?: number;
     }): Promise<{ data: unknown[] }>;
+    stats(input?: UsageStatsInput): Promise<unknown>;
     prompt(input: { sessionID: string; text: string; skills?: { id: string }[] }): Promise<unknown>;
     command(input: {
       sessionID: string;
@@ -144,7 +145,7 @@ export interface ChatGateway {
 
 /** Payloads estrechados por el adaptador opencode para la presentación. */
 export interface ChatServer extends ChatGateway {
-  session: Omit<ChatGateway["session"], "list" | "diff"> & {
+  session: Omit<ChatGateway["session"], "list" | "diff" | "stats"> & {
     list(input: {
       directory: string;
       limit?: number;
@@ -156,6 +157,7 @@ export interface ChatServer extends ChatGateway {
       to?: string;
       context?: number;
     }): Promise<{ data: FileChange[] }>;
+    stats(input?: UsageStatsInput): Promise<{ data: WorkspaceStats | null }>;
   };
   message: {
     list(input: {
