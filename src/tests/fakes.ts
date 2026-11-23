@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import type { Workspace } from "../types";
 import type { AgentForm } from "../domain/chat/forms";
+import type { GoalDecisionRequest, GoalDecisionResult } from "../domain/chat/goals";
 import type { McpServerStatus } from "../domain/chat/mcp";
 import type { PermissionRequest } from "../domain/chat/permissions";
 import type { SessionTransfer } from "../domain/chat/transfer";
@@ -127,6 +128,13 @@ export type FakeClientOptions = {
   importError?: unknown;
   forkError?: unknown;
   mcpServers?: McpServerStatus[];
+  /** Modelos con capacidad de decisión para el objetivo de sesión. */
+  decisionModels?: unknown[];
+  /** Resultados de `generate.decisions`; se consumen en orden. */
+  decisionResults?: GoalDecisionResult[];
+  decisionError?: unknown;
+  /** Coste acumulado que devuelve `session.get`. */
+  sessionCost?: number;
 };
 
 /**
@@ -152,6 +160,24 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
     { id: "build", name: "Build", hidden: false, mode: "primary" },
     { id: "plan", name: "Plan", hidden: false, mode: "primary" },
   ];
+  const decisionModels = options.decisionModels ?? [
+    {
+      providerID: "opencode",
+      id: "jev-1.13-free",
+      name: "Jev",
+      enabled: true,
+      type: "decision",
+      variants: [],
+    },
+  ];
+  const decisions = [...(options.decisionResults ?? [])];
+  const defaultDecision: GoalDecisionResult = {
+    verdict: "continue",
+    confidence: 0.8,
+    cost: 0.001,
+    tokens: { input: 10, output: 4 },
+    error: null,
+  };
   // Lista de sesiones viva: renombrar y eliminar se reflejan en el siguiente list.
   let sessionList = (options.sessions ?? []).map((item) => ({
     ...(item as Record<string, unknown>),
@@ -212,12 +238,16 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
         ];
         return { id };
       }),
-      prompt: vi.fn(async () => undefined),
+      prompt: vi.fn(
+        async (_input: { sessionID: string; text: string; skills?: { id: string }[] }) => undefined,
+      ),
       command: vi.fn(async () => undefined),
       interrupt: vi.fn(async () => undefined),
       switchModel: vi.fn(async () => undefined),
       switchAgent: vi.fn(async () => undefined),
-      get: vi.fn(async () => null),
+      get: vi.fn(async () =>
+        options.sessionCost === undefined ? null : { cost: options.sessionCost },
+      ),
       diff: vi.fn(async () => ({ data: options.sessionDiff ?? [] })),
       stats: vi.fn(async () => ({ data: options.stats ?? null })),
     },
@@ -225,7 +255,7 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       list: vi.fn(async () => ({ data: messages })),
     },
     model: {
-      list: vi.fn(async () => ({ data: models })),
+      list: vi.fn(async () => ({ data: [...models, ...decisionModels] })),
       default: vi.fn(async () =>
         options.defaultModel === null
           ? null
@@ -274,6 +304,13 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       list: vi.fn(async () => ({ data: options.forms ?? [] })),
       reply: vi.fn(async () => undefined),
       cancel: vi.fn(async () => undefined),
+    },
+    generate: {
+      decisions: vi.fn(async (_input: GoalDecisionRequest) => {
+        if (options.decisionError) throw options.decisionError;
+        const next = decisions.shift() ?? defaultDecision;
+        return { data: next };
+      }),
     },
   };
 

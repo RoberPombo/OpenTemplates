@@ -8,6 +8,12 @@
  */
 import type { ChatCommand, ChatSkill } from "../domain/chat/commands";
 import type { AgentForm, FormField, FormOption, FormWhen } from "../domain/chat/forms";
+import {
+  GOAL_DECISION_NAME,
+  GOAL_VERDICTS,
+  type GoalDecisionResult,
+  type GoalVerdict,
+} from "../domain/chat/goals";
 import type { RawPart, RawSessionMessage } from "../domain/chat/messages";
 import type { PermissionRequest, PermissionSource } from "../domain/chat/permissions";
 import type { CatalogAgent, CatalogModel } from "../domain/chat/selection";
@@ -762,4 +768,40 @@ export function toServerEvent(event: { type: string; data?: unknown }): ChatServ
     default:
       return event;
   }
+}
+
+/**
+ * Resultado de `generate.decisions` para el objetivo de sesión. El servidor
+ * responde `{ data: { answers, cost, tokens } }`; el adaptador ya entrega el
+ * `data`, así que aquí se lee la primera elección válida y se ignora el resto.
+ */
+export function toGoalDecisionResult(payload: unknown): GoalDecisionResult {
+  const root = record(payload) ?? {};
+  const answers = list(root.answers).flatMap((item) => {
+    const answer = record(item);
+    return answer ? [answer] : [];
+  });
+  const answer = answers.find((item) => item.name === GOAL_DECISION_NAME) ?? answers[0] ?? null;
+  const choice = answer?.choice;
+  const verdict =
+    typeof choice === "string" && (GOAL_VERDICTS as readonly string[]).includes(choice)
+      ? (choice as GoalVerdict)
+      : null;
+  const tokens = record(root.tokens) ?? {};
+  const failure =
+    answer?.type === "error"
+      ? (text(answer.message) ?? text(answer.reason) ?? "El evaluador falló")
+      : answer === null
+        ? "El evaluador no devolvió ninguna decisión"
+        : null;
+  return {
+    verdict,
+    confidence: count(answer?.confidence) ?? null,
+    cost: count(root.cost) ?? 0,
+    tokens: {
+      input: count(tokens.input) ?? 0,
+      output: count(tokens.output) ?? 0,
+    },
+    error: verdict ? null : (failure ?? "El evaluador no eligió una opción válida"),
+  };
 }

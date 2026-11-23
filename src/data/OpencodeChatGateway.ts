@@ -17,6 +17,7 @@ import {
   toFileChanges,
   toFileContent,
   toFileTreeEntries,
+  toGoalDecisionResult,
   toMcpServerStatuses,
   toPermissionRequests,
   toRawSessionSummaries,
@@ -146,6 +147,14 @@ export function createChatGateway(server: ServerInfo): ChatServer {
       // métodos de `mcp` están deprecados en el SDK 2.3.2.
       connect: (input) => sdk.experimental.mcp.connect(input),
       disconnect: (input) => sdk.experimental.mcp.disconnect(input),
+    },
+    generate: {
+      // `generate.decisions` exige un modelo con capacidad de decisión; el
+      // modelo de chat de la sesión se rechaza (UnsupportedModelError). El
+      // modelo llega ya elegido por el hook desde `model.list({types})`.
+      decisions: async (input) => ({
+        data: toGoalDecisionResult(await sdk.experimental.generate.decisions(input)),
+      }),
     },
     location: sdk.location,
     event: {

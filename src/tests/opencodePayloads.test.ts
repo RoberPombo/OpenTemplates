@@ -11,6 +11,7 @@ import {
   toFileChanges,
   toFileContent,
   toFileTreeEntries,
+  toGoalDecisionResult,
   toMcpServerStatuses,
   toPermissionRequest,
   toPermissionRequests,
@@ -699,5 +700,44 @@ describe("payloads de MCP", () => {
       mcp: { server: "postgres" },
     });
     expect(toServerEvent({ type: "mcp.status.changed", data: {} }).mcp).toBeUndefined();
+  });
+});
+
+describe("decisiones del objetivo de sesión", () => {
+  test("estrecha la elección, el coste y los tokens del evaluador", () => {
+    expect(
+      toGoalDecisionResult({
+        answers: [{ type: "choice", name: "goal_state", choice: "done", confidence: 0.98 }],
+        cost: 0.002,
+        tokens: { input: 414, output: 39 },
+      }),
+    ).toEqual({
+      verdict: "done",
+      confidence: 0.98,
+      cost: 0.002,
+      tokens: { input: 414, output: 39 },
+      error: null,
+    });
+  });
+  test("propaga el error del evaluador y rechaza una elección inválida", () => {
+    expect(
+      toGoalDecisionResult({
+        answers: [{ type: "error", name: "goal_state", reason: "modelo caído" }],
+        cost: 0,
+        tokens: {},
+      }),
+    ).toMatchObject({ verdict: null, error: "modelo caído" });
+    expect(
+      toGoalDecisionResult({
+        answers: [{ type: "choice", name: "goal_state", choice: false }],
+        tokens: {},
+      }),
+    ).toMatchObject({ verdict: null });
+    expect(toGoalDecisionResult({})).toMatchObject({
+      verdict: null,
+      cost: 0,
+      tokens: { input: 0, output: 0 },
+    });
+    expect(toGoalDecisionResult({}).error).toContain("ninguna decisión");
   });
 });

@@ -11,6 +11,7 @@
  */
 import type { ChatCommand, ChatSkill } from "../chat/commands";
 import type { AgentForm, FormAnswer } from "../chat/forms";
+import type { GoalDecisionRequest, GoalDecisionResult } from "../chat/goals";
 import type { RawSessionMessage } from "../chat/messages";
 import type { PermissionDecision, PermissionRequest } from "../chat/permissions";
 import type { CatalogAgent, CatalogModel } from "../chat/selection";
@@ -150,6 +151,10 @@ export interface ChatGateway {
     connect(input: { server: string; location: ServerLocation }): Promise<unknown>;
     disconnect(input: { server: string; location: ServerLocation }): Promise<unknown>;
   };
+  generate: {
+    /** Evalúa el objetivo de sesión con el modelo de decisión del workspace. */
+    decisions(input: GoalDecisionRequest): Promise<unknown>;
+  };
   location: {
     reload(): Promise<unknown>;
   };
@@ -225,6 +230,9 @@ export interface ChatServer extends ChatGateway {
   };
   form: Omit<ChatGateway["form"], "list"> & {
     list(input: { sessionID: string }): Promise<{ data: AgentForm[] }>;
+  };
+  generate: {
+    decisions(input: GoalDecisionRequest): Promise<{ data: GoalDecisionResult }>;
   };
   event: {
     subscribe(input?: { signal?: AbortSignal }): AsyncIterable<ChatServerEvent>;
