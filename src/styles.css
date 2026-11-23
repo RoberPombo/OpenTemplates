@@ -700,13 +700,15 @@ p {
 
 .msg-fork {
   align-self: flex-start;
-  padding: 2px 6px;
-  border: 1px solid transparent;
+  max-height: 0;
+  padding: 0;
+  border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font-size: 10.5px;
   opacity: 0;
+  overflow: hidden;
   transition: opacity 120ms ease;
 }
 
@@ -716,6 +718,9 @@ p {
 
 .msg:hover .msg-fork,
 .msg-fork:focus-visible {
+  max-height: 24px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
   opacity: 1;
 }
 
