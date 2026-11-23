@@ -20,6 +20,7 @@ import { TauriUpdateGateway } from "./data/TauriUpdateGateway";
 import { TauriNotificationGateway } from "./data/TauriNotificationGateway";
 import { TauriSessionFiles } from "./data/TauriSessionFiles";
 import { createChatGateway } from "./data/OpencodeChatGateway";
+import { createTerminalGateway } from "./data/TerminalGateway";
 import { DeleteWorkspace } from "./domain/usecases/DeleteWorkspace";
 import { CreateWorkspace } from "./domain/usecases/CreateWorkspace";
 import { ApplyWorkspaceSettings } from "./domain/usecases/ApplyWorkspaceSettings";
@@ -36,6 +37,7 @@ import type { RepoGateway } from "./domain/repositories/RepoGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
 import type { SessionFiles } from "./domain/repositories/SessionFiles";
 import type { TemplateGateway } from "./domain/repositories/TemplateGateway";
+import type { TerminalGateway } from "./domain/repositories/TerminalGateway";
 import type { UpdateGateway } from "./domain/repositories/UpdateGateway";
 import type { WorkspaceGateway } from "./domain/repositories/WorkspaceGateway";
 import type { ServerInfo } from "./types";
@@ -121,5 +123,8 @@ export class CompositionRoot {
 
   provideChatGateway(server: ServerInfo): ChatServer {
     return createChatGateway(server);
+  }
+  provideTerminalGateway(server: ServerInfo): TerminalGateway {
+    return createTerminalGateway(server);
   }
 }

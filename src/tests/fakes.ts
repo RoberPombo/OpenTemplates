@@ -1,9 +1,17 @@
 import { vi } from "vitest";
 import type { Workspace } from "../types";
 import type { AgentForm } from "../domain/chat/forms";
+import type { McpServerStatus } from "../domain/chat/mcp";
 import type { PermissionRequest } from "../domain/chat/permissions";
 import type { SessionTransfer } from "../domain/chat/transfer";
 import type { WorkspaceStats } from "../domain/chat/usage";
+import type { TerminalInfo } from "../domain/terminal/terminals";
+import type {
+  TerminalChannel,
+  TerminalConnectInput,
+  TerminalGateway,
+  TerminalHandlers,
+} from "../domain/repositories/TerminalGateway";
 import type {
   NotificationGateway,
   NotificationInput,
@@ -118,6 +126,7 @@ export type FakeClientOptions = {
   exportError?: unknown;
   importError?: unknown;
   forkError?: unknown;
+  mcpServers?: McpServerStatus[];
 };
 
 /**
@@ -249,7 +258,13 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       subscribe: vi.fn((opts?: { signal?: AbortSignal }) => narrowEvents(hub.subscribe(opts))),
     },
     location: { reload: vi.fn(async () => undefined) },
-    mcp: { list: vi.fn(async () => ({ data: [] })), add: vi.fn(), remove: vi.fn() },
+    mcp: {
+      list: vi.fn(async () => ({ data: options.mcpServers ?? [] })),
+      add: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      connect: vi.fn(async () => undefined),
+      disconnect: vi.fn(async () => undefined),
+    },
     usage: { limits: vi.fn(async () => ({ data: null })) },
     permission: {
       list: vi.fn(async () => ({ data: options.permissions ?? [] })),
@@ -265,8 +280,9 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
   return { client, hub };
 }
 
-/** Gateway de notificaciones fake: registra avisos y permite fijar el permiso. */
-export function makeNotificationGateway(permission: NotificationPermission = "granted") {
+/** Gateway de notificaciones fake: registra avisos y permite fijar el permiso. */ export function makeNotificationGateway(
+  permission: NotificationPermission = "granted",
+) {
   return {
     requestPermission: vi.fn(async (): Promise<NotificationPermission> => permission),
     notify: vi.fn(async (_input: NotificationInput) => undefined),
@@ -308,5 +324,105 @@ export function makeSessionFiles(
       return { status: "saved", path: "/tmp/sesion.json" } as SaveSessionFileResult;
     }),
     open: vi.fn(async () => options.file ?? null),
+  };
+}
+
+/** Info de PTY para tests, con valores razonables. */
+export function makeTerminalInfo(overrides: Partial<TerminalInfo> = {}): TerminalInfo {
+  return {
+    id: "pty_1",
+    title: "Terminal 1",
+    status: "running",
+    cwd: "/tmp/demo",
+    pid: 1001,
+    ...overrides,
+  };
+}
+
+/**
+ * Gateway de terminal fake y en memoria: sin WebSocket. Permite empujar salida,
+ * confirmar cursores y simular caídas para probar la reconexión del dock.
+ */
+export function makeTerminalGateway(initial: TerminalInfo[] = []) {
+  const infos = new Map(initial.map((info) => [info.id, { ...info }] as const));
+  const connections = new Map<string, { handlers: TerminalHandlers; closed: boolean }>();
+  const sent: Array<{ ptyID: string; data: string | Uint8Array }> = [];
+  const cursors: Array<number | null | undefined> = [];
+  let sequence = initial.length;
+  let connectError: unknown = null;
+
+  const list = vi.fn(async () => [...infos.values()].map((info) => ({ ...info })));
+  const create = vi.fn(
+    async (
+      _location: { directory: string },
+      input: { cwd: string; title?: string; command?: string; args?: string[] },
+    ): Promise<TerminalInfo> => {
+      sequence += 1;
+      const info: TerminalInfo = {
+        id: `pty_${sequence}`,
+        title: input.title ?? `Terminal ${sequence}`,
+        status: "running",
+        cwd: input.cwd,
+        pid: 1000 + sequence,
+      };
+      infos.set(info.id, info);
+      return { ...info };
+    },
+  );
+  const remove = vi.fn(async (_location: { directory: string }, ptyID: string) => {
+    infos.delete(ptyID);
+    connections.delete(ptyID);
+  });
+  const resize = vi.fn(async () => undefined);
+  const connect = vi.fn(async (input: TerminalConnectInput): Promise<TerminalChannel> => {
+    if (connectError) {
+      const error = connectError;
+      connectError = null;
+      throw error;
+    }
+    if (!infos.has(input.ptyID)) throw new Error("PTY no encontrado");
+    const record = { handlers: input.handlers, closed: false };
+    connections.set(input.ptyID, record);
+    cursors.push(input.cursor);
+    return {
+      send(data) {
+        sent.push({ ptyID: input.ptyID, data });
+      },
+      close() {
+        record.closed = true;
+        connections.delete(input.ptyID);
+      },
+    };
+  });
+
+  const gateway: TerminalGateway = { list, create, remove, resize, connect };
+
+  return {
+    gateway,
+    infos,
+    connections,
+    sent,
+    cursors,
+    list,
+    create,
+    remove,
+    resize,
+    connect,
+    emit(ptyID: string, text: string, bytes = text.length) {
+      connections.get(ptyID)?.handlers.onData({ text, bytes });
+    },
+    acknowledge(ptyID: string, cursor: number) {
+      connections.get(ptyID)?.handlers.onCursor(cursor);
+    },
+    drop(ptyID: string, close = { code: 1006, reason: "conexión perdida" }) {
+      const record = connections.get(ptyID);
+      if (!record) return;
+      record.closed = true;
+      connections.delete(ptyID);
+      record.handlers.onClose(close);
+    },
+    failNextConnect(error: unknown) {
+      connectError = error;
+    },
   };
 }

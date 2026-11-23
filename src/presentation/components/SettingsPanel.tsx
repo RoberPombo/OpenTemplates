@@ -4,6 +4,7 @@ import { errorText } from "../../domain/shared";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import { NOTIFICATIONS_ON, notificationsEnabled } from "../../domain/chat/notifications";
 import { parseBudgetUsd } from "../../domain/chat/usage";
+import { mcpStateLabel, type McpState } from "../../domain/chat/mcp";
 import type { McpInfo, SkillInfo, SkillRef, Workspace } from "../../types";
 import type { ChatGateway as WorkspaceClient } from "../../domain/repositories/ChatGateway";
 
@@ -87,10 +88,7 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
         location: { directory: workspace.projectPath },
       });
       const next: Record<string, string> = {};
-      for (const item of result.data) {
-        const status = item.status as unknown as { status?: string } | string;
-        next[item.name] = typeof status === "string" ? status : (status.status ?? "unknown");
-      }
+      for (const item of result.data) next[item.name] = item.state;
       setStatuses(next);
     } catch {
       // El servidor puede estar arrancando; se reintenta al aplicar.
@@ -270,7 +268,7 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
                         {mcp.name}
                         {statuses[mcp.name] && (
                           <span className={`mcp-status ${statuses[mcp.name]}`}>
-                            {statuses[mcp.name]}
+                            {mcpStateLabel(statuses[mcp.name] as McpState)}
                           </span>
                         )}
                       </span>

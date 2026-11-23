@@ -142,6 +142,22 @@ La biblioteca de skills de la app escanea como mínimo:
   workspace falla (409 si repite el id de sesión y 500 si repite los ids de
   mensaje); la UI lo explica en vez de ocultarlo.
 
+## Terminal por workspace
+El servidor expone PTYs por location (`pty.list/create/get/update/remove`) y un
+WebSocket para hablar con cada uno. Verificado contra v2.3.0:
+1. `POST /api/pty/{id}/connect-token` con `x-opencode-ticket: 1` y
+   `location[directory]` devuelve `{ticket, expires_in}` (60 s, un solo uso).
+2. `ws://host/api/pty/{id}/connect?location[directory]=...&ticket=...&cursor=N`
+   (el ticket sustituye a la auth básica).
+3. Salida en frames de texto (UTF-8) o binarios; entrada igual.
+4. Los binarios que empiezan por `0x00` son control: `{"cursor":N}`, offset
+   absoluto del flujo. Al reconectar con `cursor` el servidor reenvía solo lo
+   que falta; sin `cursor` reenvía el buffer retenido.
+5. El tamaño se cambia por HTTP con `pty.update({size:{cols,rows}})`.
+6. Al terminar el shell, el socket cierra con `4404` y `session exited`.
+El PTY se crea con el `cwd` del proyecto y sin `env`, para heredar el entorno
+aislado del workspace. Cerrar el dock no lo mata: solo cierra el WebSocket.
+
 ## Supervisor en Tauri
 
 - Sidecar `opencode` empaquetado como `externalBin` (un binario por plataforma).
@@ -194,6 +210,9 @@ Implementado en este repo:
 - [x] Allowlist de skills y `deny` explícito de las no seleccionadas.
 - [x] UI de workspaces, creación, ajustes y chat mínimo con streaming.
 - [x] MCPs en caliente; skills/modelo con reload del workspace.
+- [x] Estado runtime de MCP con `mcp.list` y `mcp.status.changed`, y
+      `connect`/`disconnect` sin reaplicar el template.
+- [x] Terminal por workspace con `pty.*` y WebSocket con ticket.
 
 Pendiente:
 

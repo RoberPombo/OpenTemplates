@@ -5,7 +5,7 @@ import { WorkspaceView } from "../WorkspaceView";
 import { AppProvider } from "../../context/AppContext";
 import type { CompositionRoot } from "../../../CompositionRoot";
 import type { ServerInfo } from "../../../types";
-import { makeFakeClient, makeWorkspace } from "../../../tests/fakes";
+import { makeFakeClient, makeTerminalGateway, makeWorkspace } from "../../../tests/fakes";
 
 const server: ServerInfo = {
   workspaceId: "w1",
@@ -29,6 +29,7 @@ function setup() {
       store.delete(key);
     },
   };
+  const terminals = makeTerminalGateway();
   const { client } = makeFakeClient({
     sessionDiff: [
       {
@@ -44,6 +45,7 @@ function setup() {
     preferences,
     resources: { usage: vi.fn(async () => null) },
     provideChatGateway: () => client,
+    provideTerminalGateway: () => terminals.gateway,
   } as unknown as CompositionRoot;
   render(
     <AppProvider root={root}>
@@ -58,7 +60,7 @@ function setup() {
       />
     </AppProvider>,
   );
-  return { client, store };
+  return { client, store, terminals };
 }
 
 describe("WorkspaceView — panel de cambios", () => {
@@ -83,5 +85,25 @@ describe("WorkspaceView — panel de cambios", () => {
     await user.click(screen.getByRole("tab", { name: "Ficheros" }));
     expect(screen.getByRole("tab", { name: "Ficheros" })).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(client.file.list).toHaveBeenCalled());
+  });
+
+  test("el botón Terminal abre y cierra el dock sin borrar los PTYs", async () => {
+    const user = userEvent.setup();
+    const { terminals, store } = setup();
+    expect(screen.queryByRole("region", { name: "Terminal del workspace" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Terminal" }));
+    expect(
+      await screen.findByRole("region", { name: "Terminal del workspace" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/No hay terminales/)).toBeInTheDocument();
+    expect(store.get("opentemplates:terminal")).toBe("1");
+
+    await user.click(screen.getByRole("button", { name: "Terminal" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Terminal del workspace" })).toBeNull(),
+    );
+    expect(store.get("opentemplates:terminal")).toBe("0");
+    expect(terminals.remove).not.toHaveBeenCalled();
   });
 });

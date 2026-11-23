@@ -7,8 +7,9 @@ import { CompositionRoot } from "../../../CompositionRoot";
 import type { ChatServer } from "../../../domain/repositories/ChatGateway";
 import { prefKeys } from "../../../domain/repositories/Preferences";
 import type { WorkspaceStats } from "../../../domain/chat/usage";
+import type { McpServerStatus } from "../../../domain/chat/mcp";
 import type { ResourceUsage, ServerInfo, Workspace } from "../../../types";
-import { makeNotificationGateway, makeWorkspace } from "../../../tests/fakes";
+import { makeEventHub, makeNotificationGateway, makeWorkspace } from "../../../tests/fakes";
 
 // Caracterización del Inspector con el puerto opencode y los puertos del
 // CompositionRoot inyectados como fakes: sesión, proyecto, uso y toggles.
@@ -67,7 +68,11 @@ const stats: WorkspaceStats = {
   ],
 };
 
-function fakeClient(sessionStats: WorkspaceStats | null = null): ChatServer {
+function fakeClient(
+  sessionStats: WorkspaceStats | null = null,
+  mcpServers: McpServerStatus[] = [{ name: "mcp-a", state: "connected" }],
+  hub = makeEventHub(),
+): ChatServer {
   const client = {
     model: {
       list: vi.fn(async () => ({
@@ -108,9 +113,11 @@ function fakeClient(sessionStats: WorkspaceStats | null = null): ChatServer {
       })),
     },
     mcp: {
-      list: vi.fn(async () => ({ data: [{ name: "mcp-a", status: "connected" }] })),
+      list: vi.fn(async () => ({ data: mcpServers })),
       add: vi.fn(),
       remove: vi.fn(),
+      connect: vi.fn(async () => undefined),
+      disconnect: vi.fn(async () => undefined),
     },
     message: {
       list: vi.fn(async () => ({
@@ -135,7 +142,7 @@ function fakeClient(sessionStats: WorkspaceStats | null = null): ChatServer {
       switchAgent: vi.fn(),
     },
     location: { reload: vi.fn(async () => undefined) },
-    event: { subscribe: vi.fn() },
+    event: { subscribe: vi.fn((opts?: { signal?: AbortSignal }) => hub.subscribe(opts)) },
   };
   return client as unknown as ChatServer;
 }
@@ -146,6 +153,7 @@ function setup(
   options: {
     stats?: WorkspaceStats | null;
     notifications?: ReturnType<typeof makeNotificationGateway>;
+    mcpServers?: McpServerStatus[];
   } = {},
 ) {
   const setDisabled = vi.fn(
@@ -166,7 +174,8 @@ function setup(
     notifications: options.notifications,
   });
   const onUpdated = vi.fn();
-  const client = fakeClient(options.stats ?? null);
+  const hub = makeEventHub();
+  const client = fakeClient(options.stats ?? null, options.mcpServers, hub);
   const view = render(
     <AppProvider root={root}>
       <Inspector
@@ -179,7 +188,7 @@ function setup(
       />
     </AppProvider>,
   );
-  return { client, setDisabled, onUpdated, unmount: view.unmount };
+  return { client, setDisabled, onUpdated, hub, unmount: view.unmount };
 }
 
 function workspaceWithSources() {
@@ -263,6 +272,62 @@ describe("Inspector — toggles", () => {
         disabledSkills: ["s1"],
       }),
     );
+  });
+});
+
+describe("Inspector — estado runtime de MCP", () => {
+  test("muestra el error legible y reconecta sin recargar la location", async () => {
+    const user = userEvent.setup();
+    const { client } = setup(workspaceWithSources(), "s1", {
+      mcpServers: [
+        {
+          name: "mcp-a",
+          state: "failed",
+          error: "Connection closed:\nMCP server process exited with code 1",
+        },
+      ],
+    });
+    expect(await screen.findByText("fallando")).toBeInTheDocument();
+    expect(
+      screen.getByText("Connection closed: MCP server process exited with code 1"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() =>
+      expect(client.mcp.connect).toHaveBeenCalledWith({
+        server: "mcp-a",
+        location: { directory: "/tmp/demo" },
+      }),
+    );
+    expect(client.location.reload).not.toHaveBeenCalled();
+  });
+
+  test("desconectar un MCP conectado no borra su configuración", async () => {
+    const user = userEvent.setup();
+    const { client, setDisabled } = setup(workspaceWithSources(), "s1", {
+      mcpServers: [{ name: "mcp-a", state: "connected" }],
+    });
+    await user.click(await screen.findByRole("button", { name: "Desconectar" }));
+    await waitFor(() =>
+      expect(client.mcp.disconnect).toHaveBeenCalledWith({
+        server: "mcp-a",
+        location: { directory: "/tmp/demo" },
+      }),
+    );
+    expect(setDisabled).not.toHaveBeenCalled();
+  });
+
+  test("mcp.status.changed relee el estado sin esperar al sondeo", async () => {
+    const servers: McpServerStatus[] = [{ name: "mcp-a", state: "connected" }];
+    const { client, hub } = setup(workspaceWithSources(), "s1", { mcpServers: servers });
+    expect(await screen.findByText("conectado")).toBeInTheDocument();
+
+    servers[0] = { name: "mcp-a", state: "failed", error: "boom" };
+    hub.push({ type: "mcp.status.changed", data: { server: "mcp-a" } });
+
+    expect(await screen.findByText("fallando")).toBeInTheDocument();
+    expect(await screen.findByText("boom")).toBeInTheDocument();
+    expect(client.mcp.list).toHaveBeenCalledTimes(2);
   });
 });
 

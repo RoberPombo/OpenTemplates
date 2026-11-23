@@ -11,11 +11,15 @@ import {
   toFileChanges,
   toFileContent,
   toFileTreeEntries,
+  toMcpServerStatuses,
   toPermissionRequest,
   toPermissionRequests,
   toServerEvent,
   toSessionMessages,
   toSessionTransfer,
+  toTerminalInfo,
+  toTerminalInfos,
+  toTerminalTicket,
   toUsageLimits,
   toWorkspaceStats,
 } from "../data/opencodePayloads";
@@ -621,5 +625,79 @@ describe("toSessionTransfer", () => {
       info: { id: "", title: undefined, location: undefined },
       messages: [],
     });
+  });
+});
+
+describe("payloads de terminal", () => {
+  test("estrecha el PTY del SDK y la lista de pty.list", () => {
+    expect(
+      toTerminalInfo({
+        location: { directory: "/tmp/demo" },
+        data: {
+          id: "pty_1",
+          title: "Terminal 1",
+          command: "/usr/bin/bash",
+          args: ["-l"],
+          cwd: "/tmp/demo",
+          status: "running",
+          pid: 22,
+        },
+      }),
+    ).toEqual({
+      id: "pty_1",
+      title: "Terminal 1",
+      status: "running",
+      cwd: "/tmp/demo",
+      pid: 22,
+      exitCode: undefined,
+    });
+    expect(toTerminalInfo({ status: "running" })).toBeNull();
+    expect(
+      toTerminalInfos({
+        data: [{ id: "pty_1", status: "running", cwd: "/tmp/demo", pid: 1 }, { status: "running" }],
+      }),
+    ).toHaveLength(1);
+  });
+
+  test("acepta el ticket dentro del wrapper del SDK", () => {
+    expect(toTerminalTicket({ location: {}, data: { ticket: "abc", expires_in: 60 } })).toEqual({
+      ticket: "abc",
+      expiresIn: 60,
+    });
+    expect(toTerminalTicket({ data: { ticket: "", expires_in: 60 } })).toBeNull();
+    expect(toTerminalTicket({ ticket: "suelto" })).toEqual({ ticket: "suelto", expiresIn: 0 });
+  });
+});
+
+describe("payloads de MCP", () => {
+  test("aplana estado y error de mcp.list", () => {
+    expect(
+      toMcpServerStatuses({
+        data: [
+          { name: "context7", status: { status: "connected" } },
+          { name: "postgres", status: { status: "failed", error: "process exited" } },
+          { name: "oauth", status: { status: "needs_auth", error: "login" } },
+          { name: "apagado", status: { status: "disabled" } },
+          { status: { status: "connected" } },
+        ],
+      }),
+    ).toEqual([
+      { name: "context7", state: "connected", error: undefined, title: undefined },
+      { name: "postgres", state: "failed", error: "process exited", title: undefined },
+      { name: "oauth", state: "needs_auth", error: "login", title: undefined },
+      { name: "apagado", state: "disabled", error: undefined, title: undefined },
+    ]);
+    expect(toMcpServerStatuses({ data: [{ name: "x", status: "needsAuth" }] })).toEqual([
+      { name: "x", state: "needs_auth", error: undefined, title: undefined },
+    ]);
+  });
+
+  test("mcp.status.changed se estrecha con el nombre del servidor", () => {
+    expect(toServerEvent({ type: "mcp.status.changed", data: { server: "postgres" } })).toEqual({
+      type: "mcp.status.changed",
+      data: { server: "postgres" },
+      mcp: { server: "postgres" },
+    });
+    expect(toServerEvent({ type: "mcp.status.changed", data: {} }).mcp).toBeUndefined();
   });
 });

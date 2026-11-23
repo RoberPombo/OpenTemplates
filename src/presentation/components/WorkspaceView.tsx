@@ -5,6 +5,7 @@ import { prefKeys } from "../../domain/repositories/Preferences";
 import { Chat } from "./Chat";
 import { Inspector, type InspectorTab } from "./Inspector";
 import { SettingsPanel } from "./SettingsPanel";
+import { TerminalDock } from "./TerminalDock";
 import { Button } from "./ui";
 
 type Props = {
@@ -70,14 +71,22 @@ export function WorkspaceView({
   const [sessionsOpen, setSessionsOpen] = useState(
     () => root.preferences.get(prefKeys.sessionsOpen) === "1",
   );
+  const [terminalOpen, setTerminalOpen] = useState(
+    () => root.preferences.get(prefKeys.terminalOpen) === "1",
+  );
   const [sessionId, setSessionId] = useState<string | null>(() =>
     root.preferences.get(prefKeys.session(workspace.id)),
   );
+  // `server` cambia de identidad en cada sondeo de estado; los memo se anclan a
+  // los valores que definen el cliente para no recrear gateways ni terminales.
   const client = useMemo(
     () => (server ? root.provideChatGateway(server) : null),
     [root, server?.baseUrl, server?.password],
   );
-
+  const terminalGateway = useMemo(
+    () => (server ? root.provideTerminalGateway(server) : null),
+    [root, server?.baseUrl, server?.password],
+  );
   function togglePanel() {
     setPanelOpen((prev) => {
       const next = !prev;
@@ -92,6 +101,30 @@ export function WorkspaceView({
       root.preferences.set(prefKeys.sessionsOpen, next ? "1" : "0");
       return next;
     });
+  }
+  function toggleTerminal() {
+    setTerminalOpen((prev) => {
+      const next = !prev;
+      root.preferences.set(prefKeys.terminalOpen, next ? "1" : "0");
+      return next;
+    });
+  }
+  /** Al parar el workspace se terminan sus PTYs antes que el proceso. */
+  async function closeWorkspaceTerminals() {
+    if (!terminalGateway) return;
+    const location = { directory: workspace.projectPath };
+    try {
+      const infos = await terminalGateway.list(location);
+      await Promise.all(
+        infos.map((info) => terminalGateway.remove(location, info.id).catch(() => undefined)),
+      );
+    } catch {
+      // El servidor puede haberse caído ya; la parada sigue adelante.
+    }
+  }
+  async function stopWorkspace() {
+    await closeWorkspaceTerminals();
+    onStop();
   }
   function changePanelTab(tab: InspectorTab) {
     setPanelTab(tab);
@@ -154,8 +187,15 @@ export function WorkspaceView({
               >
                 Cambios
               </Button>
+              <Button
+                className={terminalOpen ? "active" : ""}
+                title={terminalOpen ? "Ocultar terminal" : "Abrir terminal del workspace"}
+                onClick={toggleTerminal}
+              >
+                Terminal
+              </Button>
               <Button onClick={() => setSettingsOpen(true)}>Ajustes</Button>
-              <Button className="danger-text" onClick={onStop}>
+              <Button className="danger-text" onClick={() => void stopWorkspace()}>
                 Parar
               </Button>
             </>
@@ -183,28 +223,37 @@ export function WorkspaceView({
       )}
 
       {server && client ? (
-        <div className="workspace-body">
-          <ProfiledChat
-            client={client}
-            workspace={workspace}
-            onSessionChange={setSessionId}
-            sessionsOpen={sessionsOpen}
-            onCloseSessions={toggleSessions}
-            onWorkspaceActivity={onWorkspaceActivity}
-          />
-          {panelOpen && (
-            <Inspector
-              workspace={workspace}
+        <>
+          <div className="workspace-body">
+            <ProfiledChat
               client={client}
-              server={server}
-              sessionId={sessionId}
-              tab={panelTab}
-              onTabChange={changePanelTab}
-              onUpdated={onUpdated}
-              onClose={togglePanel}
+              workspace={workspace}
+              onSessionChange={setSessionId}
+              sessionsOpen={sessionsOpen}
+              onCloseSessions={toggleSessions}
+              onWorkspaceActivity={onWorkspaceActivity}
+            />
+            {panelOpen && (
+              <Inspector
+                workspace={workspace}
+                client={client}
+                server={server}
+                sessionId={sessionId}
+                tab={panelTab}
+                onTabChange={changePanelTab}
+                onUpdated={onUpdated}
+                onClose={togglePanel}
+              />
+            )}
+          </div>
+          {terminalOpen && terminalGateway && (
+            <TerminalDock
+              gateway={terminalGateway}
+              directory={workspace.projectPath}
+              onClose={toggleTerminal}
             />
           )}
-        </div>
+        </>
       ) : (
         <div className="start-pane">
           <div className="start-card">
