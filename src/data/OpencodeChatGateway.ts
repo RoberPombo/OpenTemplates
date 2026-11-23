@@ -7,8 +7,11 @@ import { OpenCode } from "@opencode/client";
 import type { ChatServer } from "../domain/repositories/ChatGateway";
 import type { ServerInfo } from "../types";
 import {
+  toAgentForms,
   toCatalogAgents,
   toCatalogModels,
+  toPermissionRequests,
+  toServerEvent,
   toSessionMessages,
   toUsageLimits,
 } from "./opencodePayloads";
@@ -42,6 +45,19 @@ export function createChatGateway(server: ServerInfo): ChatServer {
     usage: {
       limits: async () => ({ data: toUsageLimits((await sdk.usage.limits()).data) }),
     },
+    permission: {
+      list: async (input) => ({
+        data: toPermissionRequests(await sdk.permission.list(input)),
+      }),
+      reply: (input) => sdk.permission.reply(input),
+    },
+    form: {
+      list: async (input) => ({
+        data: toAgentForms(await sdk.session.form.list(input)),
+      }),
+      reply: (input) => sdk.session.form.reply(input),
+      cancel: (input) => sdk.session.form.cancel(input),
+    },
     mcp: {
       list: async (input) => {
         const response = await sdk.mcp.list(input);
@@ -54,6 +70,12 @@ export function createChatGateway(server: ServerInfo): ChatServer {
       remove: (input) => sdk.mcp.remove(input),
     },
     location: sdk.location,
-    event: sdk.event,
+    event: {
+      async *subscribe(input) {
+        for await (const event of sdk.event.subscribe(input)) {
+          yield toServerEvent(event);
+        }
+      },
+    },
   };
 }

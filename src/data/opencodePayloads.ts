@@ -6,10 +6,13 @@
  * estructurales del dominio. Ante un payload inválido devuelven una entrada
  * vacía en vez de romper la UI.
  */
+import type { AgentForm, FormField, FormOption, FormWhen } from "../domain/chat/forms";
 import type { RawPart, RawSessionMessage } from "../domain/chat/messages";
+import type { PermissionRequest, PermissionSource } from "../domain/chat/permissions";
 import type { CatalogAgent, CatalogModel } from "../domain/chat/selection";
 import type { ModelCost, ModelDetails } from "../domain/models/details";
 import type { UsageBudget, UsageLimits, UsageMeter } from "../domain/chat/usage";
+import type { ChatServerEvent } from "../domain/repositories/ChatGateway";
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -230,4 +233,215 @@ export function toSessionMessages(payload: unknown): RawSessionMessage[] {
       },
     ];
   });
+}
+
+function toPermissionSource(value: unknown): PermissionSource | undefined {
+  const source = record(value);
+  const type = text(source?.type);
+  const messageID = text(source?.messageID);
+  const id = text(source?.id);
+  if (!type || !messageID || !id) return undefined;
+  return { type, messageID, id };
+}
+
+/** Una petición de permiso del servidor, o `null` si le falta lo esencial. */
+export function toPermissionRequest(payload: unknown): PermissionRequest | null {
+  const permission = record(payload);
+  if (!permission) return null;
+  const id = text(permission.id);
+  const sessionID = text(permission.sessionID);
+  const action = text(permission.action);
+  if (!id || !sessionID || !action) return null;
+  return {
+    id,
+    sessionID,
+    action,
+    resources: texts(permission.resources),
+    save: texts(permission.save),
+    message: text(permission.message),
+    metadata: record(permission.metadata) ?? undefined,
+    source: toPermissionSource(permission.source),
+  };
+}
+
+/** Permisos pendientes de una sesión (`permission.list`). */
+export function toPermissionRequests(payload: unknown): PermissionRequest[] {
+  const entries = Array.isArray(payload) ? payload : list(record(payload)?.data);
+  return entries.flatMap((item) => {
+    const request = toPermissionRequest(item);
+    return request ? [request] : [];
+  });
+}
+
+/** Datos de `permission.replied`: qué petición quedó resuelta. */
+export function toPermissionReply(
+  payload: unknown,
+): { sessionID: string; requestID: string } | null {
+  const data = record(payload);
+  const sessionID = text(data?.sessionID);
+  const requestID = text(data?.requestID);
+  if (!sessionID || !requestID) return null;
+  return { sessionID, requestID };
+}
+
+function toFormOptions(value: unknown): FormOption[] {
+  return list(value).flatMap((item) => {
+    const option = record(item);
+    const optionValue = text(option?.value);
+    const label = text(option?.label);
+    if (!optionValue || !label) return [];
+    return [{ value: optionValue, label, description: text(option?.description) }];
+  });
+}
+
+function toFormWhen(value: unknown): FormWhen[] {
+  return list(value).flatMap((item) => {
+    const condition = record(item);
+    const key = text(condition?.key);
+    const op = text(condition?.op);
+    const conditionValue = condition?.value;
+    if (
+      !key ||
+      (op !== "eq" && op !== "neq") ||
+      (typeof conditionValue !== "string" &&
+        typeof conditionValue !== "number" &&
+        typeof conditionValue !== "boolean")
+    ) {
+      return [];
+    }
+    return [{ key, op, value: conditionValue }];
+  });
+}
+
+function toFormFormat(value: unknown): "email" | "uri" | "date" | "date-time" | undefined {
+  return value === "email" || value === "uri" || value === "date" || value === "date-time"
+    ? value
+    : undefined;
+}
+
+function toFormField(payload: unknown): FormField | null {
+  const field = record(payload);
+  if (!field) return null;
+  const key = text(field.key);
+  const type = text(field.type);
+  if (!key || !type) return null;
+  const base = {
+    key,
+    title: text(field.title),
+    description: text(field.description),
+    required: typeof field.required === "boolean" ? field.required : undefined,
+    hidden: typeof field.hidden === "boolean" ? field.hidden : undefined,
+    when: toFormWhen(field.when),
+  };
+  switch (type) {
+    case "string":
+      return {
+        ...base,
+        type,
+        format: toFormFormat(field.format),
+        minLength: count(field.minLength),
+        maxLength: count(field.maxLength),
+        pattern: text(field.pattern),
+        placeholder: text(field.placeholder),
+        options: toFormOptions(field.options),
+        default: text(field.default),
+        custom: typeof field.custom === "boolean" ? field.custom : undefined,
+      };
+    case "number":
+    case "integer":
+      return {
+        ...base,
+        type,
+        minimum: count(field.minimum),
+        maximum: count(field.maximum),
+        default: count(field.default),
+      };
+    case "boolean":
+      return {
+        ...base,
+        type,
+        default: typeof field.default === "boolean" ? field.default : undefined,
+      };
+    case "multiselect":
+      return {
+        ...base,
+        type,
+        options: toFormOptions(field.options),
+        minItems: count(field.minItems),
+        maxItems: count(field.maxItems),
+        default: texts(field.default),
+        custom: typeof field.custom === "boolean" ? field.custom : undefined,
+      };
+    case "external": {
+      const url = text(field.url);
+      return url ? { ...base, type, url } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Un formulario (pregunta del agente), o `null` si le falta lo esencial. */
+export function toAgentForm(payload: unknown): AgentForm | null {
+  const form = record(payload);
+  if (!form) return null;
+  const id = text(form.id);
+  const sessionID = text(form.sessionID);
+  if (!id || !sessionID) return null;
+  return {
+    id,
+    sessionID,
+    title: text(form.title) ?? "Pregunta del agente",
+    metadata: record(form.metadata) ?? undefined,
+    fields: list(form.fields).flatMap((item) => {
+      const field = toFormField(item);
+      return field ? [field] : [];
+    }),
+  };
+}
+
+/** Formularios pendientes de una sesión (`session.form.list`). */
+export function toAgentForms(payload: unknown): AgentForm[] {
+  const entries = Array.isArray(payload) ? payload : list(record(payload)?.data);
+  return entries.flatMap((item) => {
+    const form = toAgentForm(item);
+    return form ? [form] : [];
+  });
+}
+
+/** Datos de `form.replied`/`form.cancelled`: qué formulario quedó resuelto. */
+export function toFormSettled(payload: unknown): { sessionID: string; formID: string } | null {
+  const data = record(payload);
+  const sessionID = text(data?.sessionID);
+  const formID = text(data?.id);
+  if (!sessionID || !formID) return null;
+  return { sessionID, formID };
+}
+
+/**
+ * Estrecha los eventos que la presentación consume tipados. El resto se deja
+ * intacto: el reducer de streaming sigue leyendo `data` como `unknown`.
+ */
+export function toServerEvent(event: { type: string; data?: unknown }): ChatServerEvent {
+  switch (event.type) {
+    case "permission.asked": {
+      const permission = toPermissionRequest(event.data);
+      return permission ? { ...event, permission } : event;
+    }
+    case "permission.replied": {
+      const permissionReply = toPermissionReply(event.data);
+      return permissionReply ? { ...event, permissionReply } : event;
+    }
+    case "form.created": {
+      const form = toAgentForm(record(event.data)?.form ?? event.data);
+      return form ? { ...event, form } : event;
+    }
+    case "form.replied":
+    case "form.cancelled": {
+      const formSettled = toFormSettled(event.data);
+      return formSettled ? { ...event, formSettled } : event;
+    }
+    default:
+      return event;
+  }
 }

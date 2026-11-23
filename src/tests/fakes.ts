@@ -1,5 +1,8 @@
 import { vi } from "vitest";
 import type { Workspace } from "../types";
+import type { AgentForm } from "../domain/chat/forms";
+import type { PermissionRequest } from "../domain/chat/permissions";
+import { toServerEvent } from "../data/opencodePayloads";
 
 /** Workspace mínimo para tests. */
 export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
@@ -31,6 +34,10 @@ export function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
 }
 
 export type FakeEvent = { type: string; data?: Record<string, unknown> };
+
+async function* narrowEvents(events: AsyncIterable<FakeEvent>) {
+  for await (const event of events) yield toServerEvent(event);
+}
 
 /** Hub de eventos SSE: cada suscripción tiene su cola; el test empuja a las activas. */
 export function makeEventHub() {
@@ -88,6 +95,8 @@ export type FakeClientOptions = {
   agents?: unknown[];
   defaultModel?: { providerID: string; id: string } | null;
   branch?: string | null;
+  permissions?: PermissionRequest[];
+  forms?: AgentForm[];
 };
 
 /**
@@ -142,11 +151,20 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       status: vi.fn(async () => ({ data: [] })),
     },
     event: {
-      subscribe: vi.fn((opts?: { signal?: AbortSignal }) => hub.subscribe(opts)),
+      subscribe: vi.fn((opts?: { signal?: AbortSignal }) => narrowEvents(hub.subscribe(opts))),
     },
     location: { reload: vi.fn(async () => undefined) },
     mcp: { list: vi.fn(async () => ({ data: [] })), add: vi.fn(), remove: vi.fn() },
     usage: { limits: vi.fn(async () => ({ data: null })) },
+    permission: {
+      list: vi.fn(async () => ({ data: options.permissions ?? [] })),
+      reply: vi.fn(async () => undefined),
+    },
+    form: {
+      list: vi.fn(async () => ({ data: options.forms ?? [] })),
+      reply: vi.fn(async () => undefined),
+      cancel: vi.fn(async () => undefined),
+    },
   };
 
   return { client, hub };
