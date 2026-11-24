@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod context;
 mod gh;
 mod git;
 mod library;

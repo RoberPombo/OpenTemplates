@@ -37,6 +37,8 @@ export type Workspace = {
   plugins: AssetRef[];
   model?: string | null;
   models: string[];
+  /** Huella del contexto materializado que sirve el workspace. */
+  contextHash?: string | null;
   createdAt: number;
   updatedAt: number;
   missing?: boolean;
@@ -109,6 +111,8 @@ export type AppSettings = {
 
 export type ServerInfo = {
   workspaceId: string;
+  /** Huella del contexto que sirve el proceso (puede compartirse entre workspaces). */
+  contextHash?: string;
   baseUrl: string;
   password: string;
   port: number;

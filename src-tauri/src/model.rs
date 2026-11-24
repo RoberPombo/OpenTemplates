@@ -86,6 +86,10 @@ pub struct Workspace {
     /// Modelos que ofrece el selector del chat (congelados del template).
     #[serde(default)]
     pub models: Vec<String>,
+    /// Huella del contexto materializado que usa el workspace. `None` hasta que
+    /// se materializa por primera vez (workspaces migrados desde el modelo anterior).
+    #[serde(default)]
+    pub context_hash: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
     /// Solo en memoria: la carpeta del workspace ya no existe.
@@ -252,6 +256,9 @@ pub struct Library {
 #[serde(rename_all = "camelCase")]
 pub struct ServerInfo {
     pub workspace_id: String,
+    /// Huella del contexto que sirve este proceso.
+    #[serde(default)]
+    pub context_hash: String,
     pub base_url: String,
     pub password: String,
     pub port: u16,

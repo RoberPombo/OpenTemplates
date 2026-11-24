@@ -12,6 +12,10 @@ pub struct ServerHandle {
     pub port: u16,
     pub password: String,
     pub child: Child,
+    /// Huella del contexto que sirve el proceso.
+    pub context_hash: String,
+    /// Workspaces que tienen este contexto arrancado.
+    pub workspaces: Vec<String>,
 }
 
 fn write_log(path: &Path, line: &str) {
@@ -32,10 +36,11 @@ fn write_log(path: &Path, line: &str) {
 
 pub async fn spawn(
     workspace: &Workspace,
-    workspace_dir: &Path,
+    context_dir: &Path,
     bin: &Path,
+    context_hash: &str,
 ) -> Result<(ServerHandle, ServerInfo), String> {
-    let log_dir = workspace_dir.join("logs");
+    let log_dir = context_dir.join("logs");
     std::fs::create_dir_all(&log_dir)
         .map_err(|e| format!("No se pudo crear {}: {e}", log_dir.display()))?;
     let log_path = log_dir.join("server.log");
@@ -66,8 +71,8 @@ pub async fn spawn(
         .arg("--cors")
         .arg("tauri://localhost")
         .current_dir(&workspace.project_path)
-        .env("XDG_CONFIG_HOME", workspace_dir.join("xdg"))
-        .env("OPENCODE_DB", workspace_dir.join("opencode.db"))
+        .env("XDG_CONFIG_HOME", context_dir.join("xdg"))
+        .env("OPENCODE_DB", context_dir.join("opencode.db"))
         .env("OPENCODE_DISABLE_PROJECT_CONFIG", "1")
         .env("OPENCODE_DISABLE_AUTOUPDATE", "1")
         .env("OPENCODE_SERVER_PASSWORD", &password)
@@ -126,6 +131,7 @@ pub async fn spawn(
 
     let info = ServerInfo {
         workspace_id: workspace.id.clone(),
+        context_hash: context_hash.to_string(),
         base_url: format!("http://127.0.0.1:{port}"),
         password: password.clone(),
         port,
@@ -137,6 +143,8 @@ pub async fn spawn(
             port,
             password,
             child,
+            context_hash: context_hash.to_string(),
+            workspaces: vec![workspace.id.clone()],
         },
         info,
     ))
@@ -198,7 +206,7 @@ mod tests {
         };
 
         let bin = which::which("opencode").expect("opencode debe estar en PATH");
-        let (handle, info) = spawn(&workspace, &base, &bin).await.unwrap();
+        let (handle, info) = spawn(&workspace, &base, &bin, "test-hash").await.unwrap();
 
         let client = reqwest::Client::new();
         let response = client

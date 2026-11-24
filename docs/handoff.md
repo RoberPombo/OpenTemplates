@@ -38,12 +38,14 @@ Arquitectura de aislamiento: `docs/arquitectura-workspaces.md`.
 
 ## Invariantes verificados (no romper)
 
-- Un proceso `opencode serve` por workspace:
-  - `XDG_CONFIG_HOME=<ws>/xdg`
-  - `OPENCODE_DB=<ws>/opencode.db`
+- Un proceso `opencode serve` por **huella de contexto** (no por workspace):
+  - `XDG_CONFIG_HOME=<appdata>/contexts/<huella>/xdg`
+  - `OPENCODE_DB=<appdata>/contexts/<huella>/opencode.db`
   - `OPENCODE_DISABLE_PROJECT_CONFIG=1`
   - `OPENCODE_SERVER_PASSWORD` aleatoria y puerto libre.
   - Data dir compartido: `auth.json` compartido, un login para todos.
+  - La huella cubre raíz del proyecto + config renderizada + AGENTS.md combinado.
+    Dos workspaces con la misma huella comparten servidor y DB.
 - CORS: pasar `http://localhost:1420`, `http://tauri.localhost`,
   `https://tauri.localhost`, `tauri://localhost`.
 - CSP: el preview de la app en marcha necesita `frame-src http: https:` (la URL
@@ -59,9 +61,11 @@ Arquitectura de aislamiento: `docs/arquitectura-workspaces.md`.
   Cuidado: hoy ese path es un symlink al AGENTS.md global; **borrar el symlink
   antes de escribir**, o se corrompe el fichero del usuario.
 - MCP runtime: `/api/experimental/mcp/{server}` por location; `remove` es hasta
-  reiniciar. Cada workspace tiene su propio servidor, así que queda confinado.
-- Sesiones: aisladas por `OPENCODE_DB`. Mismo `projectID` si comparten carpeta;
-  la UI debe usar el `workspaceId`, no el `projectID`.
+  reiniciar. Cada contexto tiene su propio servidor, así que queda confinado.
+- Sesiones: aisladas por `OPENCODE_DB` del contexto. Mismo `projectID` si comparten
+  carpeta; la UI debe usar el `workspaceId`, no el `projectID`.
+- Parar un workspace solo para el servidor si ningún otro workspace de la misma
+  huella sigue arrancado.
 - Parada: SIGTERM y esperar; SIGKILL solo como fallback.
 - Comandos Tauri: args en camelCase desde JS.
 
@@ -526,3 +530,24 @@ nuevo. Decisión de viabilidad y coste de las alternativas en
 
 Pendiente relacionado: selector de elemento (requiere proxy propio o
 multiwebview con soporte Wayland), screenshot/consola y captura de una región.
+
+## Estado tras contextos por huella (fase 1)
+
+- `context.rs`: huella SHA-256 (versión 1) sobre raíz del proyecto + config
+  renderizada + AGENTS.md combinado. Store en `<appdata>/contexts/<huella>/` con
+  `context.json` (raíz, workspaces, timestamps) y refcount attach/detach.
+- `config.rs`: `plan()` y `write_plan()` separados; el plan se calcula una vez y
+  sirve tanto para la huella como para materializar.
+- Servidores indexados por huella (no por workspace). `ServerInfo.contextHash`
+  identifica el contexto; `workspace_status` devuelve una entrada por workspace
+  compartido para no cambiar la UI. Parar o borrar desengancha solo ese workspace
+  y mata el proceso cuando el contexto queda vacío.
+- Migración: al primer arranque de un workspace se copian sus `opencode.db*`
+  legados al contexto para conservar las sesiones.
+- `Workspace.contextHash` se persiste; reaplicar o cambiar la selección produce
+  otra huella y las sesiones nuevas van al contexto nuevo.
+- Verificación: `cargo test` en verde (41 tests; nuevos de `context.rs`),
+  `pnpm check` en verde (616 tests).
+- Pendiente de la fase 2: el modelo por defecto sigue entrando en la huella
+  (hace de fallback del servidor); perfiles por sesión y agente; badge de
+  «comparte servidor»; GC de contextos sin uso.

@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 use crate::config;
+use crate::context;
 use crate::git;
 use crate::library;
 use crate::model::{
@@ -42,6 +43,7 @@ fn find_opencode_bin() -> Option<PathBuf> {
 fn info_of(workspace_id: &str, handle: &mut ServerHandle) -> Option<ServerInfo> {
     Some(ServerInfo {
         workspace_id: workspace_id.to_string(),
+        context_hash: handle.context_hash.clone(),
         base_url: format!("http://127.0.0.1:{}", handle.port),
         password: handle.password.clone(),
         port: handle.port,
@@ -82,21 +84,97 @@ fn repo_from_path(path: &Path) -> Result<Repo, String> {
 }
 
 fn materialize_workspace(
+    state: &AppState,
     workspace: &Workspace,
     workspace_dir: &Path,
-) -> Result<config::Materialized, String> {
+) -> Result<(String, config::Materialized), String> {
     let (global, error) = config::read_global_config();
     let global_dir = config::global_config_dir();
-    let mut materialized = config::materialize(config::MaterializeInput {
-        workspace,
-        workspace_dir,
-        global_dir: &global_dir,
-        global_config: &global,
-    })?;
+    let plan = config::plan(workspace, workspace_dir, &global_dir, &global);
+    let root = project_root(state, workspace);
+    // La huella cubre la config renderizada, que hoy incluye el modelo por
+    // defecto. Cuando el modelo pase a elegirse por agente/sesión (fase 2)
+    // dejará de formar parte de la huella y dos roles compartirán contexto.
+    let hash = context::fingerprint(&root, &plan.config, &plan.agents_md);
+    let context_dir = context::ensure(&state.data_dir, &hash, &root)?;
+    let mut materialized = config::write_plan(workspace, workspace_dir, &context_dir, &plan)?;
+    // Los workspaces anteriores guardaban su DB en workspaces/<id>. La primera
+    // vez que entran en un contexto se copia para no perder sus sesiones.
+    migrate_legacy_db(
+        state,
+        &workspace.id,
+        &context_dir,
+        &mut materialized.warnings,
+    );
     if let Some(error) = error {
         materialized.warnings.push(error);
     }
-    Ok(materialized)
+    Ok((hash, materialized))
+}
+
+fn migrate_legacy_db(
+    state: &AppState,
+    workspace_id: &str,
+    context_dir: &Path,
+    warnings: &mut Vec<String>,
+) {
+    if context_dir.join("opencode.db").exists() {
+        return;
+    }
+    let legacy_dir = state.data_dir.join("workspaces").join(workspace_id);
+    let Ok(entries) = fs::read_dir(&legacy_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("opencode.db") {
+            continue;
+        }
+        let target = context_dir.join(&name);
+        if let Err(error) = fs::copy(entry.path(), &target) {
+            warnings.push(format!(
+                "No se pudo migrar {name} al contexto compartido: {error}"
+            ));
+        }
+    }
+}
+
+fn materialize_and_remember(
+    state: &AppState,
+    workspace: &Workspace,
+    workspace_dir: &Path,
+) -> Result<(Workspace, config::Materialized), String> {
+    let (hash, materialized) = materialize_workspace(state, workspace, workspace_dir)?;
+    let refreshed = remember_context(state, &workspace.id, &hash)?;
+    Ok((refreshed, materialized))
+}
+
+/// Raíz estable del proyecto: el checkout principal del repo, no el worktree.
+/// Así dos worktrees del mismo repo comparten contexto si su huella coincide.
+fn project_root(state: &AppState, workspace: &Workspace) -> String {
+    if let Some(repo_id) = workspace.repo_id.as_deref()
+        && let Ok(repos) = state.repos.lock()
+        && let Some(repo) = repos.iter().find(|repo| repo.id == repo_id)
+    {
+        return std::fs::canonicalize(&repo.path)
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_else(|_| repo.path.clone());
+    }
+    std::fs::canonicalize(&workspace.project_path)
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|_| workspace.project_path.clone())
+}
+
+/// Recuerda en el workspace la huella que acaba de materializarse.
+fn remember_context(state: &AppState, workspace_id: &str, hash: &str) -> Result<Workspace, String> {
+    let mut workspaces = state.workspaces.lock().map_err(|_| "estado bloqueado")?;
+    let workspace = workspaces
+        .iter_mut()
+        .find(|workspace| workspace.id == workspace_id)
+        .ok_or_else(|| format!("Workspace '{workspace_id}' no existe"))?;
+    workspace.context_hash = Some(hash.to_string());
+    workspace.updated_at = now_ms();
+    Ok(workspace.clone())
 }
 
 fn outcome(workspace: Workspace, materialized: config::Materialized) -> ConfigOutcome {
@@ -146,9 +224,12 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
         for id in dead {
             servers.remove(&id);
         }
-        for (id, handle) in servers.iter_mut() {
-            if let Some(info) = info_of(id, handle) {
-                running.push(info);
+        for (_, handle) in servers.iter_mut() {
+            let workspace_ids = handle.workspaces.clone();
+            for workspace_id in workspace_ids {
+                if let Some(info) = info_of(&workspace_id, handle) {
+                    running.push(info);
+                }
             }
         }
     }
@@ -721,6 +802,7 @@ pub fn create_workspace(
         plugins: Vec::new(),
         model: input.model.clone().filter(|model| !model.trim().is_empty()),
         models: Vec::new(),
+        context_hash: None,
         created_at: now,
         updated_at: now,
         missing: false,
@@ -761,13 +843,14 @@ pub fn create_workspace(
         warnings.extend(conflicts(&workspaces, &workspace));
     }
 
-    let materialized = match materialize_workspace(&workspace, &workspace_dir) {
+    let (hash, materialized) = match materialize_workspace(&state, &workspace, &workspace_dir) {
         Ok(materialized) => materialized,
         Err(err) => {
             rollback_worktree(&repo, &worktree_path);
             return Err(err);
         }
     };
+    workspace.context_hash = Some(hash);
     let mut outcome = outcome(workspace.clone(), materialized);
     warnings.append(&mut outcome.warnings);
     outcome.warnings = warnings;
@@ -835,7 +918,7 @@ pub fn update_workspace(
         templates::write_lock(&workspace_dir, &lock)?;
     }
 
-    let materialized = materialize_workspace(&workspace, &workspace_dir)?;
+    let (workspace, materialized) = materialize_and_remember(&state, &workspace, &workspace_dir)?;
     let mut outcome = outcome(workspace, materialized);
     warnings.append(&mut outcome.warnings);
     outcome.warnings = warnings;
@@ -869,7 +952,7 @@ pub fn set_workspace_disabled(
     };
 
     let workspace_dir = ensure_workspace_dir(&state.data_dir, &id);
-    let materialized = materialize_workspace(&workspace, &workspace_dir)?;
+    let (workspace, materialized) = materialize_and_remember(&state, &workspace, &workspace_dir)?;
     let outcome = outcome(workspace, materialized);
     state.save()?;
     Ok(outcome)
@@ -920,7 +1003,7 @@ pub fn reapply_template(state: State<'_, AppState>, id: String) -> Result<Config
         workspace.clone()
     };
 
-    let materialized = materialize_workspace(&refreshed, &workspace_dir)?;
+    let (refreshed, materialized) = materialize_and_remember(&state, &refreshed, &workspace_dir)?;
     let mut outcome = outcome(refreshed, materialized);
     warnings.append(&mut outcome.warnings);
     outcome.warnings = warnings;
@@ -979,13 +1062,30 @@ pub async fn delete_workspace(
         None
     };
 
-    let handle = state
-        .servers
-        .lock()
-        .map_err(|_| "estado bloqueado")?
-        .remove(&id);
-    if let Some(handle) = handle {
+    let mut stopped = Vec::new();
+    if let Ok(mut servers) = state.servers.lock() {
+        let keys: Vec<String> = servers
+            .iter()
+            .filter(|(_, handle)| handle.workspaces.iter().any(|workspace| workspace == &id))
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in keys {
+            let mut empty = false;
+            if let Some(handle) = servers.get_mut(&key) {
+                handle.workspaces.retain(|workspace| workspace != &id);
+                empty = handle.workspaces.is_empty();
+            }
+            if empty && let Some(handle) = servers.remove(&key) {
+                stopped.push(handle);
+            }
+        }
+    }
+    for handle in stopped {
         server::stop(handle).await;
+    }
+
+    if let Some(hash) = workspace.context_hash.as_deref() {
+        let _ = context::detach(&state.data_dir, hash, &id);
     }
 
     if let Some((repo_path, path)) = worktree {
@@ -996,13 +1096,37 @@ pub async fn delete_workspace(
     }
 
     let workspace_dir = state.data_dir.join("workspaces").join(&id);
-    if delete_db.unwrap_or(false)
-        && let Ok(entries) = fs::read_dir(&workspace_dir)
-    {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with("opencode.db") {
-                let _ = fs::remove_file(entry.path());
+    if delete_db.unwrap_or(false) {
+        if let Ok(entries) = fs::read_dir(&workspace_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("opencode.db") {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+        // La DB del contexto es compartida: solo se borra si ningún otro
+        // workspace la usa.
+        if let Some(hash) = workspace.context_hash.as_deref() {
+            let shared = state
+                .workspaces
+                .lock()
+                .map(|workspaces| {
+                    workspaces
+                        .iter()
+                        .any(|other| other.id != id && other.context_hash.as_deref() == Some(hash))
+                })
+                .unwrap_or(true);
+            if !shared {
+                let context_dir = context::context_dir(&state.data_dir, hash);
+                if let Ok(entries) = fs::read_dir(&context_dir) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if name.starts_with("opencode.db") {
+                            let _ = fs::remove_file(entry.path());
+                        }
+                    }
+                }
             }
         }
     }
@@ -1025,50 +1149,120 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
         .cloned()
         .ok_or_else(|| format!("Workspace '{id}' no existe"))?;
 
-    let existing = state
-        .servers
-        .lock()
-        .map_err(|_| "estado bloqueado")?
-        .remove(&id);
-
-    if let Some(mut handle) = existing
-        && server::is_alive(&mut handle)
-    {
-        let info = info_of(&id, &mut handle).ok_or("El servidor no tiene PID")?;
-        state
-            .servers
-            .lock()
-            .map_err(|_| "estado bloqueado")?
-            .insert(id, handle);
-        return Ok(info);
-    }
-
     let bin =
         find_opencode_bin().ok_or("No se encontró el binario de opencode. Define OPENCODE_BIN.")?;
     let workspace_dir = ensure_workspace_dir(&state.data_dir, &id);
-    let materialized = materialize_workspace(&workspace, &workspace_dir)?;
+    let (hash, materialized) = materialize_workspace(&state, &workspace, &workspace_dir)?;
     for warning in &materialized.warnings {
         eprintln!("[opentemplates] {}", warning);
     }
+    let workspace = remember_context(&state, &id, &hash)?;
+    let root = project_root(&state, &workspace);
+    context::attach(&state.data_dir, &hash, &root, &id)?;
 
-    let (handle, info) = server::spawn(&workspace, &workspace_dir, &bin).await?;
+    // Si el workspace cambió de huella (reaplicar, cambiar selección), se
+    // desengancha de los contextos anteriores antes de usar el nuevo.
+    let mut stale = Vec::new();
+    {
+        let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
+        let previous: Vec<String> = servers
+            .iter()
+            .filter(|(key, handle)| {
+                key.as_str() != hash && handle.workspaces.iter().any(|workspace| workspace == &id)
+            })
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in previous {
+            let mut empty = false;
+            if let Some(handle) = servers.get_mut(&key) {
+                handle.workspaces.retain(|workspace| workspace != &id);
+                empty = handle.workspaces.is_empty();
+            }
+            if empty && let Some(handle) = servers.remove(&key) {
+                stale.push(handle);
+            }
+        }
+    }
+    for handle in stale {
+        server::stop(handle).await;
+    }
+
+    let mut dead = None;
+    {
+        let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
+        let alive = servers
+            .get_mut(&hash)
+            .map(server::is_alive)
+            .unwrap_or(false);
+        if alive {
+            let handle = servers.get_mut(&hash).expect("servidor comprobado");
+            if !handle.workspaces.iter().any(|workspace| workspace == &id) {
+                handle.workspaces.push(id.clone());
+            }
+            let info = info_of(&id, handle).ok_or("El servidor no tiene PID")?;
+            drop(servers);
+            state.save()?;
+            return Ok(info);
+        }
+        if servers.contains_key(&hash) {
+            dead = servers.remove(&hash);
+        }
+    }
+    if let Some(handle) = dead {
+        server::stop(handle).await;
+    }
+
+    let context_dir = context::context_dir(&state.data_dir, &hash);
+    let (mut handle, _) = server::spawn(&workspace, &context_dir, &bin, &hash).await?;
+    if !handle.workspaces.iter().any(|workspace| workspace == &id) {
+        handle.workspaces.push(id.clone());
+    }
+    let info = info_of(&id, &mut handle).ok_or("El servidor no tiene PID")?;
     state
         .servers
         .lock()
         .map_err(|_| "estado bloqueado")?
-        .insert(id, handle);
+        .insert(hash, handle);
+    state.save()?;
     Ok(info)
 }
 
 #[tauri::command]
 pub async fn stop_workspace(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let handle = state
-        .servers
-        .lock()
-        .map_err(|_| "estado bloqueado")?
-        .remove(&id);
-    if let Some(handle) = handle {
+    let mut stopped = Vec::new();
+    let mut hash = None;
+    {
+        let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
+        let keys: Vec<String> = servers
+            .iter()
+            .filter(|(_, handle)| handle.workspaces.iter().any(|workspace| workspace == &id))
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in keys {
+            hash = Some(key.clone());
+            let mut empty = false;
+            if let Some(handle) = servers.get_mut(&key) {
+                handle.workspaces.retain(|workspace| workspace != &id);
+                empty = handle.workspaces.is_empty();
+            }
+            if empty && let Some(handle) = servers.remove(&key) {
+                stopped.push(handle);
+            }
+        }
+    }
+    for handle in stopped {
         server::stop(handle).await;
+    }
+    if hash.is_none() {
+        hash = state.workspaces.lock().ok().and_then(|workspaces| {
+            workspaces
+                .iter()
+                .find(|workspace| workspace.id == id)
+                .and_then(|workspace| workspace.context_hash.clone())
+        });
+    }
+    if let Some(hash) = hash {
+        let _ = context::detach(&state.data_dir, &hash, &id);
     }
     Ok(())
 }
@@ -1078,15 +1272,18 @@ pub fn workspace_status(state: State<'_, AppState>) -> Result<Vec<ServerInfo>, S
     let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
     let dead: Vec<String> = servers
         .iter_mut()
-        .filter_map(|(id, handle)| (!server::is_alive(handle)).then(|| id.clone()))
+        .filter_map(|(hash, handle)| (!server::is_alive(handle)).then(|| hash.clone()))
         .collect();
-    for id in dead {
-        servers.remove(&id);
+    for hash in dead {
+        servers.remove(&hash);
     }
     let mut result = Vec::new();
-    for (id, handle) in servers.iter_mut() {
-        if let Some(info) = info_of(id, handle) {
-            result.push(info);
+    for (_, handle) in servers.iter_mut() {
+        let workspace_ids = handle.workspaces.clone();
+        for workspace_id in workspace_ids {
+            if let Some(info) = info_of(&workspace_id, handle) {
+                result.push(info);
+            }
         }
     }
     Ok(result)
@@ -1120,11 +1317,32 @@ pub fn workspace_log(state: State<'_, AppState>, id: String, lines: Option<usize
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
         return String::new();
     }
-    let path = state
-        .data_dir
-        .join("workspaces")
-        .join(&id)
-        .join("logs/server.log");
+    let hash = state
+        .servers
+        .lock()
+        .ok()
+        .and_then(|servers| {
+            servers
+                .values()
+                .find(|handle| handle.workspaces.iter().any(|workspace| workspace == &id))
+                .map(|handle| handle.context_hash.clone())
+        })
+        .or_else(|| {
+            state.workspaces.lock().ok().and_then(|workspaces| {
+                workspaces
+                    .iter()
+                    .find(|workspace| workspace.id == id)
+                    .and_then(|workspace| workspace.context_hash.clone())
+            })
+        });
+    let path = match hash {
+        Some(hash) => context::context_dir(&state.data_dir, &hash).join("logs/server.log"),
+        None => state
+            .data_dir
+            .join("workspaces")
+            .join(&id)
+            .join("logs/server.log"),
+    };
     let Ok(raw) = fs::read_to_string(path) else {
         return String::new();
     };

@@ -402,32 +402,33 @@ fn write_replacing(path: &Path, content: &str) -> Result<(), String> {
     fs::write(path, content).map_err(|e| format!("No se pudo escribir {}: {e}", path.display()))
 }
 
-pub struct MaterializeInput<'a> {
-    pub workspace: &'a Workspace,
-    pub workspace_dir: &'a Path,
-    pub global_dir: &'a Path,
-    pub global_config: &'a Value,
-}
-
-#[derive(Debug)]
 pub struct Materialized {
     pub config_path: PathBuf,
     pub agents_path: PathBuf,
     pub warnings: Vec<String>,
 }
 
-/// Materializa la config del workspace a partir del lock congelado (si existe)
-/// o de los campos del propio workspace (workspaces ad-hoc de la v1).
-pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> {
-    let MaterializeInput {
-        workspace,
-        workspace_dir,
-        global_dir,
-        global_config,
-    } = input;
+/// Config y AGENTS.md que produce un workspace, antes de escribir nada.
+/// Separar el cálculo de la escritura permite calcular la huella del contexto
+/// y reutilizar el mismo resultado para materializar.
+pub struct Plan {
+    pub config: Value,
+    pub agents_md: String,
+    pub warnings: Vec<String>,
+    pub lock: Option<TemplateLock>,
+    pub global_dir: PathBuf,
+}
 
+/// Calcula la config del workspace a partir del lock congelado (si existe) o de
+/// los campos del propio workspace (workspaces ad-hoc de la v1).
+pub fn plan(
+    workspace: &Workspace,
+    workspace_dir: &Path,
+    global_dir: &Path,
+    global_config: &Value,
+) -> Plan {
     let lock = templates::read_lock(workspace_dir);
-    let (mut root, mut warnings) = render_config(workspace, lock.as_ref(), global_config);
+    let (mut root, warnings) = render_config(workspace, lock.as_ref(), global_config);
 
     let allowed: Vec<String> = match &lock {
         Some(lock) => lock.skills.iter().map(|skill| skill.id.clone()).collect(),
@@ -453,11 +454,37 @@ pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> 
         }
     }
 
-    let config_dir = workspace_dir.join("xdg/opencode");
+    let global_md = fs::read_to_string(global_dir.join("AGENTS.md")).ok();
+    let repo_files = repo_agents_files(Path::new(&workspace.project_path));
+    let agents_md = build_agents_md(
+        lock.as_ref().and_then(|lock| lock.agents_md.as_deref()),
+        global_md.as_deref(),
+        &repo_files,
+        workspace.issue.as_ref(),
+    );
+
+    Plan {
+        config: root,
+        agents_md,
+        warnings,
+        lock,
+        global_dir: global_dir.to_path_buf(),
+    }
+}
+
+/// Escribe un plan ya calculado en el directorio de contexto indicado.
+pub fn write_plan(
+    workspace: &Workspace,
+    workspace_dir: &Path,
+    context_dir: &Path,
+    plan: &Plan,
+) -> Result<Materialized, String> {
+    let mut warnings = plan.warnings.clone();
+    let config_dir = context_dir.join("xdg/opencode");
     fs::create_dir_all(&config_dir)
         .map_err(|e| format!("No se pudo crear {}: {e}", config_dir.display()))?;
 
-    match &lock {
+    match &plan.lock {
         Some(lock) => {
             sync_asset_dir(&config_dir, "agents", &lock.agents, true, &mut warnings)?;
             sync_asset_dir(&config_dir, "commands", &lock.commands, true, &mut warnings)?;
@@ -465,9 +492,15 @@ pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> 
         }
         None => {
             // Workspace v1/ad-hoc: conserva el comportamiento anterior.
-            ensure_symlink(&global_dir.join("agents"), &config_dir.join("agents"));
-            ensure_symlink(&global_dir.join("commands"), &config_dir.join("commands"));
-            ensure_symlink(&global_dir.join("plugins"), &config_dir.join("plugins"));
+            ensure_symlink(&plan.global_dir.join("agents"), &config_dir.join("agents"));
+            ensure_symlink(
+                &plan.global_dir.join("commands"),
+                &config_dir.join("commands"),
+            );
+            ensure_symlink(
+                &plan.global_dir.join("plugins"),
+                &config_dir.join("plugins"),
+            );
         }
     }
 
@@ -484,19 +517,11 @@ pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> 
             .map_err(|e| format!("No se pudo escribir ISSUE.md: {e}"))?;
     }
 
-    let global_md = fs::read_to_string(global_dir.join("AGENTS.md")).ok();
-    let repo_files = repo_agents_files(Path::new(&workspace.project_path));
-    let combined = build_agents_md(
-        lock.as_ref().and_then(|lock| lock.agents_md.as_deref()),
-        global_md.as_deref(),
-        &repo_files,
-        workspace.issue.as_ref(),
-    );
     let agents_path = config_dir.join("AGENTS.md");
-    write_replacing(&agents_path, &combined)?;
+    write_replacing(&agents_path, &plan.agents_md)?;
 
     let config_path = config_dir.join("opencode.json");
-    let pretty = serde_json::to_string_pretty(&root)
+    let pretty = serde_json::to_string_pretty(&plan.config)
         .map_err(|e| format!("No se pudo serializar la config: {e}"))?;
     let tmp = config_dir.join(".opencode.json.tmp");
     fs::write(&tmp, pretty).map_err(|e| format!("No se pudo escribir {}: {e}", tmp.display()))?;
@@ -775,13 +800,8 @@ mod tests {
         };
         let global_config = json!({ "permissions": [] });
 
-        let materialized = materialize(MaterializeInput {
-            workspace: &workspace,
-            workspace_dir: &workspace_dir,
-            global_dir: &global_dir,
-            global_config: &global_config,
-        })
-        .unwrap();
+        let plan = plan(&workspace, &workspace_dir, &global_dir, &global_config);
+        let materialized = write_plan(&workspace, &workspace_dir, &workspace_dir, &plan).unwrap();
 
         // El AGENTS.md global no se toca, aunque antes fuera un symlink.
         assert_eq!(
