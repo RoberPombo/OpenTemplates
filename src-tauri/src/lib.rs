@@ -4,6 +4,7 @@ mod gh;
 mod git;
 mod library;
 mod model;
+mod preview;
 mod process;
 mod resources;
 mod server;
@@ -97,6 +98,8 @@ pub fn run() {
             commands::save_settings,
             commands::write_text_file,
             commands::read_text_file,
+            commands::preview_probe,
+            commands::open_external,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

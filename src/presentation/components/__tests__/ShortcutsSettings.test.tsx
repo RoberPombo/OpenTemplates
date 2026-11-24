@@ -14,6 +14,7 @@ describe("ShortcutsSettings", () => {
     expect(screen.getByText("Ir al workspace anterior")).toBeInTheDocument();
     expect(screen.getByText("Abrir o cerrar el terminal")).toBeInTheDocument();
     expect(screen.getByText("Abrir el panel de diff y cambios")).toBeInTheDocument();
+    expect(screen.getByText("Abrir o cerrar la vista previa de la app")).toBeInTheDocument();
     expect(screen.getAllByText(/Ctrl\+K/).length).toBeGreaterThan(0);
   });
 });

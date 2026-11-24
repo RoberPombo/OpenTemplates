@@ -46,6 +46,9 @@ Arquitectura de aislamiento: `docs/arquitectura-workspaces.md`.
   - Data dir compartido: `auth.json` compartido, un login para todos.
 - CORS: pasar `http://localhost:1420`, `http://tauri.localhost`,
   `https://tauri.localhost`, `tauri://localhost`.
+- CSP: el preview de la app en marcha necesita `frame-src http: https:` (la URL
+  es configurable). El iframe es de otro origen, no recibe IPC de Tauri y no se
+  puede inspeccionar desde el webview padre.
 - **Skills**: el descubrimiento NO respeta `XDG_CONFIG_HOME`; se descubren las de
   `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills` y las del
   proyecto. El aislamiento real es la allowlist de `permissions`:
@@ -474,3 +477,52 @@ Implementado sobre el panel de cambios existente (no hay panel nuevo):
 
 Pendiente relacionado: fusionar la ganadora de una carrera, issues de GitHub y
 las acciones de worktree que ya estaban en la lista anterior.
+
+## Estado tras #13: preview de la app en marcha
+
+Implementado como dock inferior por workspace, junto al terminal, sin panel
+nuevo. Decisión de viabilidad y coste de las alternativas en
+`docs/preview-viabilidad.md`.
+
+- **Acceso**: botón «Vista» en la cabecera del workspace, entrada «Vista previa
+  de la app» en la paleta (#41) y atajo `Ctrl/Cmd+Shift+V`. El dock abierto se
+  recuerda en `opentemplates:preview`; Escape lo cierra después del terminal.
+- **URL por workspace**: campo de URL o puerto (acepta `5173`, `:5173`,
+  `localhost:5173` o una URL http/https) con `Aplicar`, `Recargar` y `Abrir` en
+  el navegador externo. El último valor se guarda en
+  `opentemplates:preview-url:<workspaceId>`; el tamaño de dispositivo
+  (escritorio 1440×900, tablet 834×1112, móvil 390×844) en
+  `opentemplates:preview-device:<workspaceId>`.
+- **Estado antes de pintar**: `preview_probe` (Rust) sondea la URL con timeout,
+  sin CORS, y devuelve `{ok, status, title, error, frameBlocked, verified}`.
+  Mientras comprueba se muestra «Comprobando…», nunca un iframe en blanco. Si no
+  hay servidor, el mensaje concreto («No hay nadie escuchando en host:puerto…»)
+  y botones «Reintentar»/«Abrir en el navegador». Si hay respuesta, se pinta el
+  iframe; si el servidor manda `X-Frame-Options` o `frame-ancestors`, se avisa
+  de que el marco puede quedar vacío. `https` solo comprueba que el puerto
+  acepta conexión (no se inspecciona TLS).
+- **Enviar al agente**: con URL, workspace, ruta local, tamaño, estado y la
+  petición del usuario compone un prompt numerado, recortado a 900 caracteres,
+  y lo manda con `session.prompt` a la sesión activa del workspace (el mismo
+  `sessionId` que usa el chat). Sin sesión el botón queda deshabilitado y se
+  explica. El iframe no aporta screenshot, estilos ni errores de consola porque
+  es de otro origen: **el selector de elemento no está implementado**. Se
+  necesitaría un proxy propio que sirva el preview desde el mismo origen e
+  inyecte el script, o multiwebview, que hoy no funciona en Wayland con wry
+  0.57.3 (solo X11) y cambia el modelo de ventanas.
+- **Verificación**: `pnpm check` en verde (616 tests; nuevos de dominio
+  `preview.test.ts` y de componente `PreviewDock.test.tsx`, más el botón en
+  `WorkspaceView.test.tsx` y un fake de gateway). `cargo test` en verde (39
+  tests; nuevos de `preview.rs`, incluido un servidor HTTP local y un puerto
+  cerrado). `cargo clippy --all-targets -- -D warnings` en verde. Prueba manual
+  con `pnpm dev` real en `127.0.0.1:1420`: el sondeo devuelve `ok`, HTTP 200,
+  título «OpenTemplates» y `frameBlocked: false`. También se arrancó la app
+  completa (`GDK_BACKEND=x11 pnpm tauri dev`) con un servidor real en
+  `localhost:5173` y se comprobó en una captura de la ventana que un iframe con
+  la nueva CSP pinta la página (temporalmente para la prueba, retirado después).
+  El flujo del dock (estados, URL, dispositivo, envío) se valida con fakes en
+  componente; no se recorrió a mano un workspace real porque el store de prueba
+  estaba vacío.
+
+Pendiente relacionado: selector de elemento (requiere proxy propio o
+multiwebview con soporte Wayland), screenshot/consola y captura de una región.

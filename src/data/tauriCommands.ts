@@ -7,6 +7,7 @@ import type {
   GitStatusRaw,
 } from "../domain/workspace/git";
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
+import type { PreviewProbe } from "../domain/preview/preview";
 import type {
   AppSettings,
   Bootstrap,
@@ -96,6 +97,11 @@ export const api = {
     title: string;
     body: string;
   }) => invoke<string>("gh_pr_create", { input }),
+
+  /** Sondea la URL del preview desde Rust (sin CORS) y devuelve su estado. */
+  previewProbe: (url: string) => invoke<PreviewProbe>("preview_probe", { url }),
+  /** Abre una URL http(s) en el navegador externo del sistema. */
+  openExternal: (url: string) => invoke<void>("open_external", { url }),
 
   getSettings: () => invoke<AppSettings>("get_settings"),
   saveSettings: (settings: AppSettings) => invoke<AppSettings>("save_settings", { settings }),

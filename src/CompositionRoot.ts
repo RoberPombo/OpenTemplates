@@ -9,6 +9,7 @@ import {
   TauriGitGateway,
   TauriModelCatalogGateway,
   TauriPullRequestGateway,
+  TauriPreviewGateway,
   TauriRepoGateway,
   TauriResourcesGateway,
   TauriSettingsGateway,
@@ -38,6 +39,7 @@ import type { Preferences } from "./domain/repositories/Preferences";
 import type { RepoGateway } from "./domain/repositories/RepoGateway";
 import type { GitGateway } from "./domain/repositories/GitGateway";
 import type { PullRequestGateway } from "./domain/repositories/PullRequestGateway";
+import type { PreviewGateway } from "./domain/repositories/PreviewGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
 import type { SessionFiles } from "./domain/repositories/SessionFiles";
 import type { TemplateGateway } from "./domain/repositories/TemplateGateway";
@@ -52,6 +54,7 @@ export type Ports = {
   repos: RepoGateway;
   git: GitGateway;
   pullRequests: PullRequestGateway;
+  preview: PreviewGateway;
   templates: TemplateGateway;
   settings: SettingsGateway;
   library: LibraryGateway;
@@ -73,6 +76,7 @@ export class CompositionRoot {
   readonly repos: RepoGateway;
   readonly git: GitGateway;
   readonly pullRequests: PullRequestGateway;
+  readonly preview: PreviewGateway;
   readonly templates: TemplateGateway;
   readonly settings: SettingsGateway;
   readonly library: LibraryGateway;
@@ -91,6 +95,7 @@ export class CompositionRoot {
     this.repos = overrides.repos ?? new TauriRepoGateway();
     this.git = overrides.git ?? new TauriGitGateway();
     this.pullRequests = overrides.pullRequests ?? new TauriPullRequestGateway();
+    this.preview = overrides.preview ?? new TauriPreviewGateway();
     this.templates = overrides.templates ?? new TauriTemplateGateway();
     this.settings = overrides.settings ?? new TauriSettingsGateway();
     this.library = overrides.library ?? new TauriLibraryGateway();
@@ -136,5 +141,9 @@ export class CompositionRoot {
   }
   provideTerminalGateway(server: ServerInfo): TerminalGateway {
     return createTerminalGateway(server);
+  }
+
+  providePreviewGateway(): PreviewGateway {
+    return this.preview;
   }
 }

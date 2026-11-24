@@ -60,6 +60,11 @@ export const KEYBINDINGS: readonly Keybinding[] = [
     label: "Abrir el panel de diff y cambios",
     shortcut: { key: "d", mod: true, shift: true },
   },
+  {
+    id: "panel.preview",
+    label: "Abrir o cerrar la vista previa de la app",
+    shortcut: { key: "v", mod: true, shift: true },
+  },
 ] as const;
 
 export function shortcutFor(id: string): Shortcut | undefined {
