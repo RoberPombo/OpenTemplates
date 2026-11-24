@@ -3,7 +3,18 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChangesPanel } from "../ChangesPanel";
 import type { ChatServer } from "../../../domain/repositories/ChatGateway";
-import { makeFakeClient, makeWorkspace } from "../../../tests/fakes";
+import type { ConfirmDialog } from "../../../domain/repositories/Dialogs";
+import {
+  makeConfirmDialog,
+  makeFakeClient,
+  makeGitFile,
+  makeGitGateway,
+  makeGitStatus,
+  makePullRequestGateway,
+  makeWorkspace,
+  type FakeClientOptions,
+} from "../../../tests/fakes";
+import type { GitStatus } from "../../../domain/workspace/git";
 
 const sessionDiff = [
   {
@@ -22,10 +33,29 @@ const sessionDiff = [
   },
 ];
 
-const workingStatus = [
-  { file: "notas.txt", additions: 1, deletions: 1, status: "modified" },
-  { file: "viejo.txt", additions: 0, deletions: 3, status: "deleted" },
-];
+const workingGit = makeGitStatus({
+  branch: "feat/panel",
+  upstream: null,
+  files: [
+    makeGitFile({
+      path: "notas.txt",
+      staged: false,
+      index: null,
+      worktree: "M",
+      additions: 1,
+      deletions: 1,
+    }),
+    makeGitFile({
+      path: "viejo.txt",
+      status: "deleted",
+      staged: false,
+      index: null,
+      worktree: "D",
+      additions: 0,
+      deletions: 3,
+    }),
+  ],
+});
 
 const workingDiff = [
   {
@@ -45,23 +75,33 @@ const workingDiff = [
 ];
 
 function setup(
-  options: Partial<Parameters<typeof makeFakeClient>[0]> = {},
-  sessionId: string | null = "s1",
+  options: {
+    status?: GitStatus;
+    sessionId?: string | null;
+    confirm?: ConfirmDialog;
+    client?: Partial<FakeClientOptions>;
+    gitOptions?: Partial<Parameters<typeof makeGitGateway>[0]>;
+  } = {},
 ) {
+  const sessionId = options.sessionId === undefined ? "s1" : options.sessionId;
   const { client, hub } = makeFakeClient({
     sessionDiff,
-    vcsStatus: workingStatus,
     vcsDiff: workingDiff,
-    ...options,
+    ...options.client,
   });
+  const git = makeGitGateway({ status: options.status ?? workingGit, ...options.gitOptions });
+  const pullRequests = makePullRequestGateway();
   render(
     <ChangesPanel
       client={client as unknown as ChatServer}
       workspace={makeWorkspace()}
       sessionId={sessionId}
+      git={git.gateway}
+      pullRequests={pullRequests.gateway}
+      confirm={options.confirm ?? makeConfirmDialog()}
     />,
   );
-  return { client, hub };
+  return { client, hub, git, pullRequests };
 }
 
 describe("ChangesPanel — cambios de la sesión", () => {
@@ -88,7 +128,7 @@ describe("ChangesPanel — cambios de la sesión", () => {
 
   test("sin sesión activa lo dice y no llama al servidor", async () => {
     const user = userEvent.setup();
-    const { client } = setup({}, null);
+    const { client } = setup({ sessionId: null });
     await user.click(screen.getByRole("button", { name: "Sesión" }));
     expect(
       await screen.findByText("Sin sesión activa; mira el árbol de trabajo."),
@@ -118,10 +158,10 @@ describe("ChangesPanel — cambios de la sesión", () => {
 describe("ChangesPanel — árbol de trabajo", () => {
   test("carga el estado de git y pide el diff al abrir un fichero", async () => {
     const user = userEvent.setup();
-    const { client } = setup();
+    const { client, git } = setup();
     await screen.findByText("notas.txt");
     await user.click(screen.getByRole("button", { name: "Working tree" }));
-    await waitFor(() => expect(client.vcs.status).toHaveBeenCalled());
+    await waitFor(() => expect(git.status).toHaveBeenCalled());
     expect(await screen.findByText("viejo.txt")).toBeInTheDocument();
     expect(screen.getByLabelText("Resumen de cambios")).toHaveTextContent("2 archivos");
     expect(screen.getByLabelText("borrado")).toHaveTextContent("D");
@@ -137,12 +177,110 @@ describe("ChangesPanel — árbol de trabajo", () => {
   });
 
   test("un árbol limpio no pide parches", async () => {
-    setup({ vcsStatus: [] });
+    setup({ status: makeGitStatus({ files: [] }) });
     const user = userEvent.setup();
     await screen.findByText("notas.txt");
     await user.click(screen.getByRole("button", { name: "Working tree" }));
     expect(await screen.findByText("El árbol de trabajo está limpio.")).toBeInTheDocument();
     expect(screen.getByLabelText("Resumen de cambios")).toHaveTextContent("0 archivos");
+  });
+});
+
+describe("ChangesPanel — commit y push", () => {
+  test("prepara y quita ficheros con el checkbox", async () => {
+    const user = userEvent.setup();
+    const { git } = setup();
+    await user.click(screen.getByRole("button", { name: "Working tree" }));
+    const checkbox = await screen.findByLabelText("Preparar notas.txt");
+    expect(checkbox).not.toBeChecked();
+    await user.click(checkbox);
+    expect(git.stage).toHaveBeenCalledWith("/tmp/demo", ["notas.txt"]);
+    await waitFor(() => expect(screen.getByLabelText("Quitar del stage notas.txt")).toBeChecked());
+    await user.click(screen.getByLabelText("Quitar del stage notas.txt"));
+    expect(git.unstage).toHaveBeenCalledWith("/tmp/demo", ["notas.txt"]);
+  });
+
+  test("sugiere el mensaje con el diff preparado y commitea solo con acción explícita", async () => {
+    const user = userEvent.setup();
+    const status = makeGitStatus({
+      files: [
+        makeGitFile({ path: "a.txt", staged: true, additions: 2, deletions: 0 }),
+        makeGitFile({
+          path: "b.txt",
+          staged: false,
+          index: null,
+          worktree: "M",
+        }),
+      ],
+    });
+    const { client, git } = setup({
+      status,
+      confirm: makeConfirmDialog(false),
+      client: { generatedText: "feat(panel): mensaje sugerido" },
+    });
+    await user.click(screen.getByRole("button", { name: "Working tree" }));
+    const commitButton = await screen.findByRole("button", { name: "Commit" });
+    expect(commitButton).toBeDisabled();
+    expect(git.commit).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Sugerir mensaje" }));
+    await waitFor(() => expect(client.generate.text).toHaveBeenCalled());
+    expect(client.generate.text.mock.calls[0]?.[0].prompt).toContain("diff --git a/src/a.ts");
+    expect(screen.getByLabelText("Mensaje del commit")).toHaveValue(
+      "feat(panel): mensaje sugerido",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Commit" }));
+    expect(git.commit).not.toHaveBeenCalled();
+  });
+
+  test("confirma antes de commitear si quedan ficheros sin preparar", async () => {
+    const user = userEvent.setup();
+    const status = makeGitStatus({
+      files: [
+        makeGitFile({ path: "a.txt", staged: true }),
+        makeGitFile({ path: "b.txt", staged: false, index: null, worktree: "M" }),
+      ],
+    });
+    const confirm = { confirm: vi.fn(() => true) };
+    const { git } = setup({ status, confirm });
+    await user.click(screen.getByRole("button", { name: "Working tree" }));
+    const message = await screen.findByLabelText("Mensaje del commit");
+    await user.type(message, "feat: cambia a");
+    await user.click(screen.getByRole("button", { name: "Commit" }));
+    await waitFor(() => expect(git.commit).toHaveBeenCalledWith("/tmp/demo", "feat: cambia a"));
+    expect(confirm.confirm).toHaveBeenCalledWith(expect.stringContaining("b.txt"));
+  });
+
+  test("un hook que falla muestra la salida y no hace push", async () => {
+    const user = userEvent.setup();
+    const status = makeGitStatus({ files: [makeGitFile({ path: "a.txt", staged: true })] });
+    const { git } = setup({
+      status,
+      gitOptions: { commitError: new Error("El commit falló:\nhook roto: falta el test") },
+    });
+    await user.click(screen.getByRole("button", { name: "Working tree" }));
+    await user.type(await screen.findByLabelText("Mensaje del commit"), "feat: algo");
+    await user.click(screen.getByRole("button", { name: "Commit" }));
+    expect(await screen.findByText(/hook roto/)).toBeInTheDocument();
+    expect(git.push).not.toHaveBeenCalled();
+  });
+
+  test("sin upstream ofrece publicar la rama con su nombre visible", async () => {
+    const user = userEvent.setup();
+    const { git } = setup();
+    await user.click(screen.getByRole("button", { name: "Working tree" }));
+    const publish = await screen.findByRole("button", {
+      name: "Publicar rama (push -u origin/feat/panel)",
+    });
+    await user.click(publish);
+    await waitFor(() =>
+      expect(git.push).toHaveBeenCalledWith("/tmp/demo", {
+        branch: "feat/panel",
+        setUpstream: true,
+        remote: "origin",
+      }),
+    );
   });
 });
 
@@ -154,7 +292,18 @@ describe("ChangesPanel — errores", () => {
     client.session.diff = vi.fn(async () => {
       throw new Error("sesión no encontrada");
     });
-    render(<ChangesPanel client={client} workspace={makeWorkspace()} sessionId="s1" />);
+    const git = makeGitGateway();
+    const pullRequests = makePullRequestGateway();
+    render(
+      <ChangesPanel
+        client={client}
+        workspace={makeWorkspace()}
+        sessionId="s1"
+        git={git.gateway}
+        pullRequests={pullRequests.gateway}
+        confirm={makeConfirmDialog()}
+      />,
+    );
     expect(await screen.findByText(/sesión no encontrada/)).toBeInTheDocument();
   });
 });

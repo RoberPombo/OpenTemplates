@@ -2583,6 +2583,269 @@ p {
 .diff-line.meta {
   color: var(--muted-2);
 }
+.git-flow {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.git-branch-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+}
+.git-branch {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent-text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-upstream {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-ahead {
+  flex: none;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+}
+.git-change-list {
+  flex: none;
+  max-height: none;
+}
+.git-flow .diff-view {
+  flex: none;
+}
+.git-flow .diff-lines {
+  max-height: 260px;
+}
+.git-change-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 7px;
+}
+.git-change-item .change-row {
+  flex: 1;
+  min-width: 0;
+}
+.stage-check {
+  flex: none;
+  margin: 0 2px 0 4px;
+  accent-color: var(--accent);
+}
+.change-status.renamed,
+.change-status.copied {
+  border-color: color-mix(in srgb, var(--info) 35%, transparent);
+  background: color-mix(in srgb, var(--info) 10%, transparent);
+  color: var(--info-text);
+}
+.change-status.conflicted {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger-text);
+}
+.change-status.untracked {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent-text);
+}
+.change-status.typechange {
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  color: var(--warning-soft, var(--warning));
+}
+.inline-notice {
+  display: block;
+  margin: 6px 12px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent-text);
+}
+.commit-box {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+.commit-label {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.commit-message {
+  width: 100%;
+  min-height: 64px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--bg-deep);
+  outline: none;
+  font-size: 12px;
+  resize: vertical;
+}
+.commit-message:focus {
+  border-color: var(--accent-dim);
+}
+.commit-actions,
+.pr-actions,
+.pr-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.push-box {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+.push-box button {
+  align-self: flex-start;
+}
+.pr-card {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 16px;
+  border-top: 1px solid var(--line);
+}
+.pr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.pr-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.pr-notice a,
+.pr-links a,
+.pr-failed-list a {
+  color: var(--accent-text);
+}
+.pr-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pr-number {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pr-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-state {
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.pr-state.open {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent-text);
+}
+.pr-state.merged {
+  border-color: color-mix(in srgb, var(--info) 35%, transparent);
+  color: var(--info-text);
+}
+.pr-state.draft {
+  color: var(--muted-2);
+}
+.pr-links {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.pr-checks,
+.pr-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+.pr-check-summary {
+  color: var(--muted);
+}
+.pr-failed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 16px;
+}
+.pr-feedback-line {
+  color: var(--muted);
+  line-height: 1.45;
+}
+.pr-create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.pr-field input,
+.pr-field textarea {
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg-deep);
+  outline: none;
+  font-size: 12px;
+}
+.pr-field input:focus,
+.pr-field textarea:focus {
+  border-color: var(--accent-dim);
+}
 .file-tree {
   flex: 0 1 45%;
   min-height: 0;
