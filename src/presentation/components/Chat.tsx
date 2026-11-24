@@ -29,6 +29,9 @@ type Props = {
   onCloseSessions?: () => void;
   /** Actividad terminada sin foco, para marcarla en el sidebar. */
   onWorkspaceActivity?: (workspaceId: string) => void;
+  /** Sesión que debe abrirse (p. ej. una corrida de la carrera). */
+  openSessionId?: string | null;
+  onSessionOpened?: () => void;
 };
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -52,6 +55,8 @@ export function Chat({
   sessionsOpen,
   onCloseSessions,
   onWorkspaceActivity,
+  openSessionId,
+  onSessionOpened,
 }: Props) {
   const {
     sessionId,
@@ -111,7 +116,14 @@ export function Chat({
     pauseGoal,
     resumeGoal,
     removeGoal,
-  } = useChat({ client, workspace, onSessionChange, onWorkspaceActivity });
+  } = useChat({
+    client,
+    workspace,
+    onSessionChange,
+    onWorkspaceActivity,
+    openSessionId,
+    onSessionOpened,
+  });
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);

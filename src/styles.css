@@ -3569,3 +3569,258 @@ p {
     grid-template-columns: 1fr;
   }
 }
+
+/* Carreras multi-run */
+.race-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(61, 220, 151, 0.16);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.race-dialog {
+  width: min(620px, 100%);
+}
+
+.race-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.race-prompt {
+  min-height: 92px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.race-worktrees {
+  margin: 2px 0 10px;
+  border-color: var(--line);
+}
+
+.race-estimate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+.race-estimate-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: 10px;
+}
+
+.race-estimate-runs {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.race-modal {
+  width: min(1280px, 100%);
+  max-height: 90vh;
+}
+
+.race-head {
+  align-items: flex-start;
+}
+
+.race-head-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.race-prompt-summary {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 720px;
+}
+
+.race-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.race-status.running {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.race-status.finished {
+  color: var(--warning);
+  border-color: #4a3a1d;
+}
+
+.race-status.settled {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.race-add {
+  color: var(--accent);
+}
+
+.race-del {
+  color: var(--danger);
+}
+
+.race-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.race-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.race-card.winner,
+.race-card.succeeded {
+  border-color: #244a39;
+}
+
+.race-card.failed {
+  border-color: #4a2626;
+}
+
+.race-card.discarded {
+  opacity: 0.6;
+}
+
+.race-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.race-card-head h3 {
+  font-size: 14px;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.race-run-status {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.race-run-status.info {
+  color: #8ec5ff;
+  border-color: #274057;
+}
+
+.race-run-status.warning {
+  color: var(--warning);
+  border-color: #4a3a1d;
+}
+
+.race-run-status.success {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.race-run-status.error {
+  color: var(--danger);
+  border-color: #4a2626;
+}
+
+.race-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.race-metrics div {
+  min-width: 0;
+}
+
+.race-metrics dt {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.race-metrics dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.race-run-summary {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+}
+
+.race-run-summary.error {
+  color: var(--danger);
+}
+
+.race-run-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.race-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.race-card-actions .primary {
+  color: #05130d;
+}

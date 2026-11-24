@@ -108,6 +108,8 @@ export function makeEventHub() {
 
 export type FakeClientOptions = {
   messages?: unknown[];
+  /** Mensajes por sesión; tiene prioridad sobre `messages`. */
+  messagesBySession?: Record<string, unknown[]>;
   models?: unknown[];
   agents?: unknown[];
   commands?: unknown[];
@@ -119,6 +121,8 @@ export type FakeClientOptions = {
   permissions?: PermissionRequest[];
   forms?: AgentForm[];
   sessionDiff?: unknown[];
+  /** Diff por sesión; tiene prioridad sobre `sessionDiff`. */
+  sessionDiffs?: Record<string, unknown[]>;
   vcsStatus?: unknown[];
   vcsDiff?: unknown[];
   fileEntries?: Record<string, unknown[]>;
@@ -135,6 +139,20 @@ export type FakeClientOptions = {
   decisionError?: unknown;
   /** Coste acumulado que devuelve `session.get`. */
   sessionCost?: number;
+  /** Proyectos de opencode que devuelve `project.list`. */
+  projects?: Array<{ id: string; canonical: string }>;
+  /** Datos extra de `session.get` por sesión (coste, tokens, outcome, proyecto). */
+  runInfo?: Record<
+    string,
+    {
+      projectID?: string;
+      cost?: number;
+      tokens?: { input: number; output: number };
+      outcome?: string;
+    }
+  >;
+  /** Falla la creación del worktree cuyo nombre coincida. */
+  worktreeError?: { name?: string; error: unknown };
 };
 
 /**
@@ -182,6 +200,10 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
   let sessionList = (options.sessions ?? []).map((item) => ({
     ...(item as Record<string, unknown>),
   }));
+  // Sesiones creadas por el cliente, con el input original para inspecciones.
+  const createdSessions: Array<{ id: string; input?: unknown }> = [];
+  let worktrees: Array<{ directory: string }> = [];
+  const projects = options.projects ?? [{ id: "p1", canonical: "/tmp/demo" }];
 
   const client = {
     session: {
@@ -196,7 +218,18 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       remove: vi.fn(async (input: { sessionID: string }) => {
         sessionList = sessionList.filter((session) => session.id !== input.sessionID);
       }),
-      create: vi.fn(async () => ({ id: `s${++sessionCounter}` })),
+      create: vi.fn(
+        async (input?: {
+          location?: { directory: string };
+          title?: string;
+          agent?: string | null;
+          model?: unknown;
+        }) => {
+          const id = `s${++sessionCounter}`;
+          createdSessions.push({ id, input });
+          return { id };
+        },
+      ),
       export: vi.fn(async (input: { sessionID: string; sanitize?: boolean }) => {
         if (options.exportError) throw options.exportError;
         if (options.exportTransfer) return options.exportTransfer;
@@ -245,14 +278,48 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       interrupt: vi.fn(async () => undefined),
       switchModel: vi.fn(async () => undefined),
       switchAgent: vi.fn(async () => undefined),
-      get: vi.fn(async () =>
-        options.sessionCost === undefined ? null : { cost: options.sessionCost },
-      ),
-      diff: vi.fn(async () => ({ data: options.sessionDiff ?? [] })),
+      get: vi.fn(async (input?: { sessionID?: string }) => {
+        const info = input?.sessionID ? options.runInfo?.[input.sessionID] : undefined;
+        if (!info && options.sessionCost === undefined) return null;
+        return {
+          projectID: info?.projectID ?? projects[0]?.id,
+          cost: info?.cost ?? options.sessionCost ?? 0,
+          tokens: info?.tokens ?? { input: 0, output: 0 },
+          outcome: info?.outcome ?? null,
+        };
+      }),
+      diff: vi.fn(async (input?: { sessionID?: string }) => ({
+        data:
+          (input?.sessionID ? options.sessionDiffs?.[input.sessionID] : undefined) ??
+          options.sessionDiff ??
+          [],
+      })),
       stats: vi.fn(async () => ({ data: options.stats ?? null })),
     },
     message: {
-      list: vi.fn(async () => ({ data: messages })),
+      list: vi.fn(async (input?: { sessionID?: string }) => ({
+        data:
+          (input?.sessionID ? options.messagesBySession?.[input.sessionID] : undefined) ?? messages,
+      })),
+    },
+    project: {
+      list: vi.fn(async () => ({ data: projects })),
+    },
+    worktree: {
+      list: vi.fn(async () => ({ data: worktrees })),
+      create: vi.fn(async (input: { projectID: string; directory?: string; name?: string }) => {
+        if (options.worktreeError && options.worktreeError.name === input.name) {
+          throw options.worktreeError.error;
+        }
+        const directory = input.directory
+          ? `${input.directory.replace(/\/$/, "")}/${input.name ?? `wt${worktrees.length + 1}`}`
+          : `/tmp/opencode-wt/${input.name ?? `wt${worktrees.length + 1}`}`;
+        worktrees = [...worktrees, { directory }];
+        return { directory };
+      }),
+      remove: vi.fn(async (input: { directory: string }) => {
+        worktrees = worktrees.filter((item) => item.directory !== input.directory);
+      }),
     },
     model: {
       list: vi.fn(async () => ({ data: [...models, ...decisionModels] })),
@@ -314,7 +381,14 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
     },
   };
 
-  return { client, hub };
+  return {
+    client,
+    hub,
+    createdSessions,
+    get worktrees() {
+      return worktrees;
+    },
+  };
 }
 
 /** Gateway de notificaciones fake: registra avisos y permite fijar el permiso. */ export function makeNotificationGateway(

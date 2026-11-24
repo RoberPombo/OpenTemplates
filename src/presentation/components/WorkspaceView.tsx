@@ -4,6 +4,7 @@ import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import { Chat } from "./Chat";
 import { Inspector, type InspectorTab } from "./Inspector";
+import { RaceControls } from "./RaceControls";
 import { SettingsPanel } from "./SettingsPanel";
 import { TerminalDock } from "./TerminalDock";
 import { Button } from "./ui";
@@ -19,6 +20,8 @@ type Props = {
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
   /** El workspace terminó un turno sin foco: se marca en el sidebar. */
   onWorkspaceActivity?: (workspaceId: string) => void;
+  worktreesRoot: string;
+  repoPath: string | null;
 };
 
 function ProfiledChat(props: React.ComponentProps<typeof Chat>) {
@@ -58,6 +61,8 @@ export function WorkspaceView({
   onDelete,
   onUpdated,
   onWorkspaceActivity,
+  worktreesRoot,
+  repoPath,
 }: Props) {
   const root = useAppContext();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -77,6 +82,8 @@ export function WorkspaceView({
   const [sessionId, setSessionId] = useState<string | null>(() =>
     root.preferences.get(prefKeys.session(workspace.id)),
   );
+  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
+  const [liveRace, setLiveRace] = useState(false);
   // `server` cambia de identidad en cada sondeo de estado; los memo se anclan a
   // los valores que definen el cliente para no recrear gateways ni terminales.
   const client = useMemo(
@@ -123,8 +130,27 @@ export function WorkspaceView({
     }
   }
   async function stopWorkspace() {
+    if (
+      liveRace &&
+      !root.confirm.confirm(
+        "Hay una carrera en curso. Si paras el workspace, sus corridas se interrumpirán y quedarán como fallidas. ¿Parar igualmente?",
+      )
+    ) {
+      return;
+    }
     await closeWorkspaceTerminals();
     onStop();
+  }
+  function requestDelete() {
+    if (
+      liveRace &&
+      !root.confirm.confirm(
+        "Hay una carrera en curso. Si eliminas el workspace, sus corridas se interrumpirán. Los worktrees de la carrera quedan en la raíz de worktrees para revisarlos o borrarlos a mano. ¿Continuar?",
+      )
+    ) {
+      return;
+    }
+    onDelete();
   }
   function changePanelTab(tab: InspectorTab) {
     setPanelTab(tab);
@@ -194,6 +220,21 @@ export function WorkspaceView({
               >
                 Terminal
               </Button>
+              {client && (
+                <RaceControls
+                  client={client}
+                  workspace={workspace}
+                  worktreesRoot={worktreesRoot}
+                  repoPath={repoPath}
+                  sessionId={sessionId}
+                  onOpenSession={(id) => setOpenSessionId(id)}
+                  onOpenDiff={(id) => {
+                    setOpenSessionId(id);
+                    openChanges();
+                  }}
+                  onLiveChange={setLiveRace}
+                />
+              )}
               <Button onClick={() => setSettingsOpen(true)}>Ajustes</Button>
               <Button className="danger-text" onClick={() => void stopWorkspace()}>
                 Parar
@@ -208,7 +249,7 @@ export function WorkspaceView({
             variant="icon"
             title="Eliminar workspace"
             aria-label="Eliminar workspace"
-            onClick={onDelete}
+            onClick={requestDelete}
           >
             ×
           </Button>
@@ -232,6 +273,8 @@ export function WorkspaceView({
               sessionsOpen={sessionsOpen}
               onCloseSessions={toggleSessions}
               onWorkspaceActivity={onWorkspaceActivity}
+              openSessionId={openSessionId}
+              onSessionOpened={() => setOpenSessionId(null)}
             />
             {panelOpen && (
               <Inspector

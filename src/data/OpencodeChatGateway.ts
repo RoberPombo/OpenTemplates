@@ -38,7 +38,16 @@ export function createChatGateway(server: ServerInfo): ChatServer {
   return {
     session: {
       create: (input) => sdk.session.create(input),
-      get: (input) => sdk.session.get(input),
+      get: async (input) => {
+        const session = await sdk.session.get(input);
+        return {
+          projectID: session.projectID,
+          cost: session.cost,
+          tokens: { input: session.tokens?.input ?? 0, output: session.tokens?.output ?? 0 },
+          outcome: session.outcome ?? null,
+          idle: session.time?.idle !== undefined,
+        };
+      },
       diff: async (input) => ({
         data: toFileChanges(await sdk.session.diff(input)),
       }),
@@ -79,6 +88,21 @@ export function createChatGateway(server: ServerInfo): ChatServer {
       list: async (input) => ({
         data: toSessionMessages((await sdk.message.list(input)).data),
       }),
+    },
+    project: {
+      list: async () => ({
+        data: (await sdk.project.list()).map((project) => ({
+          id: project.id,
+          canonical: project.canonical,
+        })),
+      }),
+    },
+    worktree: {
+      list: async (input) => ({
+        data: (await sdk.worktree.list(input)).map((item) => ({ directory: item.directory })),
+      }),
+      create: (input) => sdk.worktree.create(input),
+      remove: (input) => sdk.worktree.remove(input),
     },
     model: {
       list: async (input) => ({
