@@ -57,6 +57,8 @@ function setup() {
         onStop={vi.fn()}
         onDelete={vi.fn()}
         onUpdated={vi.fn()}
+        worktreesRoot="/wt"
+        repoPath={null}
       />
     </AppProvider>,
   );
