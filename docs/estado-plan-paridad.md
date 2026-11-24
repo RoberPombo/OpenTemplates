@@ -53,8 +53,11 @@ persistencia (`profiles.json`, `profiles/<id>/`, `profile.lock.json`,
 `profileId`). La migración lee `templates.json`, `templates/` y `template.lock.json`
 como fallback y reescribe el formato nuevo. Además, el modelo deja de entrar en la
 huella: se pasa al crear cada sesión y el contexto lo usa solo como fallback.
-La elección de perfil por sesión (varios contextos vivos por workspace) sigue
-pendiente: hoy se elige cambiando de workspace.
+Fase 5 entregada: `start_profile` materializa un perfil distinto sin tocar el
+congelado del workspace; la cabecera del workspace permite cambiar de perfil,
+arranca su contexto y cambia la lista de sesiones. Cada contexto tiene sus claves
+de sesión, modelo y agente, así que dos perfiles no comparten historial. El
+selector solo muestra los perfiles existentes; falta el alta rápida desde ahí.
 
 ## Qué queda
 

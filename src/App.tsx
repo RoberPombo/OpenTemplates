@@ -29,6 +29,7 @@ function App() {
     library,
     worktreesRoot,
     running,
+    contexts,
     selectedId,
     selected,
     recentWorkspaceIds,
@@ -39,6 +40,7 @@ function App() {
     fatal,
     select,
     start,
+    startProfile,
     stop,
     remove,
     updated,
@@ -289,6 +291,9 @@ function App() {
             workspace={selected}
             profileName={profileName}
             sharedWith={sharedWith}
+            contexts={contexts.filter((context) => context.workspaceId === selected.id)}
+            profiles={profiles}
+            onStartProfile={startProfile}
             server={running[selected.id]}
             starting={startingId === selected.id}
             onStart={() => void start(selected.id)}

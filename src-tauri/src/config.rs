@@ -428,6 +428,17 @@ pub fn plan(
     global_config: &Value,
 ) -> Plan {
     let lock = profiles::read_lock(workspace_dir);
+    plan_with_lock(workspace, lock, global_dir, global_config)
+}
+
+/// Igual que `plan`, pero con una selección de perfil explícita. Permite
+/// materializar un perfil concreto sin tocar el lock por defecto del workspace.
+pub fn plan_with_lock(
+    workspace: &Workspace,
+    lock: Option<ProfileLock>,
+    global_dir: &Path,
+    global_config: &Value,
+) -> Plan {
     let (mut root, warnings) = render_config(workspace, lock.as_ref(), global_config);
 
     let allowed: Vec<String> = match &lock {

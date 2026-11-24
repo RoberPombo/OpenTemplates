@@ -157,8 +157,10 @@ suyos. No se duplica lo instalado; los assets propios viven en su carpeta.
 - **Perfiles**: lista y editor (AGENTS.md base, selección de agentes/skills/MCPs/
   prompts/plugins, modelo y permisos).
 - **Workspaces**: lista agrupada por proyecto, estado live/parado y sesiones dentro.
-- **Nueva sesión**: elegir perfil y agente; badge «comparte servidor con…» cuando la
-  huella coincide.
+- **Nueva sesión / perfil activo**: un selector de perfil en la cabecera del
+  workspace arranca (o reutiliza) el contexto de ese perfil y cambia la lista de
+  sesiones; cada contexto guarda sus propias sesiones, modelo y agente elegidos.
+  Badge «comparte servidor con…» cuando la huella coincide con otro workspace.
 - **Ajustes del workspace**: perfil por defecto, ruta, rama, issue y reaplicar.
 
 ## Persistencia

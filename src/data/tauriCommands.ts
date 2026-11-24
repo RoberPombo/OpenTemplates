@@ -66,6 +66,8 @@ export const api = {
       deleteDb: options?.deleteDb,
     }),
   startWorkspace: (id: string) => invoke<ServerInfo>("start_workspace", { id }),
+  startProfile: (workspaceId: string, profileId: string) =>
+    invoke<ServerInfo>("start_profile", { workspaceId, profileId }),
   stopWorkspace: (id: string) => invoke<void>("stop_workspace", { id }),
   workspaceStatus: () => invoke<ServerInfo[]>("workspace_status"),
   worktreeStatus: (id: string) => invoke<WorktreeStatus>("worktree_status", { id }),

@@ -86,6 +86,8 @@ import {
 type UseChatInput = {
   client: ChatServer;
   workspace: Workspace;
+  /** Ámbito de sesiones (huella del contexto/perfil); separa historiales. */
+  scope?: string;
   onSessionChange?: (sessionId: string | null) => void;
   /** Marca actividad de este workspace terminada sin foco (aviso en el sidebar). */
   onWorkspaceActivity?: (workspaceId: string) => void;
@@ -102,16 +104,17 @@ function errorText(error: unknown): string {
 export function useChat({
   client,
   workspace,
+  scope,
   onSessionChange,
   onWorkspaceActivity,
   openSessionId,
   onSessionOpened,
 }: UseChatInput) {
   const root = useAppContext();
-  const storageKey = prefKeys.session(workspace.id);
-  const modelStorageKey = prefKeys.model(workspace.id);
-  const agentStorageKey = prefKeys.agent(workspace.id);
-  const variantStorageKey = prefKeys.variant(workspace.id);
+  const storageKey = prefKeys.session(workspace.id, scope);
+  const modelStorageKey = prefKeys.model(workspace.id, scope);
+  const agentStorageKey = prefKeys.agent(workspace.id, scope);
+  const variantStorageKey = prefKeys.variant(workspace.id, scope);
 
   const [sessionId, setSessionId] = useState<string | null>(() => root.preferences.get(storageKey));
   const [messages, setMessages] = useState<ChatMessage[]>([]);

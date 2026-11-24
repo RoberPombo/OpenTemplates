@@ -26,6 +26,7 @@ export interface WorkspaceGateway {
     options?: { removeWorktree?: boolean; force?: boolean; deleteDb?: boolean },
   ): Promise<void>;
   start(id: string): Promise<ServerInfo>;
+  startProfile(workspaceId: string, profileId: string): Promise<ServerInfo>;
   stop(id: string): Promise<void>;
   status(): Promise<ServerInfo[]>;
   worktreeStatus(id: string): Promise<WorktreeStatus>;

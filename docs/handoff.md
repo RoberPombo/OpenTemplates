@@ -575,3 +575,24 @@ multiwebview con soporte Wayland), screenshot/consola y captura de una región.
   tiene la misma `contextHash`.
 - Verificación: `cargo test` 44 en verde (nuevos de migración de store, rutas y lock),
   `cargo clippy -D warnings` limpio, `pnpm check` 618 tests en verde.
+
+## Estado tras perfil por sesión (fase 5)
+
+- Rust: comando `start_profile(workspaceId, profileId)` que congela y materializa
+  ese perfil sin tocar el lock por defecto del workspace, arranca su contexto y
+  devuelve `ServerInfo` con `model`/`models` del perfil. `stop_workspace` para todos
+  los contextos del workspace y desconecta cada contexto del `context.json`.
+- Un workspace puede tener varios contextos vivos a la vez (uno por huella). El
+  estado (`workspace_status`) sigue devolviendo una entrada por workspace y
+  contexto; el frontend las agrupa por `contextHash`.
+- Frontend: selector «Perfil del workspace» en la cabecera. Al cambiarlo se llama
+  a `start_profile`, se guarda el `ServerInfo` y `Chat` se remonta con el cliente de
+  ese contexto. Las claves de sesión, modelo, agente y variante incluyen la huella
+  del contexto, así que cada perfil tiene su historial y sus preferencias.
+- `ServerInfo.model`/`models` describen el perfil del contexto; las sesiones lo
+  reciben al crearse. Si dos perfiles comparten huella (solo cambia el modelo), el
+  servidor es el mismo pero cada sesión lleva su modelo.
+- Verificación: `cargo test` 45, `cargo clippy -D warnings` limpio, `pnpm check`
+  619 tests en verde (nuevo de selector de perfil y de modelo al crear sesión).
+- Pendiente: dar de alta perfiles desde el selector, marcar el perfil en la lista
+  de sesiones y GC de contextos sin uso.

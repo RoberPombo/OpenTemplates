@@ -263,6 +263,12 @@ pub struct ServerInfo {
     pub password: String,
     pub port: u16,
     pub pid: u32,
+    /// Modelo por defecto del contexto; la sesión lo recibe al crearse.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Modelos que ofrece el perfil de este contexto.
+    #[serde(default)]
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]

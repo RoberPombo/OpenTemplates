@@ -48,6 +48,8 @@ fn info_of(workspace_id: &str, handle: &mut ServerHandle) -> Option<ServerInfo> 
         password: handle.password.clone(),
         port: handle.port,
         pid: handle.child.id().unwrap_or(0),
+        model: handle.model.clone(),
+        models: handle.models.clone(),
     })
 }
 
@@ -1060,6 +1062,7 @@ pub async fn delete_workspace(
     };
 
     let mut stopped = Vec::new();
+    let mut detached = Vec::new();
     if let Ok(mut servers) = state.servers.lock() {
         let keys: Vec<String> = servers
             .iter()
@@ -1067,6 +1070,7 @@ pub async fn delete_workspace(
             .map(|(key, _)| key.clone())
             .collect();
         for key in keys {
+            detached.push(key.clone());
             let mut empty = false;
             if let Some(handle) = servers.get_mut(&key) {
                 handle.workspaces.retain(|workspace| workspace != &id);
@@ -1081,8 +1085,13 @@ pub async fn delete_workspace(
         server::stop(handle).await;
     }
 
-    if let Some(hash) = workspace.context_hash.as_deref() {
-        let _ = context::detach(&state.data_dir, hash, &id);
+    if let Some(hash) = workspace.context_hash.as_deref()
+        && !detached.iter().any(|key| key == hash)
+    {
+        detached.push(hash.to_string());
+    }
+    for hash in detached {
+        let _ = context::detach(&state.data_dir, &hash, &id);
     }
 
     if let Some((repo_path, path)) = worktree {
@@ -1135,6 +1144,113 @@ pub async fn delete_workspace(
     state.save()
 }
 
+/// Arranca (o reutiliza) el servidor de un contexto ya materializado.
+async fn ensure_context_server(
+    state: &AppState,
+    workspace: &Workspace,
+    hash: &str,
+    context_dir: &Path,
+) -> Result<ServerInfo, String> {
+    let id = workspace.id.clone();
+    let mut dead = None;
+    {
+        let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
+        let alive = servers.get_mut(hash).map(server::is_alive).unwrap_or(false);
+        if alive {
+            let handle = servers.get_mut(hash).expect("servidor comprobado");
+            if !handle.workspaces.iter().any(|workspace| workspace == &id) {
+                handle.workspaces.push(id.clone());
+            }
+            return info_of(&id, handle).ok_or("El servidor no tiene PID".into());
+        }
+        if servers.contains_key(hash) {
+            dead = servers.remove(hash);
+        }
+    }
+    if let Some(handle) = dead {
+        server::stop(handle).await;
+    }
+
+    let bin =
+        find_opencode_bin().ok_or("No se encontró el binario de opencode. Define OPENCODE_BIN.")?;
+    let (mut handle, _) = server::spawn(workspace, context_dir, &bin, hash).await?;
+    if !handle.workspaces.iter().any(|workspace| workspace == &id) {
+        handle.workspaces.push(id.clone());
+    }
+    let info = info_of(&id, &mut handle).ok_or("El servidor no tiene PID")?;
+    state
+        .servers
+        .lock()
+        .map_err(|_| "estado bloqueado")?
+        .insert(hash.to_string(), handle);
+    Ok(info)
+}
+
+/// Materializa y arranca un perfil distinto del perfil por defecto del
+/// workspace, sin cambiar la selección congelada de este. La sesión que se cree
+/// contra el servidor devuelto llevará ese perfil (contexto).
+#[tauri::command]
+pub async fn start_profile(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    profile_id: String,
+) -> Result<ServerInfo, String> {
+    let workspace = state
+        .workspaces
+        .lock()
+        .map_err(|_| "estado bloqueado")?
+        .iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .cloned()
+        .ok_or_else(|| format!("Workspace '{workspace_id}' no existe"))?;
+
+    if workspace.profile_id.as_deref() == Some(profile_id.as_str()) {
+        return start_workspace(state, workspace_id).await;
+    }
+
+    let manifest = state
+        .profiles
+        .lock()
+        .map_err(|_| "estado bloqueado")?
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .cloned()
+        .ok_or_else(|| format!("El perfil '{profile_id}' no existe"))?;
+    let (lock, mut warnings) = profiles::freeze(&manifest, &state.profiles_root())?;
+
+    let mut applied = workspace.clone();
+    applied.mcp_names = manifest.mcps.clone();
+    applied.skills = lock.skills.clone();
+    applied.agents = lock.agents.clone();
+    applied.commands = lock.commands.clone();
+    applied.plugins = lock.plugins.clone();
+    applied.model = lock.model.clone();
+    applied.models = lock.models.clone();
+
+    let (global, global_error) = config::read_global_config();
+    let global_dir = config::global_config_dir();
+    let plan = config::plan_with_lock(&applied, Some(lock.clone()), &global_dir, &global);
+    let root = project_root(&state, &applied);
+    let hash = context::fingerprint_without_model(&root, &plan.config, &plan.agents_md);
+    let context_dir = context::ensure(&state.data_dir, &hash, &root)?;
+    let workspace_dir = ensure_workspace_dir(&state.data_dir, &workspace_id);
+    let materialized = config::write_plan(&applied, &workspace_dir, &context_dir, &plan)?;
+    profiles::write_lock(&context_dir, &lock)?;
+    warnings.extend(materialized.warnings);
+    if let Some(error) = global_error {
+        warnings.push(error);
+    }
+    for warning in &warnings {
+        eprintln!("[opentemplates] {}", warning);
+    }
+    context::attach(&state.data_dir, &hash, &root, &workspace_id)?;
+    let mut info = ensure_context_server(&state, &applied, &hash, &context_dir).await?;
+    // Dos perfiles pueden compartir huella y diferir solo en el modelo.
+    info.model = applied.model.clone();
+    info.models = applied.models.clone();
+    Ok(info)
+}
+
 #[tauri::command]
 pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<ServerInfo, String> {
     let workspace = state
@@ -1146,8 +1262,6 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
         .cloned()
         .ok_or_else(|| format!("Workspace '{id}' no existe"))?;
 
-    let bin =
-        find_opencode_bin().ok_or("No se encontró el binario de opencode. Define OPENCODE_BIN.")?;
     let workspace_dir = ensure_workspace_dir(&state.data_dir, &id);
     let (hash, materialized) = materialize_workspace(&state, &workspace, &workspace_dir)?;
     for warning in &materialized.warnings {
@@ -1184,42 +1298,8 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
         server::stop(handle).await;
     }
 
-    let mut dead = None;
-    {
-        let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
-        let alive = servers
-            .get_mut(&hash)
-            .map(server::is_alive)
-            .unwrap_or(false);
-        if alive {
-            let handle = servers.get_mut(&hash).expect("servidor comprobado");
-            if !handle.workspaces.iter().any(|workspace| workspace == &id) {
-                handle.workspaces.push(id.clone());
-            }
-            let info = info_of(&id, handle).ok_or("El servidor no tiene PID")?;
-            drop(servers);
-            state.save()?;
-            return Ok(info);
-        }
-        if servers.contains_key(&hash) {
-            dead = servers.remove(&hash);
-        }
-    }
-    if let Some(handle) = dead {
-        server::stop(handle).await;
-    }
-
     let context_dir = context::context_dir(&state.data_dir, &hash);
-    let (mut handle, _) = server::spawn(&workspace, &context_dir, &bin, &hash).await?;
-    if !handle.workspaces.iter().any(|workspace| workspace == &id) {
-        handle.workspaces.push(id.clone());
-    }
-    let info = info_of(&id, &mut handle).ok_or("El servidor no tiene PID")?;
-    state
-        .servers
-        .lock()
-        .map_err(|_| "estado bloqueado")?
-        .insert(hash, handle);
+    let info = ensure_context_server(&state, &workspace, &hash, &context_dir).await?;
     state.save()?;
     Ok(info)
 }
@@ -1227,7 +1307,7 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
 #[tauri::command]
 pub async fn stop_workspace(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let mut stopped = Vec::new();
-    let mut hash = None;
+    let mut hashes = Vec::new();
     {
         let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
         let keys: Vec<String> = servers
@@ -1236,7 +1316,7 @@ pub async fn stop_workspace(state: State<'_, AppState>, id: String) -> Result<()
             .map(|(key, _)| key.clone())
             .collect();
         for key in keys {
-            hash = Some(key.clone());
+            hashes.push(key.clone());
             let mut empty = false;
             if let Some(handle) = servers.get_mut(&key) {
                 handle.workspaces.retain(|workspace| workspace != &id);
@@ -1250,15 +1330,17 @@ pub async fn stop_workspace(state: State<'_, AppState>, id: String) -> Result<()
     for handle in stopped {
         server::stop(handle).await;
     }
-    if hash.is_none() {
-        hash = state.workspaces.lock().ok().and_then(|workspaces| {
+    if hashes.is_empty()
+        && let Some(hash) = state.workspaces.lock().ok().and_then(|workspaces| {
             workspaces
                 .iter()
                 .find(|workspace| workspace.id == id)
                 .and_then(|workspace| workspace.context_hash.clone())
-        });
+        })
+    {
+        hashes.push(hash);
     }
-    if let Some(hash) = hash {
+    for hash in hashes {
         let _ = context::detach(&state.data_dir, &hash, &id);
     }
     Ok(())

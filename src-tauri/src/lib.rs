@@ -79,6 +79,7 @@ pub fn run() {
             commands::reapply_profile,
             commands::delete_workspace,
             commands::start_workspace,
+            commands::start_profile,
             commands::stop_workspace,
             commands::workspace_status,
             commands::worktree_status,

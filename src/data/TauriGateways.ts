@@ -86,6 +86,10 @@ export class TauriWorkspaceGateway implements WorkspaceGateway {
     return call(api.startWorkspace(id));
   }
 
+  startProfile(workspaceId: string, profileId: string): Promise<ServerInfo> {
+    return call(api.startProfile(workspaceId, profileId));
+  }
+
   stop(id: string): Promise<void> {
     return call(api.stopWorkspace(id));
   }

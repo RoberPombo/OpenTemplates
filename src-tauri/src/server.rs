@@ -16,6 +16,8 @@ pub struct ServerHandle {
     pub context_hash: String,
     /// Workspaces que tienen este contexto arrancado.
     pub workspaces: Vec<String>,
+    pub model: Option<String>,
+    pub models: Vec<String>,
 }
 
 fn write_log(path: &Path, line: &str) {
@@ -136,6 +138,8 @@ pub async fn spawn(
         password: password.clone(),
         port,
         pid: child.id().unwrap_or(0),
+        model: workspace.model.clone(),
+        models: workspace.models.clone(),
     };
 
     Ok((
@@ -145,6 +149,8 @@ pub async fn spawn(
             child,
             context_hash: context_hash.to_string(),
             workspaces: vec![workspace.id.clone()],
+            model: workspace.model.clone(),
+            models: workspace.models.clone(),
         },
         info,
     ))

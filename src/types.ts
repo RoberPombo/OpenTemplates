@@ -117,6 +117,10 @@ export type ServerInfo = {
   password: string;
   port: number;
   pid: number;
+  /** Modelo por defecto del contexto. */
+  model?: string | null;
+  /** Modelos que ofrece el perfil del contexto. */
+  models?: string[];
 };
 
 export type WorktreeStatus = {
