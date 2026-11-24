@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpenTemplates</title>
+    <script>
+      // Preload mínimo: elige `color-scheme` antes de que cargue el bundle.
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem("opentemplates:theme") === "light" ? "light" : "dark";
+      } catch {
+        document.documentElement.dataset.theme = "dark";
+      }
+    </script>
   </head>
 
   <body>

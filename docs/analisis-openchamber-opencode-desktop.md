@@ -88,8 +88,9 @@ Todo lo marcado como disponible en SDK existe ya en `@opencode/client` 2.3.2
 
 Estado: la fase 1 (#1–#8) está implementada; ver `docs/handoff.md` para el detalle
 y las limitaciones verificadas de cada entrega. De la fase 2 están hechas #9
-(terminal), #10 (carreras multi-run), #11 (objetivos de sesión) y #15 (MCP en
-caliente); #10 deja pendiente la fusión del resultado ganador.
+(terminal), #10 (carreras multi-run), #11 (objetivos de sesión), #14 (paleta,
+atajos y temas) y #15 (MCP en caliente); #10 deja pendiente la fusión del
+resultado ganador y #14 deja pendiente personalizar los atajos.
 
 ### Fase 2 — el diferenciador propio
 

@@ -8,6 +8,7 @@ import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import type { Workspace } from "../../types";
 import { discardConfirmText, winnerConfirmText, type RaceRun } from "../../domain/race/races";
 import { useAppContext } from "../context/AppContext";
+import { useCommandAction } from "../context/CommandActions";
 import { useRace } from "../hooks/useRace";
 import { RaceDialog } from "./RaceDialog";
 import { RaceView } from "./RaceView";
@@ -68,6 +69,7 @@ export function RaceControls({
   useEffect(() => () => onLiveChange(false), [onLiveChange]);
 
   const worktreesAvailable = isGit && projectID !== null && worktreesRoot.trim().length > 0;
+  useCommandAction("race.launch", open);
 
   function open() {
     if (race) setViewOpen(true);

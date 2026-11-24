@@ -2,6 +2,7 @@ import { Profiler, useMemo, useState } from "react";
 import type { ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
+import { useCommandAction } from "../context/CommandActions";
 import { Chat } from "./Chat";
 import { Inspector, type InspectorTab } from "./Inspector";
 import { RaceControls } from "./RaceControls";
@@ -161,6 +162,47 @@ export function WorkspaceView({
     root.preferences.set(prefKeys.panelOpen, "1");
     changePanelTab("cambios");
   }
+  function toggleChanges() {
+    if (panelOpen && panelTab === "cambios") togglePanel();
+    else openChanges();
+  }
+  function closeActivePanel() {
+    if (terminalOpen) toggleTerminal();
+    else if (sessionsOpen) toggleSessions();
+    else if (panelOpen) togglePanel();
+  }
+
+  useCommandAction("workspace.settings", () => setSettingsOpen(true));
+  useCommandAction(
+    "panel.toggle",
+    togglePanel,
+    Boolean(server),
+    "Arranca el workspace para abrir el panel.",
+  );
+  useCommandAction(
+    "panel.sessions",
+    toggleSessions,
+    Boolean(server),
+    "Arranca el workspace para ver sus sesiones.",
+  );
+  useCommandAction(
+    "panel.terminal",
+    toggleTerminal,
+    Boolean(server && terminalGateway),
+    "Arranca el workspace para abrir el terminal.",
+  );
+  useCommandAction(
+    "panel.diff",
+    toggleChanges,
+    Boolean(server),
+    "Arranca el workspace para revisar cambios.",
+  );
+  useCommandAction(
+    "panel.close",
+    closeActivePanel,
+    Boolean(server && (terminalOpen || sessionsOpen || panelOpen)),
+    "No hay ningún panel abierto.",
+  );
 
   const folder = workspace.projectPath.split("/").filter(Boolean).pop();
 

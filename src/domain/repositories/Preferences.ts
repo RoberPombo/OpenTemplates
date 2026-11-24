@@ -8,6 +8,9 @@ export interface Preferences {
 /** Claves centralizadas (antes repartidas como strings ad-hoc en los componentes). */
 export const prefKeys = {
   selectedWorkspace: "opentemplates:selected",
+  recentWorkspaces: "opentemplates:recent-workspaces",
+  theme: "opentemplates:theme",
+  accent: "opentemplates:accent",
   panelOpen: "opentemplates:panel",
   sessionsOpen: "opentemplates:sessions",
   terminalOpen: "opentemplates:terminal",
