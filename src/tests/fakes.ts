@@ -19,6 +19,10 @@ import type {
   NotificationPermission,
 } from "../domain/repositories/NotificationGateway";
 import type { SaveSessionFileResult, SessionFiles } from "../domain/repositories/SessionFiles";
+import type { GitGateway } from "../domain/repositories/GitGateway";
+import type { PullRequestGateway } from "../domain/repositories/PullRequestGateway";
+import type { GitCommit, GitFileEntry, GitStatus } from "../domain/workspace/git";
+import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
 import { toServerEvent } from "../data/opencodePayloads";
 
 /** Workspace mínimo para tests. */
@@ -137,6 +141,9 @@ export type FakeClientOptions = {
   /** Resultados de `generate.decisions`; se consumen en orden. */
   decisionResults?: GoalDecisionResult[];
   decisionError?: unknown;
+  /** Texto que devuelve `generate.text`. */
+  generatedText?: string;
+  generatedTextError?: unknown;
   /** Coste acumulado que devuelve `session.get`. */
   sessionCost?: number;
   /** Proyectos de opencode que devuelve `project.list`. */
@@ -378,6 +385,10 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
         const next = decisions.shift() ?? defaultDecision;
         return { data: next };
       }),
+      text: vi.fn(async (_input: { prompt: string }) => {
+        if (options.generatedTextError) throw options.generatedTextError;
+        return { text: options.generatedText ?? "feat: mensaje sugerido" };
+      }),
     },
   };
 
@@ -536,4 +547,173 @@ export function makeTerminalGateway(initial: TerminalInfo[] = []) {
       connectError = error;
     },
   };
+}
+
+/** Estado git razonable para tests; se sobrescribe lo que necesite cada caso. */
+export function makeGitStatus(overrides: Partial<GitStatus> = {}): GitStatus {
+  return {
+    branch: "feat/git-y-pr",
+    upstream: "origin/feat/git-y-pr",
+    ahead: 0,
+    behind: 0,
+    remote: "git@github.com:acme/app.git",
+    mainBranch: "main",
+    files: [],
+    ...overrides,
+  };
+}
+
+export function makeGitFile(overrides: Partial<GitFileEntry> = {}): GitFileEntry {
+  return {
+    path: "src/a.ts",
+    oldPath: null,
+    status: "modified",
+    index: "M",
+    worktree: null,
+    staged: true,
+    additions: 2,
+    deletions: 1,
+    binary: false,
+    ...overrides,
+  };
+}
+
+/**
+ * Gateway git fake y en memoria: el stage modifica el estado que devuelve y el
+ * commit elimina lo preparado. Permite inyectar errores de hook o de push.
+ */
+export function makeGitGateway(
+  options: {
+    status?: GitStatus;
+    stagedDiff?: string;
+    commits?: GitCommit[];
+    stageError?: unknown;
+    commitError?: unknown;
+    pushError?: unknown;
+    diffError?: unknown;
+  } = {},
+) {
+  let current = options.status ?? makeGitStatus();
+  const apply = (paths: string[], staged: boolean) => {
+    current = {
+      ...current,
+      files: current.files.map((file) =>
+        paths.includes(file.path)
+          ? {
+              ...file,
+              staged,
+              index: staged ? (file.index ?? "M") : null,
+              status: staged && file.status === "untracked" ? "added" : file.status,
+            }
+          : file,
+      ),
+    };
+    return current;
+  };
+
+  const status = vi.fn(async () => current);
+  const stage = vi.fn(async (_projectPath: string, paths: string[]) => {
+    if (options.stageError) throw options.stageError;
+    return apply(paths, true);
+  });
+  const unstage = vi.fn(async (_projectPath: string, paths: string[]) => {
+    if (options.stageError) throw options.stageError;
+    return apply(paths, false);
+  });
+  const stagedDiff = vi.fn(async () => {
+    if (options.diffError) throw options.diffError;
+    return options.stagedDiff ?? "diff --git a/src/a.ts b/src/a.ts\n+linea\n";
+  });
+  const commit = vi.fn(async (_projectPath: string, _message: string) => {
+    if (options.commitError) throw options.commitError;
+    current = {
+      ...current,
+      files: current.files.filter((file) => !file.staged),
+      ahead: current.ahead + 1,
+    };
+    return { oid: "abc1234567890" };
+  });
+  const push = vi.fn(
+    async (
+      _projectPath: string,
+      input: { branch: string; setUpstream: boolean; remote?: string },
+    ) => {
+      if (options.pushError) throw options.pushError;
+      const upstream = input.setUpstream
+        ? `${input.remote ?? "origin"}/${input.branch}`
+        : (current.upstream ?? `${input.remote ?? "origin"}/${input.branch}`);
+      current = { ...current, upstream, ahead: 0, behind: 0 };
+      return {
+        branch: input.branch,
+        remote: input.remote ?? "origin",
+        upstream,
+      };
+    },
+  );
+  const commits = vi.fn(async () => options.commits ?? []);
+
+  const gateway: GitGateway = { status, stage, unstage, stagedDiff, commit, push, commits };
+  return {
+    gateway,
+    status,
+    stage,
+    unstage,
+    stagedDiff,
+    commit,
+    push,
+    commits,
+    get current() {
+      return current;
+    },
+    setStatus(next: GitStatus) {
+      current = next;
+    },
+  };
+}
+
+/** Gateway de pull requests fake con estado de gh, PR y checks configurables. */
+export function makePullRequestGateway(
+  options: {
+    ghStatus?: GhStatus;
+    pr?: PullRequestInfo | null;
+    checks?: PullRequestCheck[];
+    viewError?: unknown;
+    checksError?: unknown;
+    createError?: unknown;
+    createdUrl?: string;
+  } = {},
+) {
+  const ghStatus: GhStatus = options.ghStatus ?? {
+    installed: true,
+    authenticated: true,
+    version: "gh version 2.60.0",
+    message: null,
+    docsUrl: "https://cli.github.com/manual/gh_auth_login",
+  };
+  const status = vi.fn(async () => ghStatus);
+  const view = vi.fn(async () => {
+    if (options.viewError) throw options.viewError;
+    return options.pr ?? null;
+  });
+  const checks = vi.fn(async () => {
+    if (options.checksError) throw options.checksError;
+    return options.checks ?? [];
+  });
+  const create = vi.fn(
+    async (
+      _projectPath: string,
+      _input: { base: string; head: string; title: string; body: string },
+    ) => {
+      if (options.createError) throw options.createError;
+      return { url: options.createdUrl ?? "https://github.com/acme/app/pull/12" };
+    },
+  );
+  const gateway: PullRequestGateway = { status, view, checks, create };
+  return { gateway, status, view, checks, create };
+}
+
+/** Confirmación fake que registra el mensaje y responde lo que fije el test. */
+export function makeConfirmDialog(accepted = true) {
+  const confirm = vi.fn((_message: string) => accepted);
+  return { confirm };
 }

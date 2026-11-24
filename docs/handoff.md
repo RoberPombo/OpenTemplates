@@ -433,3 +433,44 @@ Pendiente de las fases 5-8:
   editan en el template y se reaplican).
 - Personalización de atajos: la página los lista y el dominio ya resuelve
   conflictos, pero falta un editor que persista combinaciones por usuario.
+
+## Estado tras #12: flujo git y pull request
+
+Implementado sobre el panel de cambios existente (no hay panel nuevo):
+
+- **Estado y commit asistido**: el modo «Working tree» usa ahora un puerto
+  `GitGateway` contra comandos Tauri. Muestra rama, upstream, ahead/behind y
+  cada fichero con su estado (`A/M/D/R/C/U/…`, incluidos no rastreados y
+  conflictos) y resumen de líneas. El checkbox prepara o quita del índice
+  (`git add -- <rutas>` / `git restore --staged -- <rutas>`), y el mensaje se
+  puede generar con `generate.text` a partir del diff staged.
+- **Guardas duras**: el commit solo sale de un botón explícito; nunca se pasa
+  `--no-verify` ni `--force`; si falla un hook se muestra su salida y el flujo
+  se detiene sin push automático. Antes de commitear se confirman los ficheros
+  sin preparar. Sin upstream, el botón publica la rama con `push -u origin
+  <rama>` mostrando el nombre; con upstream, hace `git push` normal.
+- **Pull request**: tarjeta con estado de `gh`, rama/base, enlace a GitHub,
+  checks (con lista de fallidos y sus enlaces), revisiones y comentarios. Si
+  `gh` falta o no hay sesión, se muestra el mensaje y el enlace a la
+  documentación. La PR se crea con base principal, título y cuerpo editables y
+  borrador generado desde los commits de la rama. «Enviar al agente» construye
+  un prompt recortado (checks fallidos + revisiones + comentarios) y lo manda a
+  la sesión activa con `session.prompt`; sin sesión queda deshabilitado.
+- **Backend**: `git.rs` ejecuta git con `cwd` del workspace, argumentos como
+  array y timeout de 180 s; `process.rs` centraliza la ejecución con lectura
+  paralela de stdout/stderr. `gh.rs` normaliza `gh pr view/checks/create` con
+  timeout de 120 s y distingue «no hay PR» de errores de auth/instalación.
+  `git status` devuelve porcelain y numstat crudos: el parseo (renombrados,
+  borrados, no rastreados, conflictos, `-z`) vive y se prueba en
+  `domain/workspace/git.ts`.
+- **Verificación**: `pnpm check` en verde (594 tests; nuevos de dominio
+  `git.test.ts` y `pullRequest.test.ts`, de componente `ChangesPanel.test.tsx`
+  y `PullRequestCard.test.tsx`, y fakes de ambos gateways). `cargo test` en
+  verde (32 tests; incluye repo temporal para stage selectivo, hook que falla,
+  push con upstream, y argumentos que nunca llevan force/no-verify). No se
+  levantó la app contra un GitHub real para crear la PR desde la tarjeta: la
+  creación y los checks se validaron con mocks; la PR de esta entrega se abrió
+  con `gh` desde la terminal.
+
+Pendiente relacionado: fusionar la ganadora de una carrera, issues de GitHub y
+las acciones de worktree que ya estaban en la lista anterior.

@@ -1,8 +1,10 @@
 mod commands;
 mod config;
+mod gh;
 mod git;
 mod library;
 mod model;
+mod process;
 mod resources;
 mod server;
 mod state;
@@ -79,6 +81,17 @@ pub fn run() {
             commands::workspace_status,
             commands::worktree_status,
             commands::workspace_log,
+            commands::git_status,
+            commands::git_stage,
+            commands::git_unstage,
+            commands::git_diff,
+            commands::git_commit,
+            commands::git_push,
+            commands::git_commits,
+            commands::gh_status,
+            commands::gh_pr_view,
+            commands::gh_pr_checks,
+            commands::gh_pr_create,
             commands::resources,
             commands::get_settings,
             commands::save_settings,

@@ -32,6 +32,12 @@ import type {
 
 export type ServerLocation = { directory: string };
 
+/** Petición de `generate.text`; el modelo es opcional y lo resuelve el servidor. */
+export type GenerateTextRequest = {
+  prompt: string;
+  model?: { providerID: string; id: string; variant?: string } | null;
+};
+
 /** Proyecto de opencode: el canonical es el checkout principal del repo. */
 export type ProjectRef = { id: string; canonical: string };
 
@@ -194,6 +200,8 @@ export interface ChatGateway {
   generate: {
     /** Evalúa el objetivo de sesión con el modelo de decisión del workspace. */
     decisions(input: GoalDecisionRequest): Promise<unknown>;
+    /** Texto libre (mensaje de commit, resúmenes) con el modelo de decisión. */
+    text(input: GenerateTextRequest): Promise<{ text: string }>;
   };
   location: {
     reload(): Promise<unknown>;
@@ -282,6 +290,7 @@ export interface ChatServer extends ChatGateway {
   };
   generate: {
     decisions(input: GoalDecisionRequest): Promise<{ data: GoalDecisionResult }>;
+    text(input: GenerateTextRequest): Promise<{ text: string }>;
   };
   event: {
     subscribe(input?: { signal?: AbortSignal }): AsyncIterable<ChatServerEvent>;

@@ -1,0 +1,403 @@
+use std::path::Path;
+use std::process::Command;
+use std::time::Duration;
+
+use serde_json::Value;
+
+use crate::model::{
+    CreatePullRequestInput, GhStatus, PullRequestCheck, PullRequestComment, PullRequestInfo,
+    PullRequestReview,
+};
+use crate::process::{Output, execute};
+
+const GH_TIMEOUT: Duration = Duration::from_secs(120);
+const MAX_BODY: usize = 2_000;
+const MAX_ENTRIES: usize = 20;
+const DOCS_INSTALL: &str = "https://cli.github.com/";
+const DOCS_AUTH: &str = "https://cli.github.com/manual/gh_auth_login";
+
+fn truncate(value: &str, limit: usize) -> String {
+    let text = value.trim();
+    if text.chars().count() <= limit {
+        return text.to_string();
+    }
+    text.chars().take(limit).collect::<String>() + "…"
+}
+
+fn gh_command(dir: Option<&Path>) -> Command {
+    let mut command = Command::new("gh");
+    if let Some(dir) = dir {
+        command.current_dir(dir);
+    }
+    command
+}
+
+fn run_gh(dir: Option<&Path>, args: &[&str]) -> Result<Output, String> {
+    let mut command = gh_command(dir);
+    command.args(args);
+    match execute(command, "gh", GH_TIMEOUT) {
+        Ok(output) => Ok(output),
+        Err(error) if which::which("gh").is_err() => Err(format!(
+            "GitHub CLI (gh) no está instalado. Instálalo desde {DOCS_INSTALL}.\n{error}"
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn output_text(output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stderr.is_empty() { stderr } else { stdout }
+}
+
+fn readable_error(output: &Output) -> String {
+    let detail = output_text(output);
+    let lower = detail.to_lowercase();
+    if lower.contains("gh auth login")
+        || lower.contains("authentication")
+        || lower.contains("not logged in")
+    {
+        format!("GitHub CLI no tiene sesión iniciada. Ejecuta `gh auth login`.\n{detail}")
+    } else if detail.is_empty() {
+        "La operación de gh falló sin salida.".into()
+    } else {
+        detail
+    }
+}
+
+fn is_missing_pull_request(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("no pull requests found")
+        || lower.contains("no pull request found")
+        || lower.contains("no open pull requests")
+}
+
+/// Instalación y sesión de `gh`, con un mensaje claro si falta algo.
+pub fn status() -> GhStatus {
+    if which::which("gh").is_err() {
+        return GhStatus {
+            installed: false,
+            authenticated: false,
+            version: None,
+            message: Some(format!(
+                "GitHub CLI (gh) no está instalado. Instálalo desde {DOCS_INSTALL} para crear y revisar pull requests."
+            )),
+            docs_url: DOCS_INSTALL.into(),
+        };
+    }
+
+    let version = run_gh(None, &["--version"])
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        })
+        .filter(|line| !line.is_empty());
+
+    match run_gh(None, &["auth", "status"]) {
+        Ok(output) if output.status.success() => GhStatus {
+            installed: true,
+            authenticated: true,
+            version,
+            message: None,
+            docs_url: DOCS_AUTH.into(),
+        },
+        Ok(output) => GhStatus {
+            installed: true,
+            authenticated: false,
+            version,
+            message: Some(format!(
+                "GitHub CLI está instalado pero no tiene sesión iniciada. Ejecuta `gh auth login`.\n{}",
+                output_text(&output)
+            )),
+            docs_url: DOCS_AUTH.into(),
+        },
+        Err(error) => GhStatus {
+            installed: true,
+            authenticated: false,
+            version,
+            message: Some(format!(
+                "No se pudo comprobar la sesión de GitHub CLI. Ejecuta `gh auth login`.\n{error}"
+            )),
+            docs_url: DOCS_AUTH.into(),
+        },
+    }
+}
+
+fn json_string(value: Option<&Value>) -> String {
+    value
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn json_optional(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|item| !item.is_empty())
+}
+
+fn author_of(value: &Value) -> String {
+    value
+        .get("author")
+        .and_then(|author| author.get("login"))
+        .and_then(Value::as_str)
+        .unwrap_or("desconocido")
+        .to_string()
+}
+
+fn parse_review(value: &Value) -> PullRequestReview {
+    PullRequestReview {
+        author: author_of(value),
+        state: json_string(value.get("state")),
+        body: truncate(&json_string(value.get("body")), MAX_BODY),
+        submitted_at: json_optional(value.get("submittedAt")),
+    }
+}
+
+fn parse_comment(value: &Value) -> PullRequestComment {
+    PullRequestComment {
+        author: author_of(value),
+        body: truncate(&json_string(value.get("body")), MAX_BODY),
+        created_at: json_optional(value.get("createdAt")),
+        url: json_optional(value.get("url")),
+    }
+}
+
+fn parse_pull_request(value: &Value) -> PullRequestInfo {
+    let reviews = value
+        .get("reviews")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .take(MAX_ENTRIES)
+                .map(parse_review)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let comments = value
+        .get("comments")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .take(MAX_ENTRIES)
+                .map(parse_comment)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    PullRequestInfo {
+        number: value.get("number").and_then(Value::as_u64).unwrap_or(0),
+        title: json_string(value.get("title")),
+        state: json_string(value.get("state")),
+        url: json_string(value.get("url")),
+        is_draft: value
+            .get("isDraft")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        base_branch: json_string(value.get("baseRefName")),
+        head_branch: json_string(value.get("headRefName")),
+        review_decision: json_optional(value.get("reviewDecision")),
+        reviews,
+        comments,
+    }
+}
+
+fn bucket_of(item: &Value) -> String {
+    if let Some(bucket) = json_optional(item.get("bucket")) {
+        return match bucket.to_lowercase().as_str() {
+            "pass" => "passed".into(),
+            "fail" | "cancel" => "failed".into(),
+            "skipping" => "skipped".into(),
+            "pending" => "pending".into(),
+            other => other.to_string(),
+        };
+    }
+    let state = json_string(
+        item.get("conclusion")
+            .or_else(|| item.get("state"))
+            .or_else(|| item.get("status")),
+    )
+    .to_lowercase();
+    match state.as_str() {
+        "success" | "neutral" => "passed".into(),
+        "skipped" => "skipped".into(),
+        "failure" | "cancelled" | "timed_out" | "action_required" | "error" | "startup_failure" => {
+            "failed".into()
+        }
+        "pending" | "queued" | "in_progress" | "waiting" | "expected" => "pending".into(),
+        _ => "pending".into(),
+    }
+}
+
+fn parse_check(item: &Value) -> PullRequestCheck {
+    let name = json_optional(item.get("name"))
+        .or_else(|| json_optional(item.get("context")))
+        .unwrap_or_else(|| "check".into());
+    let state = json_optional(item.get("state"))
+        .or_else(|| json_optional(item.get("conclusion")))
+        .or_else(|| json_optional(item.get("status")))
+        .unwrap_or_else(|| "UNKNOWN".into());
+    PullRequestCheck {
+        name,
+        state,
+        bucket: bucket_of(item),
+        url: json_optional(item.get("link"))
+            .or_else(|| json_optional(item.get("detailsUrl")))
+            .or_else(|| json_optional(item.get("targetUrl"))),
+        workflow: json_optional(item.get("workflow"))
+            .or_else(|| json_optional(item.get("workflowName"))),
+    }
+}
+
+/// PR de la rama actual; `None` cuando la rama todavía no tiene PR.
+pub fn pr_view(project: &Path) -> Result<Option<PullRequestInfo>, String> {
+    let fields =
+        "number,title,state,url,isDraft,baseRefName,headRefName,reviewDecision,reviews,comments";
+    let output = run_gh(Some(project), &["pr", "view", "--json", fields])?;
+    if !output.status.success() {
+        let detail = output_text(&output);
+        if is_missing_pull_request(&detail) {
+            return Ok(None);
+        }
+        return Err(readable_error(&output));
+    }
+    let value: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("gh devolvió una PR ilegible: {error}"))?;
+    Ok(Some(parse_pull_request(&value)))
+}
+
+/// Checks de la PR actual. `gh pr checks` sale con código 1 si alguno falla:
+/// el JSON sigue siendo válido y se acepta.
+pub fn pr_checks(project: &Path) -> Result<Vec<PullRequestCheck>, String> {
+    let output = run_gh(
+        Some(project),
+        &["pr", "checks", "--json", "name,state,bucket,link,workflow"],
+    )?;
+    let raw = String::from_utf8_lossy(&output.stdout);
+    if let Ok(value) = serde_json::from_str::<Value>(raw.trim())
+        && let Some(items) = value.as_array()
+    {
+        return Ok(items.iter().map(parse_check).collect());
+    }
+    if !output.status.success() {
+        return Err(readable_error(&output));
+    }
+    Ok(Vec::new())
+}
+
+/// Crea una PR con título y cuerpo ya editados por el usuario.
+pub fn pr_create(input: &CreatePullRequestInput) -> Result<String, String> {
+    if input.title.trim().is_empty() {
+        return Err("El título de la pull request no puede estar vacío.".into());
+    }
+    if input.base.trim().is_empty() || input.head.trim().is_empty() {
+        return Err("La rama base y la rama de la PR son obligatorias.".into());
+    }
+    let output = run_gh(
+        Some(Path::new(&input.project_path)),
+        &[
+            "pr",
+            "create",
+            "--base",
+            input.base.trim(),
+            "--head",
+            input.head.trim(),
+            "--title",
+            input.title.trim(),
+            "--body",
+            &input.body,
+        ],
+    )?;
+    if !output.status.success() {
+        return Err(readable_error(&output));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let url = stdout
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("http"))
+        .unwrap_or_else(|| stdout.trim());
+    if url.is_empty() {
+        return Err("gh creó la PR pero no devolvió su enlace.".into());
+    }
+    Ok(url.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn detecta_cuando_la_rama_no_tiene_pr() {
+        assert!(is_missing_pull_request(
+            "no pull requests found for branch \"feat/x\""
+        ));
+        assert!(is_missing_pull_request("No open pull requests"));
+        assert!(!is_missing_pull_request("HTTP 401: Bad credentials"));
+    }
+
+    #[test]
+    fn parsea_la_pr_y_tolera_autores_nulos() {
+        let value = json!({
+            "number": 12,
+            "title": "Flujo git",
+            "state": "OPEN",
+            "url": "https://github.com/acme/app/pull/12",
+            "isDraft": false,
+            "baseRefName": "develop",
+            "headRefName": "feat/git-y-pr",
+            "reviewDecision": "CHANGES_REQUESTED",
+            "reviews": [
+                { "author": { "login": "ana" }, "state": "CHANGES_REQUESTED", "body": "falta un test", "submittedAt": "2026-01-01T00:00:00Z" },
+                { "author": null, "state": "COMMENTED", "body": "ojo" }
+            ],
+            "comments": [
+                { "author": { "login": "luis" }, "body": "revisa el borde", "createdAt": "2026-01-02T00:00:00Z", "url": "https://github.com/acme/app/pull/12#c1" }
+            ]
+        });
+        let pr = parse_pull_request(&value);
+        assert_eq!(pr.number, 12);
+        assert_eq!(pr.base_branch, "develop");
+        assert_eq!(pr.head_branch, "feat/git-y-pr");
+        assert_eq!(pr.reviews[0].author, "ana");
+        assert_eq!(pr.reviews[1].author, "desconocido");
+        assert_eq!(
+            pr.comments[0].url.as_deref(),
+            Some("https://github.com/acme/app/pull/12#c1")
+        );
+    }
+
+    #[test]
+    fn clasifica_los_checks_por_bucket_y_por_estado() {
+        let items = [
+            json!({ "name": "tests", "state": "SUCCESS", "bucket": "pass", "link": "https://ci/1", "workflow": "CI" }),
+            json!({ "name": "lint", "state": "FAILURE", "bucket": "fail", "link": "https://ci/2" }),
+            json!({ "name": "build", "status": "IN_PROGRESS", "conclusion": null }),
+            json!({ "name": "deploy", "state": "SKIPPED", "bucket": "skipping" }),
+        ];
+        let checks: Vec<PullRequestCheck> = items.iter().map(parse_check).collect();
+        assert_eq!(checks[0].bucket, "passed");
+        assert_eq!(checks[0].url.as_deref(), Some("https://ci/1"));
+        assert_eq!(checks[1].bucket, "failed");
+        assert_eq!(checks[2].bucket, "pending");
+        assert_eq!(checks[3].bucket, "skipped");
+    }
+
+    #[test]
+    fn recorta_los_cuerpos_largos() {
+        let body = "x".repeat(MAX_BODY + 40);
+        let value = json!({ "author": { "login": "ana" }, "state": "COMMENTED", "body": body });
+        let review = parse_review(&value);
+        assert!(review.body.chars().count() <= MAX_BODY + 1);
+        assert!(review.body.ends_with('…'));
+    }
+}

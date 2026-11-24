@@ -179,6 +179,7 @@ export function createChatGateway(server: ServerInfo): ChatServer {
       decisions: async (input) => ({
         data: toGoalDecisionResult(await sdk.experimental.generate.decisions(input)),
       }),
+      text: (input) => sdk.experimental.generate.text(input),
     },
     location: sdk.location,
     event: {

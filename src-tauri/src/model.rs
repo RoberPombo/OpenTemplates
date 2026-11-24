@@ -415,3 +415,136 @@ pub struct TemplateStore {
     #[serde(default)]
     pub templates: Vec<TemplateManifest>,
 }
+
+/// Líneas de un fichero no rastreado, calculadas por Rust al leerlo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitUntrackedStat {
+    pub path: String,
+    pub additions: u64,
+    pub binary: bool,
+}
+
+/// Salida cruda de `git status` y su contexto. El frontend parsea el
+/// porcelain y el numstat en `domain/workspace/git.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatusOutput {
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub upstream: Option<String>,
+    #[serde(default)]
+    pub ahead_behind: Option<String>,
+    #[serde(default)]
+    pub remote: Option<String>,
+    pub main_branch: String,
+    pub porcelain: String,
+    pub numstat: String,
+    #[serde(default)]
+    pub untracked_stats: Vec<GitUntrackedStat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitResult {
+    pub oid: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPushResult {
+    pub branch: String,
+    pub remote: String,
+    #[serde(default)]
+    pub upstream: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitSummary {
+    pub hash: String,
+    pub subject: String,
+    #[serde(default)]
+    pub body: String,
+}
+
+/// Estado de GitHub CLI para tarjeta y acciones de pull request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GhStatus {
+    pub installed: bool,
+    pub authenticated: bool,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    pub docs_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestReview {
+    #[serde(default)]
+    pub author: String,
+    pub state: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub submitted_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestComment {
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestInfo {
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    pub url: String,
+    #[serde(default)]
+    pub is_draft: bool,
+    pub base_branch: String,
+    pub head_branch: String,
+    #[serde(default)]
+    pub review_decision: Option<String>,
+    #[serde(default)]
+    pub reviews: Vec<PullRequestReview>,
+    #[serde(default)]
+    pub comments: Vec<PullRequestComment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestCheck {
+    pub name: String,
+    pub state: String,
+    /// `passed`, `failed`, `pending` o `skipped`.
+    pub bucket: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub workflow: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatePullRequestInput {
+    pub project_path: String,
+    pub base: String,
+    pub head: String,
+    pub title: String,
+    pub body: String,
+}

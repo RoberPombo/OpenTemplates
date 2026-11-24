@@ -513,7 +513,14 @@ export function Inspector({
         ))}
       </div>
       {tab === "cambios" ? (
-        <ChangesPanel client={client} workspace={workspace} sessionId={sessionId} />
+        <ChangesPanel
+          client={client}
+          workspace={workspace}
+          sessionId={sessionId}
+          git={root.git}
+          pullRequests={root.pullRequests}
+          confirm={root.confirm}
+        />
       ) : tab === "ficheros" ? (
         <FilesPanel client={client} workspace={workspace} />
       ) : (

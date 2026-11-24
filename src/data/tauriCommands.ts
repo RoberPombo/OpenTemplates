@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelDetails } from "../domain/models/details";
 import type {
+  GitCommit,
+  GitCommitResult,
+  GitPushResult,
+  GitStatusRaw,
+} from "../domain/workspace/git";
+import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
+import type {
   AppSettings,
   Bootstrap,
   ConfigOutcome,
@@ -64,6 +71,31 @@ export const api = {
   worktreeStatus: (id: string) => invoke<WorktreeStatus>("worktree_status", { id }),
   workspaceLog: (id: string, lines = 200) => invoke<string>("workspace_log", { id, lines }),
   resources: (pid?: number | null) => invoke<ResourceUsage>("resources", { pid: pid ?? null }),
+
+  gitStatus: (projectPath: string) => invoke<GitStatusRaw>("git_status", { projectPath }),
+  gitStage: (projectPath: string, paths: string[]) =>
+    invoke<GitStatusRaw>("git_stage", { projectPath, paths }),
+  gitUnstage: (projectPath: string, paths: string[]) =>
+    invoke<GitStatusRaw>("git_unstage", { projectPath, paths }),
+  gitDiff: (projectPath: string, staged: boolean) =>
+    invoke<string>("git_diff", { projectPath, staged }),
+  gitCommit: (projectPath: string, message: string) =>
+    invoke<GitCommitResult>("git_commit", { projectPath, message }),
+  gitPush: (projectPath: string, branch: string, setUpstream: boolean) =>
+    invoke<GitPushResult>("git_push", { projectPath, branch, setUpstream }),
+  gitCommits: (projectPath: string, base: string, limit?: number) =>
+    invoke<GitCommit[]>("git_commits", { projectPath, base, limit: limit ?? null }),
+
+  ghStatus: () => invoke<GhStatus>("gh_status"),
+  ghPrView: (projectPath: string) => invoke<PullRequestInfo | null>("gh_pr_view", { projectPath }),
+  ghPrChecks: (projectPath: string) => invoke<PullRequestCheck[]>("gh_pr_checks", { projectPath }),
+  ghPrCreate: (input: {
+    projectPath: string;
+    base: string;
+    head: string;
+    title: string;
+    body: string;
+  }) => invoke<string>("gh_pr_create", { input }),
 
   getSettings: () => invoke<AppSettings>("get_settings"),
   saveSettings: (settings: AppSettings) => invoke<AppSettings>("save_settings", { settings }),
