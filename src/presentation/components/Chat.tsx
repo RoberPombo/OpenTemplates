@@ -16,6 +16,8 @@ import { Markdown } from "./Markdown";
 import { ModelInfoCard } from "./ModelInfoCard";
 import { RequestDock } from "./RequestDock";
 import { SessionsPanel } from "./SessionsPanel";
+import { GoalChip } from "./GoalChip";
+import { GoalDialog } from "./GoalDialog";
 import { SLASH_MENU_ID, SlashMenu, slashOptionId } from "./SlashMenu";
 import { AsyncSearchableSelect, Select } from "./ui";
 
@@ -61,6 +63,10 @@ export function Chat({
     forms,
     requestError,
     requestBusy,
+    goal,
+    goalError,
+    decisionModel,
+    goalSessionIds,
     input,
     setInput,
     models,
@@ -101,10 +107,15 @@ export function Chat({
     replyPermission,
     replyForm,
     cancelForm,
+    saveGoal,
+    pauseGoal,
+    resumeGoal,
+    removeGoal,
   } = useChat({ client, workspace, onSessionChange, onWorkspaceActivity });
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [goalOpen, setGoalOpen] = useState(false);
   const [caret, setCaret] = useState(0);
   const [menuStart, setMenuStart] = useState<number | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -246,6 +257,7 @@ export function Chat({
           onFork={forkSession}
           onNew={newConversation}
           onClose={() => onCloseSessions?.()}
+          goalSessionIds={goalSessionIds}
         />
       )}
       <section className="chat">
@@ -453,6 +465,20 @@ export function Chat({
                 >
                   <PlusIcon />
                 </button>
+                {goal ? (
+                  <GoalChip goal={goal} onOpen={() => setGoalOpen(true)} />
+                ) : (
+                  <button
+                    type="button"
+                    className="composer-icon"
+                    title="Definir un objetivo para la sesión"
+                    aria-label="Definir un objetivo para la sesión"
+                    onClick={() => setGoalOpen(true)}
+                    disabled={busy || !sessionId}
+                  >
+                    <GoalIcon />
+                  </button>
+                )}
               </div>
 
               <div className="composer-controls">
@@ -523,6 +549,21 @@ export function Chat({
           </div>
         </form>
       </section>
+      {goalOpen && (
+        <GoalDialog
+          goal={goal}
+          decisionModel={decisionModel}
+          error={goalError}
+          onSave={saveGoal}
+          onPause={pauseGoal}
+          onResume={resumeGoal}
+          onRemove={() => {
+            removeGoal();
+            setGoalOpen(false);
+          }}
+          onClose={() => setGoalOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -662,6 +703,14 @@ function PlusIcon() {
   return (
     <svg {...iconProps()}>
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+function GoalIcon() {
+  return (
+    <svg {...iconProps()}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }

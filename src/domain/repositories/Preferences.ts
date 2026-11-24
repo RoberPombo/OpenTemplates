@@ -17,6 +17,8 @@ export const prefKeys = {
   budgetAlert: (workspaceId: string, threshold: number) =>
     `opentemplates:budget-alert:${workspaceId}:${threshold}`,
   session: (workspaceId: string) => `opentemplates:session:${workspaceId}`,
+  goal: (workspaceId: string, sessionId: string) =>
+    `opentemplates:goal:${workspaceId}:${sessionId}`,
   model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
   agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,
   variant: (workspaceId: string) => `opentemplates:variant:${workspaceId}`,

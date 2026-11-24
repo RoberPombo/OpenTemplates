@@ -95,7 +95,7 @@ y las limitaciones verificadas de cada entrega.
 |---|---|---|---|---|
 | 9 | Terminal por workspace | Refuerza "workspace aislado": shell dentro del mismo cwd y entorno que el agente | `pty.*`, `shell.*` | M |
 | 10 | Multi-run sobre templates | Encaja con la marca: mismo prompt, N modelos × N worktrees, comparar y quedarse uno. OpenChamber lo limita a 5 y a su propia UI | `session.create/prompt`, `worktree.*` | L |
-| 11 | Session Goals | Bucle de reintento con criterio de fin y límite de turnos, estado persistido en Tauri | `session.prompt/background/stats` | M |
+| 11 | Session Goals | Bucle de reintento con criterio de fin y límite de turnos, estado persistido en Tauri | `generate.decisions` + `session.prompt/stats` | M |
 | 12 | Flujo git/PR | Commit asistido, crear PR, devolver checks fallidos al agente | `vcs.*` + `gh` CLI | M |
 | 13 | Preview + selector de elemento | Enviar screenshot/estilos/errores al agente evita el "esto de aquí" | webview Tauri + `session.prompt` | L |
 | 14 | Paleta de comandos, keybinds y temas | Paridad de shell con Desktop; bajo coste y mucha percepción de acabado | solo UI | M |

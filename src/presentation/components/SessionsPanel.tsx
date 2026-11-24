@@ -24,6 +24,8 @@ type Props = {
   onExport: (id: string, sanitize: boolean) => Promise<void>;
   onImport: () => Promise<void>;
   onFork: (id: string) => Promise<void>;
+  /** Sesiones con un objetivo activo (se marcan en la lista). */
+  goalSessionIds?: Set<string>;
 };
 
 export function SessionsPanel({
@@ -40,6 +42,7 @@ export function SessionsPanel({
   onExport,
   onImport,
   onFork,
+  goalSessionIds,
 }: Props) {
   const { confirm } = useAppContext();
   const [query, setQuery] = useState("");
@@ -147,6 +150,11 @@ export function SessionsPanel({
                 onDoubleClick={() => startRename(session)}
               >
                 <span className="session-title">{session.title}</span>
+                {goalSessionIds?.has(session.id) && (
+                  <span className="session-goal" title="Objetivo activo">
+                    objetivo
+                  </span>
+                )}
                 <span className="session-meta">
                   {formatRelativeTime(session.updated)}
                   {session.cost > 0 ? ` · $${session.cost.toFixed(3)}` : ""}

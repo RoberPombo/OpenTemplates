@@ -324,6 +324,30 @@ Implementado (fases 1-4 + wizard básico):
   roto (`/bin/false`): `mcp.list` devuelve
   `{status:"failed", error:"Connection closed: MCP server process exited with code 1"}`,
   `disconnect` lo deja en `{status:"disabled"}` y `connect` lo reintenta.
+- **Objetivos de sesión (Session Goals)**: chip en el composer con el objetivo,
+  el progreso (`turno N/M`) y el coste; diálogo para definirlo o editarlo
+  (texto, límite de turnos con 5 por defecto y límite de coste opcional) y
+  controles para pausar, reanudar y quitar. El panel de sesiones marca con
+  «objetivo» las que lo tienen activo. Al cerrar un turno (`session.idle` o
+  `session.execution.*`) el hook pide una decisión y, si es `continue`, envía un
+  prompt breve que recuerda el objetivo; si es `done`/`blocked` para y avisa por
+  notificación nativa. Estado en `domain/chat/goals.ts` (texto, estado
+  activo/pausado/cumplido/bloqueado/agotado, turnos, coste y tokens acumulados,
+  límites y última decisión), persistido por workspace y sesión en
+  `prefKeys.goal`; al abrir la app se reanuda si estaba activo y la sesión no
+  está ocupada. Guardas probadas: permiso o pregunta pendiente, parada manual,
+  turno fallido, decisión repetida sin progreso (misma huella de conversación),
+  turnos y coste. Verificado contra opencode v2.3.0 real:
+  `POST /api/experimental/generate/decisions` devuelve
+  `{data:{answers:[{type:"choice",name,choice,confidence}],cost,tokens}}` y
+  **exige un modelo con capacidad de decisión**: el modelo de chat de la sesión
+  se rechaza con `422 UnsupportedModelError` («is a chat model, not a decision
+  model»). Por eso el hook descubre el modelo con
+  `model.list({types:["decision"]})` (en el servidor de prueba,
+  `opencode/jev-1.13-free`) y lo usa solo para evaluar; el turno del agente
+  sigue con el modelo de la sesión. El fake de tests incorpora
+  `generate.decisions`, y el estrechado vive en
+  `data/opencodePayloads.ts` (`toGoalDecisionResult`).
 Pendiente de las fases 5-8:
 
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).
