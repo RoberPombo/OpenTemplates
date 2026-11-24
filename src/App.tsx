@@ -54,6 +54,11 @@ function App() {
       : selected.templateId;
   }, [selected?.templateId, selected?.templateVersion, templates]);
 
+  const selectedRepoPath = useMemo(() => {
+    if (!selected?.repoId) return null;
+    return repos.find((repo) => repo.id === selected.repoId)?.path ?? null;
+  }, [selected?.repoId, repos]);
+
   if (fatal) {
     return (
       <main className="fatal">
@@ -171,6 +176,8 @@ function App() {
             onDelete={() => void remove(selected.id)}
             onUpdated={updated}
             onWorkspaceActivity={markUnseen}
+            worktreesRoot={worktreesRoot}
+            repoPath={selectedRepoPath}
           />
         ) : (
           <div className="start-pane">

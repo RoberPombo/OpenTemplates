@@ -87,7 +87,9 @@ Todo lo marcado como disponible en SDK existe ya en `@opencode/client` 2.3.2
 | 8 | Export/import y fork de sesión | Compartir una sesión reproducible entre templates/workspaces | `session.export/import/fork` | S |
 
 Estado: la fase 1 (#1–#8) está implementada; ver `docs/handoff.md` para el detalle
-y las limitaciones verificadas de cada entrega.
+y las limitaciones verificadas de cada entrega. De la fase 2 están hechas #9
+(terminal), #10 (carreras multi-run), #11 (objetivos de sesión) y #15 (MCP en
+caliente); #10 deja pendiente la fusión del resultado ganador.
 
 ### Fase 2 — el diferenciador propio
 

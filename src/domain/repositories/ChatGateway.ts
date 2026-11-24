@@ -32,6 +32,28 @@ import type {
 
 export type ServerLocation = { directory: string };
 
+/** Proyecto de opencode: el canonical es el checkout principal del repo. */
+export type ProjectRef = { id: string; canonical: string };
+
+/** Datos de una sesión que necesita el seguimiento de carreras. */
+export type SessionRunInfo = {
+  projectID?: string;
+  cost: number;
+  tokens: { input: number; output: number };
+  /** `succeeded`/`failed`/`interrupted` cuando el servidor ya cerró el turno. */
+  outcome?: string | null;
+  idle?: boolean;
+};
+
+export type WorktreeCreateInput = {
+  projectID: string;
+  /** Referencia base que se comprueba en el worktree. */
+  branch?: string;
+  /** Carpeta padre; el servidor crea `directory/name`. */
+  directory?: string;
+  name?: string;
+};
+
 /** Evento SSE crudo del servidor. */
 export type ChatGatewayEvent = { type: string; data?: unknown };
 
@@ -57,8 +79,18 @@ export interface ChatGateway {
     }): Promise<{ data: unknown[] }>;
     update(input: { sessionID: string; title: string }): Promise<unknown>;
     remove(input: { sessionID: string }): Promise<unknown>;
-    create(input: { location: ServerLocation; title?: string }): Promise<{ id: string }>;
-    get(input: { sessionID: string }): Promise<{ cost?: number } | null>;
+    create(input: {
+      location: ServerLocation;
+      title?: string;
+      agent?: string | null;
+      model?: { id: string; providerID: string; variant?: string } | null;
+    }): Promise<{ id: string }>;
+    get(input: { sessionID: string }): Promise<{
+      cost?: number;
+      projectID?: string;
+      tokens?: { input?: number; output?: number };
+      outcome?: string | null;
+    } | null>;
     diff(input: {
       sessionID: string;
       from?: string;
@@ -93,6 +125,14 @@ export interface ChatGateway {
       limit?: number;
       order?: "asc" | "desc";
     }): Promise<{ data: unknown[] }>;
+  };
+  project: {
+    list(): Promise<{ data: unknown[] }>;
+  };
+  worktree: {
+    list(input: { projectID: string }): Promise<{ data: unknown[] }>;
+    create(input: WorktreeCreateInput): Promise<{ directory: string }>;
+    remove(input: { projectID: string; directory: string; force: boolean }): Promise<void>;
   };
   model: {
     list(input: { location: ServerLocation; types?: string[] }): Promise<{ data: unknown[] }>;
@@ -165,7 +205,8 @@ export interface ChatGateway {
 
 /** Payloads estrechados por el adaptador opencode para la presentación. */
 export interface ChatServer extends ChatGateway {
-  session: Omit<ChatGateway["session"], "list" | "diff" | "stats" | "export" | "import"> & {
+  session: Omit<ChatGateway["session"], "list" | "diff" | "stats" | "export" | "import" | "get"> & {
+    get(input: { sessionID: string }): Promise<SessionRunInfo | null>;
     list(input: {
       directory: string;
       limit?: number;
@@ -192,6 +233,14 @@ export interface ChatServer extends ChatGateway {
       limit?: number;
       order?: "asc" | "desc";
     }): Promise<{ data: RawSessionMessage[] }>;
+  };
+  project: {
+    list(): Promise<{ data: ProjectRef[] }>;
+  };
+  worktree: {
+    list(input: { projectID: string }): Promise<{ data: Array<{ directory: string }> }>;
+    create(input: WorktreeCreateInput): Promise<{ directory: string }>;
+    remove(input: { projectID: string; directory: string; force: boolean }): Promise<void>;
   };
   model: {
     list(input: { location: ServerLocation; types?: string[] }): Promise<{ data: CatalogModel[] }>;

@@ -37,6 +37,8 @@ function renderChat(
     notifications?: ReturnType<typeof makeNotificationGateway>;
     sessionFiles?: ReturnType<typeof makeSessionFiles>;
     confirm?: boolean;
+    openSessionId?: string | null;
+    onSessionOpened?: () => void;
   } = {},
 ) {
   const { client, hub } = makeFakeClient(options);
@@ -54,6 +56,8 @@ function renderChat(
         sessionsOpen={props.sessionsOpen}
         onCloseSessions={props.onCloseSessions}
         onWorkspaceActivity={props.onWorkspaceActivity}
+        openSessionId={props.openSessionId}
+        onSessionOpened={props.onSessionOpened}
       />
     </AppProvider>,
   );
@@ -91,6 +95,26 @@ describe("Chat — sesión y carga", () => {
     expect(client.message.list).toHaveBeenCalledWith(
       expect.objectContaining({ sessionID: "previa" }),
     );
+  });
+
+  test("abre una sesión externa (corrida) como cualquier otra", async () => {
+    localStorage.setItem("opentemplates:session:w1", "previa");
+    const onSessionOpened = vi.fn();
+    const { client } = renderChat(
+      {
+        messagesBySession: {
+          "ses-carrera": [{ type: "user", id: "u9", text: "desde la carrera" }],
+        },
+      },
+      makeWorkspace(),
+      { openSessionId: "ses-carrera", onSessionOpened },
+    );
+    expect(await screen.findByText("desde la carrera")).toBeInTheDocument();
+    expect(client.message.list).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionID: "ses-carrera" }),
+    );
+    expect(localStorage.getItem("opentemplates:session:w1")).toBe("ses-carrera");
+    expect(onSessionOpened).toHaveBeenCalled();
   });
 });
 

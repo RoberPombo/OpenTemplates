@@ -89,6 +89,9 @@ type UseChatInput = {
   onSessionChange?: (sessionId: string | null) => void;
   /** Marca actividad de este workspace terminada sin foco (aviso en el sidebar). */
   onWorkspaceActivity?: (workspaceId: string) => void;
+  /** Sesión externa que debe abrirse (corridas de una carrera). */
+  openSessionId?: string | null;
+  onSessionOpened?: () => void;
 };
 
 function errorText(error: unknown): string {
@@ -96,7 +99,14 @@ function errorText(error: unknown): string {
   return baseErrorText(error);
 }
 
-export function useChat({ client, workspace, onSessionChange, onWorkspaceActivity }: UseChatInput) {
+export function useChat({
+  client,
+  workspace,
+  onSessionChange,
+  onWorkspaceActivity,
+  openSessionId,
+  onSessionOpened,
+}: UseChatInput) {
   const root = useAppContext();
   const storageKey = prefKeys.session(workspace.id);
   const modelStorageKey = prefKeys.model(workspace.id);
@@ -282,6 +292,18 @@ export function useChat({ client, workspace, onSessionChange, onWorkspaceActivit
     },
     [sessionId, storageKey, root],
   );
+
+  const openedSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openSessionId) {
+      openedSessionRef.current = null;
+      return;
+    }
+    if (openedSessionRef.current === openSessionId) return;
+    openedSessionRef.current = openSessionId;
+    if (openSessionId !== sessionId) selectSession(openSessionId);
+    onSessionOpened?.();
+  }, [openSessionId, sessionId, selectSession, onSessionOpened]);
 
   const renameSession = useCallback(
     async (id: string, title: string) => {

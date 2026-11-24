@@ -19,6 +19,7 @@ export const prefKeys = {
   session: (workspaceId: string) => `opentemplates:session:${workspaceId}`,
   goal: (workspaceId: string, sessionId: string) =>
     `opentemplates:goal:${workspaceId}:${sessionId}`,
+  race: (workspaceId: string) => `opentemplates:race:${workspaceId}`,
   model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
   agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,
   variant: (workspaceId: string) => `opentemplates:variant:${workspaceId}`,
