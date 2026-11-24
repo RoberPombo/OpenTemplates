@@ -11,7 +11,7 @@ Revisión aplicada sobre el repo de OpenTemplates. Lo que depende de una persona
 | `develop` como rama por defecto | settings del repo |
 | Secret scanning + push protection | settings del repo |
 | Dependabot alerts y security updates | settings del repo |
-| Dependabot semanal (npm, cargo, actions) con cooldown de 2 días | `.github/dependabot.yml` |
+| Dependabot semanal (npm, cargo, actions) con cooldown de 7 días | `.github/dependabot.yml` |
 | Dependencias npm exactas | `.npmrc`, `package.json` |
 | Lockfile de Rust commiteado (`Cargo.lock`) | `src-tauri/Cargo.lock` |
 | CI con `--frozen-lockfile` y `cargo test --locked` | `pr-check.yml` |
@@ -20,7 +20,11 @@ Revisión aplicada sobre el repo de OpenTemplates. Lo que depende de una persona
 | Acciones de terceros pinneadas por SHA | workflows |
 | CodeQL (JS/TS y Rust, `security-extended`) | `codeql.yml` |
 | Auditoría semanal npm + cargo | `security-audit.yml` |
-| Updater firmado con clave fuera del repo | `tauri.conf.json`, secrets |
+| Updater firmado con clave fuera del repo | `tauri.conf.json`, entorno `release` |
+| Secretos de firma solo legibles desde tags `v*.*.*` | entorno `release` + `tauri-release.yml` |
+| PR de release con `Cargo.lock` incluido | `.release-please-config.json` |
+| PR de sync `main -> develop` abierto con el PAT de release-please | `sync-develop.yml` |
+| `GITHUB_TOKEN` sin permiso para crear PRs | settings de Actions |
 | Releases en draft, publicadas tras comprobar duplicados | `tauri-release.yml` |
 | Política de reporte y rotación de claves | `SECURITY.md` |
 
@@ -38,6 +42,7 @@ Revisión aplicada sobre el repo de OpenTemplates. Lo que depende de una persona
 
 - Rotar `RELEASE_PLEASE_TOKEN` cuando caduque y mantener sus permisos en
   `Contents`, `Pull requests` y `Workflows` (escritura).
-- Guardar copia de `~/.config/opentemplates/updater.key` y su contraseña: sin ellas
-  no se pueden firmar actualizaciones.
+- Guardar copia de `~/.config/opentemplates/updater.key` y su contraseña (la
+  contraseña en el gestor de contraseñas, no junto a la clave): sin ellas no se
+  pueden firmar actualizaciones ni reponer los secretos del entorno `release`.
 - Revisar los avisos de Dependabot y de CodeQL cuando lleguen.

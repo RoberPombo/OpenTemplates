@@ -132,8 +132,68 @@ La biblioteca de skills de la app escanea como mínimo:
 - Cada workspace tiene su propia DB, así que su lista de sesiones es independiente.
 - Ambos procesos calculan el mismo `projectID` (misma carpeta). La app debe usar su
   propio `workspaceId` como clave de UI, no el `projectID` de opencode.
-- Mover una sesión entre workspaces no es parte del MVP; más adelante se puede
-  exportar/importar (`/api/experimental/session/export|import`).
+- Mover una sesión entre workspaces se hace exportando e importando
+  (`/api/experimental/session/{id}/export` y `/api/experimental/session/import`,
+  más `session.fork` para duplicar): el export sanea rutas y credenciales en
+  dominio, y el import reasocia la sesión a la carpeta del workspace de destino.
+  El `sanitize` del servidor no se usa: sustituye el título, la carpeta y todos
+  los textos por `[redacted:...]`, así que la sesión deja de ser legible.
+  Limitación verificada del servidor: reimportar una sesión en el mismo
+  workspace falla (409 si repite el id de sesión y 500 si repite los ids de
+  mensaje); la UI lo explica en vez de ocultarlo.
+
+## Sesiones y carreras en varios directorios
+
+Verificado contra opencode **v2.3.0** con un solo `opencode serve` y un repo git
+con varios worktrees:
+
+1. **Un proceso atiende sesiones en varios directorios.** Cada
+   `POST /api/session` lleva su `location.directory` y la sesión queda asociada a
+   esa carpeta. `GET /api/session?directory=<ruta>` devuelve solo las sesiones de
+   ese directorio; el filtro es el parámetro `directory` plano, **no**
+   `location[directory]` (ese es el de `vcs`, `file`, `mcp`, `pty`, etc.).
+2. **El diff y el estado de git son por directorio.** `session.diff` devuelve
+   los ficheros tocados por esa sesión. `vcs.status` y `vcs.diff` con
+   `location[directory]` ven solo el árbol de trabajo de esa carpeta: dos
+   sesiones que crean `A.txt` y `B.txt` en worktrees distintos no se ven entre
+   sí.
+3. **`session.create` acepta `agent` y `model`.** La sesión nace con ese modelo y
+   agente (`SessionInfo.agent` y `SessionInfo.model` lo confirman), así que una
+   carrera no necesita un `switchModel` posterior.
+4. **`session.get` sirve para reconciliar.** Devuelve `projectID`, `cost`,
+   `tokens`, `outcome` (`succeeded`/`failed`/`interrupted`) y
+   `time.idle`, suficiente para cerrar una corrida que terminó mientras la app
+   estaba en otro workspace.
+5. **`worktree.create`** (`POST /api/worktree`) pide `projectID`, que sale de
+   `project.list` (`canonical` es el checkout principal aunque la sesión viva en
+   un worktree). `branch` es la **referencia base** que se comprueba, no una rama
+   nueva; `directory` es la carpeta padre y `name` la hija, y devuelve
+   `directory/name`. El worktree queda en **HEAD separado** (sin rama propia).
+   `worktree.remove` borra el worktree y exige `force: true` si hay cambios sin
+   commitear. Como no se crea rama por corrida, no hay rama que borrar: la rama
+   base del workspace queda intacta.
+6. **Coste.** El catálogo (`model.list`) trae `cost.input` y `cost.output` por
+   millón de tokens; la app estima antes de lanzar con el prompt y 1.200 tokens
+   de salida por corrida. Si algún modelo no publica precio, no se muestra total.
+
+Por eso una carrera usa **N sesiones dentro del mismo proceso**, cada una en su
+directorio, y no N workspaces temporales.
+
+## Terminal por workspace
+El servidor expone PTYs por location (`pty.list/create/get/update/remove`) y un
+WebSocket para hablar con cada uno. Verificado contra v2.3.0:
+1. `POST /api/pty/{id}/connect-token` con `x-opencode-ticket: 1` y
+   `location[directory]` devuelve `{ticket, expires_in}` (60 s, un solo uso).
+2. `ws://host/api/pty/{id}/connect?location[directory]=...&ticket=...&cursor=N`
+   (el ticket sustituye a la auth básica).
+3. Salida en frames de texto (UTF-8) o binarios; entrada igual.
+4. Los binarios que empiezan por `0x00` son control: `{"cursor":N}`, offset
+   absoluto del flujo. Al reconectar con `cursor` el servidor reenvía solo lo
+   que falta; sin `cursor` reenvía el buffer retenido.
+5. El tamaño se cambia por HTTP con `pty.update({size:{cols,rows}})`.
+6. Al terminar el shell, el socket cierra con `4404` y `session exited`.
+El PTY se crea con el `cwd` del proyecto y sin `env`, para heredar el entorno
+aislado del workspace. Cerrar el dock no lo mata: solo cierra el WebSocket.
 
 ## Supervisor en Tauri
 
@@ -187,6 +247,11 @@ Implementado en este repo:
 - [x] Allowlist de skills y `deny` explícito de las no seleccionadas.
 - [x] UI de workspaces, creación, ajustes y chat mínimo con streaming.
 - [x] MCPs en caliente; skills/modelo con reload del workspace.
+- [x] Estado runtime de MCP con `mcp.list` y `mcp.status.changed`, y
+      `connect`/`disconnect` sin reaplicar el template.
+- [x] Terminal por workspace con `pty.*` y WebSocket con ticket.
+- [x] Carreras multi-run: N sesiones en un proceso, cada una en su directorio
+      (worktree opcional), con comparación y elección de ganadora.
 
 Pendiente:
 

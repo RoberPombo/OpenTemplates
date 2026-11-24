@@ -1,7 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permisos mínimos de la ventana principal: elegir carpetas, actualizar y reiniciar.",
+  "description": "Permisos mínimos de la ventana principal: elegir carpetas y ficheros, actualizar, reiniciar y mostrar notificaciones nativas.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "updater:default", "process:allow-restart"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "updater:default",
+    "process:allow-restart",
+    "notification:default"
+  ]
 }

@@ -3,7 +3,7 @@
  * Consume los puertos del CompositionRoot vía contexto; el borrado delega en el
  * caso de uso DeleteWorkspace (política de confirmación en el dominio).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { groupWorkspacesByRepo } from "../../domain/workspace/grouping";
@@ -25,6 +25,21 @@ const EMPTY_LIBRARY: Library = {
   mcps: [],
 };
 
+const MAX_RECENT_WORKSPACES = 8;
+
+function parseRecentWorkspaces(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is string => typeof item === "string")
+      .slice(0, MAX_RECENT_WORKSPACES);
+  } catch {
+    return [];
+  }
+}
+
 export function useWorkspaces() {
   const root = useAppContext();
 
@@ -38,9 +53,18 @@ export function useWorkspaces() {
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     root.preferences.get(prefKeys.selectedWorkspace),
   );
+  const [recentWorkspaceIds, setRecentWorkspaceIds] = useState<string[]>(() =>
+    parseRecentWorkspaces(root.preferences.get(prefKeys.recentWorkspaces)),
+  );
+  const selectedIdRef = useRef(selectedId);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
   const [startingId, setStartingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
+  // Avisos sin ver por workspace: turnos o peticiones terminadas sin foco.
+  const [unseen, setUnseen] = useState<Record<string, number>>({});
 
   const selected = useMemo(
     () => workspaces.find((workspace) => workspace.id === selectedId) ?? null,
@@ -48,6 +72,17 @@ export function useWorkspaces() {
   );
 
   const groups = useMemo(() => groupWorkspacesByRepo(workspaces, repos), [workspaces, repos]);
+
+  const rememberWorkspace = useCallback(
+    (id: string) => {
+      setRecentWorkspaceIds((prev) => {
+        const next = [id, ...prev.filter((item) => item !== id)].slice(0, MAX_RECENT_WORKSPACES);
+        root.preferences.set(prefKeys.recentWorkspaces, JSON.stringify(next));
+        return next;
+      });
+    },
+    [root],
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -63,19 +98,21 @@ export function useWorkspaces() {
       if (bootstrap.notices.length > 0) {
         setNotice(bootstrap.notices.join(" · "));
       }
-      setSelectedId((current) => {
-        const next =
-          current && bootstrap.workspaces.some((w) => w.id === current)
-            ? current
-            : (bootstrap.workspaces[0]?.id ?? null);
-        if (next) root.preferences.set(prefKeys.selectedWorkspace, next);
-        return next;
-      });
+      const current = selectedIdRef.current;
+      const next =
+        current && bootstrap.workspaces.some((workspace) => workspace.id === current)
+          ? current
+          : (bootstrap.workspaces[0]?.id ?? null);
+      if (next) {
+        root.preferences.set(prefKeys.selectedWorkspace, next);
+        rememberWorkspace(next);
+      }
+      setSelectedId(next);
       setLibrary(await root.library.library());
     } catch (error) {
       setFatal(errorText(error));
     }
-  }, [root]);
+  }, [root, rememberWorkspace]);
 
   useEffect(() => {
     void refresh();
@@ -97,10 +134,22 @@ export function useWorkspaces() {
     (id: string) => {
       setSelectedId(id);
       root.preferences.set(prefKeys.selectedWorkspace, id);
+      rememberWorkspace(id);
       setNotice(null);
+      // Mirar el workspace limpia su marca de actividad pendiente.
+      setUnseen((prev) => {
+        if (!prev[id]) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     },
-    [root],
+    [root, rememberWorkspace],
   );
+
+  const markUnseen = useCallback((id: string) => {
+    setUnseen((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+  }, []);
 
   const start = useCallback(
     async (id: string) => {
@@ -143,22 +192,38 @@ export function useWorkspaces() {
         const { deleted } = await root.provideDeleteWorkspace().execute(workspace);
         if (!deleted) return;
         setWorkspaces((prev) => prev.filter((item) => item.id !== id));
+        setUnseen((prev) => {
+          if (!prev[id]) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
         setRunning((prev) => {
           const next = { ...prev };
           delete next[id];
           return next;
         });
+        setRecentWorkspaceIds((prev) => {
+          if (!prev.includes(id)) return prev;
+          const next = prev.filter((item) => item !== id);
+          root.preferences.set(prefKeys.recentWorkspaces, JSON.stringify(next));
+          return next;
+        });
         if (selectedId === id) {
           const next = workspaces.find((item) => item.id !== id);
           setSelectedId(next?.id ?? null);
-          if (next) root.preferences.set(prefKeys.selectedWorkspace, next.id);
-          else root.preferences.remove(prefKeys.selectedWorkspace);
+          if (next) {
+            root.preferences.set(prefKeys.selectedWorkspace, next.id);
+            rememberWorkspace(next.id);
+          } else {
+            root.preferences.remove(prefKeys.selectedWorkspace);
+          }
         }
       } catch (error) {
         setNotice(errorText(error));
       }
     },
-    [root, workspaces, selectedId],
+    [root, workspaces, selectedId, rememberWorkspace],
   );
 
   const updated = useCallback((workspace: Workspace, warnings: string[]) => {
@@ -186,11 +251,14 @@ export function useWorkspaces() {
     running,
     selectedId,
     selected,
+    recentWorkspaceIds,
     groups,
     startingId,
     notice,
+    unseen,
     fatal,
     select,
+    markUnseen,
     start,
     stop,
     remove,

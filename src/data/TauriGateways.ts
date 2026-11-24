@@ -9,6 +9,13 @@ import type { BootstrapGateway, SettingsGateway } from "../domain/repositories/S
 import type { LibraryGateway } from "../domain/repositories/LibraryGateway";
 import type { ModelCatalogGateway } from "../domain/repositories/ModelCatalogGateway";
 import type { RepoGateway } from "../domain/repositories/RepoGateway";
+import type { GitGateway } from "../domain/repositories/GitGateway";
+import type { PullRequestGateway } from "../domain/repositories/PullRequestGateway";
+import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
+import type { PreviewProbe } from "../domain/preview/preview";
+import type { GitCommit, GitCommitResult, GitPushResult, GitStatus } from "../domain/workspace/git";
+import { buildGitStatus } from "../domain/workspace/git";
+import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
 import type { ResourcesGateway } from "../domain/repositories/ResourcesGateway";
 import type { TemplateGateway } from "../domain/repositories/TemplateGateway";
 import type { WorkspaceGateway } from "../domain/repositories/WorkspaceGateway";
@@ -114,6 +121,60 @@ export class TauriRepoGateway implements RepoGateway {
   }
 }
 
+export class TauriGitGateway implements GitGateway {
+  async status(projectPath: string): Promise<GitStatus> {
+    return buildGitStatus(await call(api.gitStatus(projectPath)));
+  }
+
+  async stage(projectPath: string, paths: string[]): Promise<GitStatus> {
+    return buildGitStatus(await call(api.gitStage(projectPath, paths)));
+  }
+
+  async unstage(projectPath: string, paths: string[]): Promise<GitStatus> {
+    return buildGitStatus(await call(api.gitUnstage(projectPath, paths)));
+  }
+
+  stagedDiff(projectPath: string): Promise<string> {
+    return call(api.gitDiff(projectPath, true));
+  }
+
+  commit(projectPath: string, message: string): Promise<GitCommitResult> {
+    return call(api.gitCommit(projectPath, message));
+  }
+
+  push(
+    projectPath: string,
+    input: { branch: string; setUpstream: boolean; remote?: string },
+  ): Promise<GitPushResult> {
+    return call(api.gitPush(projectPath, input.branch, input.setUpstream));
+  }
+
+  commits(projectPath: string, base: string, limit?: number): Promise<GitCommit[]> {
+    return call(api.gitCommits(projectPath, base, limit));
+  }
+}
+
+export class TauriPullRequestGateway implements PullRequestGateway {
+  status(): Promise<GhStatus> {
+    return call(api.ghStatus());
+  }
+
+  view(projectPath: string): Promise<PullRequestInfo | null> {
+    return call(api.ghPrView(projectPath));
+  }
+
+  checks(projectPath: string): Promise<PullRequestCheck[]> {
+    return call(api.ghPrChecks(projectPath));
+  }
+
+  async create(
+    projectPath: string,
+    input: { base: string; head: string; title: string; body: string },
+  ): Promise<{ url: string }> {
+    return { url: await call(api.ghPrCreate({ projectPath, ...input })) };
+  }
+}
+
 export class TauriTemplateGateway implements TemplateGateway {
   list(): Promise<TemplateManifest[]> {
     return call(api.listTemplates());
@@ -169,5 +230,16 @@ export class TauriLibraryGateway implements LibraryGateway {
 export class TauriResourcesGateway implements ResourcesGateway {
   usage(pid?: number | null): Promise<ResourceUsage> {
     return call(api.resources(pid));
+  }
+}
+
+/** El sondeo de red no se convierte en error: el resultado ya describe el fallo. */
+export class TauriPreviewGateway implements PreviewGateway {
+  probe(url: string): Promise<PreviewProbe> {
+    return call(api.previewProbe(url));
+  }
+
+  openExternal(url: string): Promise<void> {
+    return call(api.openExternal(url));
   }
 }

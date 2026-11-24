@@ -1,16 +1,45 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
+import { notificationsEnabled } from "../../domain/chat/notifications";
 import {
+  mcpAction,
+  mcpStateLabel,
+  readableMcpError,
+  type McpServerStatus,
+} from "../../domain/chat/mcp";
+import {
+  activityBars,
+  budgetAlertMessage,
+  budgetDay,
+  budgetLevel,
+  budgetRatio,
   cacheRatio as computeCacheRatio,
   contextRatio as computeContextRatio,
+  crossedBudgetThresholds,
+  formatActivityDay,
+  formatCost,
+  formatCount,
+  formatTokens,
+  parseBudgetUsd,
+  sortModelUsage,
+  totalTokens,
   toSessionUsage,
+  usageModelKey,
+  usageStatsInput,
   type SessionUsage,
   type UsageLimits,
+  type UsageRange,
+  type WorkspaceStats,
 } from "../../domain/chat/usage";
 import type { CatalogModel } from "../../domain/chat/selection";
+import { prefKeys } from "../../domain/repositories/Preferences";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import type { ResourceUsage, ServerInfo, SkillRef, Workspace } from "../../types";
+import { ChangesPanel } from "./ChangesPanel";
+import { FilesPanel } from "./FilesPanel";
+
+export type InspectorTab = "resumen" | "cambios" | "ficheros";
 
 type Props = {
   workspace: Workspace;
@@ -19,6 +48,8 @@ type Props = {
   sessionId: string | null;
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
   onClose: () => void;
+  tab?: InspectorTab;
+  onTabChange?: (tab: InspectorTab) => void;
 };
 
 type ProjectSummary = {
@@ -40,12 +71,6 @@ function percent(value: number) {
   return `${value.toFixed(1)}%`;
 }
 
-function tokens(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return String(value);
-}
-
 function bytes(value: number) {
   if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
   if (value >= 1024 ** 2) return `${Math.round(value / 1024 ** 2)} MB`;
@@ -62,19 +87,7 @@ function resetText(at: number) {
   return `en ${Math.round(hours / 24)} d`;
 }
 
-function statusOf(status: unknown) {
-  if (typeof status === "string") return status;
-  const value = (status as { status?: string } | null)?.status;
-  return value ?? "unknown";
-}
-
-function statusTone(status: string) {
-  if (status === "connected") return "ok";
-  if (status === "failed") return "bad";
-  if (status === "needs_auth" || status === "pending") return "warn";
-  return "";
-}
-
+/* El estado de cada MCP se normaliza en domain/chat/mcp. */
 function Bar({ ratio }: { ratio: number | null }) {
   const value = ratio === null ? 0 : Math.max(0, Math.min(1, ratio));
   return (
@@ -93,19 +106,47 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function Inspector({ workspace, client, server, sessionId, onUpdated, onClose }: Props) {
+export function Inspector({
+  workspace,
+  client,
+  server,
+  sessionId,
+  onUpdated,
+  onClose,
+  tab = "resumen",
+  onTabChange,
+}: Props) {
   const root = useAppContext();
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [session, setSession] = useState<SessionUsage | null>(null);
   const [usage, setUsage] = useState<UsageLimits | null>(null);
   const [models, setModels] = useState<CatalogModel[]>([]);
-  const [statuses, setStatuses] = useState<Record<string, string>>({});
+  const [statuses, setStatuses] = useState<Record<string, McpServerStatus>>({});
   const [resources, setResources] = useState<ResourceUsage | null>(null);
   const [savingMcp, setSavingMcp] = useState<string | null>(null);
   const [savingSkill, setSavingSkill] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [usageRange, setUsageRange] = useState<UsageRange>("30d");
+  const [stats, setStats] = useState<WorkspaceStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [monthlyBudget, setMonthlyBudget] = useState<number | null>(() =>
+    parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))),
+  );
 
   const location = useMemo(() => ({ directory: workspace.projectPath }), [workspace.projectPath]);
+  const timeZone = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return undefined;
+    }
+  }, []);
+
+  useEffect(() => {
+    setStats(null);
+    setStatsError(null);
+    setMonthlyBudget(parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))));
+  }, [root, workspace.id]);
 
   useEffect(() => {
     let alive = true;
@@ -121,7 +162,7 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
   }, [client, location]);
 
   const refresh = useCallback(async () => {
-    const [vcs, vcsInfo, limits, mcpList, stats] = await Promise.allSettled([
+    const [vcs, vcsInfo, limits, mcpList, resourcesNow] = await Promise.allSettled([
       safe(() => client.vcs.status({ location })),
       safe(() => client.vcs.get({ location })),
       safe(() => client.usage.limits()),
@@ -154,13 +195,35 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
     }
 
     if (mcpList.status === "fulfilled") {
-      const next: Record<string, string> = {};
-      for (const item of mcpList.value.data) next[item.name] = statusOf(item.status);
-      setStatuses(next);
+      setStatuses(Object.fromEntries(mcpList.value.data.map((item) => [item.name, item])));
     }
 
-    setResources(stats.status === "fulfilled" ? stats.value : null);
+    setResources(resourcesNow.status === "fulfilled" ? resourcesNow.value : null);
   }, [client, location, server.pid, root]);
+  const refreshMcp = useCallback(async () => {
+    try {
+      const result = await client.mcp.list({ location });
+      setStatuses(Object.fromEntries(result.data.map((item) => [item.name, item])));
+    } catch {
+      // El servidor puede estar parando; el siguiente ciclo reintenta.
+    }
+  }, [client, location]);
+  // `mcp.status.changed` avisa cuando un servidor se conecta, falla o cierra:
+  // se relee el estado sin esperar al sondeo de 5 s.
+  useEffect(() => {
+    const abort = new AbortController();
+    (async () => {
+      try {
+        for await (const event of client.event.subscribe({ signal: abort.signal })) {
+          if (event.type !== "mcp.status.changed") continue;
+          await refreshMcp();
+        }
+      } catch {
+        // El cierre de la suscripción no es un error de la vista.
+      }
+    })();
+    return () => abort.abort();
+  }, [client, refreshMcp]);
 
   const refreshSession = useCallback(async () => {
     if (!sessionId) {
@@ -182,12 +245,25 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
     }
   }, [client, sessionId]);
 
+  const refreshStats = useCallback(async () => {
+    setMonthlyBudget(parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))));
+    try {
+      const result = await client.session.stats(usageStatsInput(usageRange, Date.now(), timeZone));
+      setStats(result.data);
+      setStatsError(null);
+    } catch (err) {
+      setStats(null);
+      setStatsError(errorText(err));
+    }
+  }, [client, root, timeZone, usageRange, workspace.id]);
+
   useEffect(() => {
     let alive = true;
     const tick = () => {
-      if (!alive) return;
+      if (!alive || tab !== "resumen") return;
       void refresh();
       void refreshSession();
+      void refreshStats();
     };
     tick();
     const timer = window.setInterval(tick, 5000);
@@ -195,7 +271,35 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
       alive = false;
       window.clearInterval(timer);
     };
-  }, [refresh, refreshSession]);
+  }, [refresh, refreshSession, refreshStats, tab]);
+
+  // Un aviso nativo por umbral y día: la marca vive en preferencias para que
+  // no se repita aunque el inspector se vuelva a montar o la app se reinicie.
+  useEffect(() => {
+    if (!stats || monthlyBudget === null) return;
+    const thresholds = crossedBudgetThresholds(stats.cost, monthlyBudget);
+    if (thresholds.length === 0) return;
+    if (!notificationsEnabled(root.preferences.get(prefKeys.notifications))) return;
+    if (typeof document !== "undefined" && document.hasFocus()) return;
+    const day = budgetDay(Date.now(), timeZone);
+    const pending = thresholds.filter(
+      (threshold) => root.preferences.get(prefKeys.budgetAlert(workspace.id, threshold)) !== day,
+    );
+    // Si el coste salta varios umbrales a la vez, se avisa solo del mayor y se
+    // marcan todos: un único aviso por evaluación y umbral, sin repetir ese día.
+    const threshold = pending[pending.length - 1];
+    if (threshold === undefined) return;
+    for (const reached of pending) {
+      root.preferences.set(prefKeys.budgetAlert(workspace.id, reached), day);
+    }
+    const message = budgetAlertMessage({
+      workspaceName: workspace.name,
+      threshold,
+      cost: stats.cost,
+      budget: monthlyBudget,
+    });
+    void root.notifications.notify({ ...message, workspaceId: workspace.id });
+  }, [monthlyBudget, root, stats, timeZone, workspace.id, workspace.name]);
 
   const modelEntry = session?.model
     ? (models.find(
@@ -210,6 +314,19 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
   );
 
   const cacheRatio = useMemo(() => computeCacheRatio(session), [session]);
+
+  const usageActivity = useMemo(() => activityBars(stats?.activity ?? []), [stats]);
+  const usageModels = useMemo(() => sortModelUsage(stats?.models ?? []), [stats]);
+  const budgetState = budgetLevel(stats?.cost ?? 0, monthlyBudget);
+  const budgetShare = budgetRatio(stats?.cost ?? 0, monthlyBudget);
+  const modelNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const model of models) {
+      const id = model.modelID ?? model.id;
+      names.set(`${model.providerID}/${id}`, model.name);
+    }
+    return names;
+  }, [models]);
 
   const mcpNames = useMemo(
     () => [...workspace.mcpNames].sort((a, b) => a.localeCompare(b)),
@@ -252,6 +369,20 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
     }
   }
 
+  /** Conecta o desconecta en caliente; no reescribe config ni recarga la location. */
+  async function toggleMcpRuntime(name: string, action: "connect" | "disconnect") {
+    setSavingMcp(name);
+    setError(null);
+    try {
+      if (action === "connect") await client.mcp.connect({ server: name, location });
+      else await client.mcp.disconnect({ server: name, location });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      await refreshMcp();
+      setSavingMcp(null);
+    }
+  }
   async function toggleSkill(skill: SkillRef, enabled: boolean) {
     setSavingSkill(skill.id);
     setError(null);
@@ -275,25 +406,60 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
   function mcpRow(name: string) {
     const enabled = !workspace.disabledMcps.includes(name);
     const status = statuses[name];
+    const state = status?.state ?? "unknown";
+    const action = mcpAction(state);
+    const mcpError = readableMcpError(status?.error);
     return (
-      <div className="inspector-switch-row" key={name}>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          aria-label={`${enabled ? "Desactivar" : "Activar"} ${name}`}
-          className={`switch ${enabled ? "on" : ""}`}
-          disabled={savingMcp !== null}
-          onClick={() => void toggleMcp(name, !enabled)}
-        >
-          <span />
-        </button>
-        <span className="inspector-switch-label" title={name}>
-          {name}
-        </span>
-        {status && <span className={`inspector-dot ${statusTone(status)}`} title={status} />}
+      <div className="inspector-mcp-row" key={name}>
+        <div className="inspector-switch-row">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label={`${enabled ? "Desactivar" : "Activar"} ${name}`}
+            className={`switch ${enabled ? "on" : ""}`}
+            disabled={savingMcp !== null}
+            onClick={() => void toggleMcp(name, !enabled)}
+          >
+            <span />
+          </button>
+          <span className="inspector-switch-label" title={status?.title ?? name}>
+            {name}
+          </span>
+          <span className={`mcp-status ${state}`} title={mcpStateLabel(state)}>
+            {mcpStateLabel(state)}
+          </span>
+          {enabled && (
+            <button
+              type="button"
+              className="ghost mcp-action"
+              disabled={savingMcp !== null}
+              title={
+                action === "connect"
+                  ? `Conectar ${name} sin reaplicar el template`
+                  : `Desconectar ${name} sin borrar su configuración`
+              }
+              onClick={() => void toggleMcpRuntime(name, action)}
+            >
+              {action === "connect"
+                ? state === "failed"
+                  ? "Reintentar"
+                  : "Conectar"
+                : "Desconectar"}
+            </button>
+          )}
+        </div>
+        {mcpError && (
+          <p className="mcp-error" title={status?.error}>
+            {mcpError}
+          </p>
+        )}
       </div>
     );
+  }
+
+  function usageModelName(model: { providerID: string; id: string }) {
+    return modelNames.get(usageModelKey(model)) ?? usageModelKey(model);
   }
 
   function skillRow(skill: SkillRef) {
@@ -319,205 +485,383 @@ export function Inspector({ workspace, client, server, sessionId, onUpdated, onC
   }
 
   return (
-    <aside className="inspector">
+    <aside className={`inspector ${tab === "resumen" ? "" : "inspector-wide"}`}>
       <header className="inspector-head">
         <strong>Panel</strong>
         <button className="icon-button" title="Ocultar panel" onClick={onClose}>
           ×
         </button>
       </header>
-      <div className="inspector-body">
-        {error && <div className="inline-error small-text">{error}</div>}
-
-        <section className="inspector-section">
-          <h3>Sesión</h3>
-          {session ? (
-            <>
-              <div className="inspector-line">
-                <span>Contexto</span>
-                <span className="inspector-value">
-                  {contextRatio === null ? "—" : percent(contextRatio * 100)}
-                </span>
-              </div>
-              <Bar ratio={contextRatio} />
-              <Line
-                label="Acierto de caché"
-                value={cacheRatio === null ? "—" : percent(cacheRatio * 100)}
-              />
-              <Line
-                label="Tokens"
-                value={`${tokens(session.input)} in · ${tokens(session.output)} out`}
-              />
-              <Line label="Coste" value={`$${session.cost.toFixed(3)}`} />
-              {modelEntry && (
-                <p
-                  className="inspector-note"
-                  title={`${modelEntry.providerID}/${modelEntry.modelID}`}
-                >
-                  {modelEntry.name ?? modelEntry.modelID}
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="inspector-empty">Sin actividad todavía.</p>
-          )}
-        </section>
-
-        <section className="inspector-section">
-          <h3>Proyecto</h3>
-          <div className="inspector-line">
-            <span className="inspector-strong" title={workspace.projectPath}>
-              {folder}
-            </span>
-            {project?.branch && <span className="inspector-tag">⎇ {project.branch}</span>}
-          </div>
-          <div className="inspector-line">
-            <span>
-              {project
-                ? `${project.files} ${project.files === 1 ? "archivo" : "archivos"} modificados`
-                : "Sin datos de git"}
-            </span>
-            {project && project.files > 0 && (
-              <span className="inspector-value">
-                <span className="inspector-add">+{project.additions}</span>{" "}
-                <span className="inspector-del">−{project.deletions}</span>
-              </span>
-            )}
-          </div>
-        </section>
-
-        {hasUsage && (
-          <section className="inspector-section">
-            <h3>Uso</h3>
-            {usage?.go?.rolling && (
-              <>
-                <div className="inspector-line">
-                  <span>5 h</span>
-                  <span className="inspector-value">
-                    {percent(usage.go.rolling.percent)}{" "}
-                    <span className="inspector-muted">{resetText(usage.go.rolling.resetsAt)}</span>
-                  </span>
-                </div>
-                <Bar ratio={usage.go.rolling.percent / 100} />
-              </>
-            )}
-            {usage?.go?.weekly && (
-              <>
-                <div className="inspector-line">
-                  <span>Semanal</span>
-                  <span className="inspector-value">
-                    {percent(usage.go.weekly.percent)}{" "}
-                    <span className="inspector-muted">{resetText(usage.go.weekly.resetsAt)}</span>
-                  </span>
-                </div>
-                <Bar ratio={usage.go.weekly.percent / 100} />
-              </>
-            )}
-            {usage?.go?.monthly && (
-              <>
-                <div className="inspector-line">
-                  <span>Mensual</span>
-                  <span className="inspector-value">
-                    {percent(usage.go.monthly.percent)}{" "}
-                    <span className="inspector-muted">{resetText(usage.go.monthly.resetsAt)}</span>
-                  </span>
-                </div>
-                <Bar ratio={usage.go.monthly.percent / 100} />
-              </>
-            )}
-            {budgets.map((budget) => {
-              const ratio = budget.limit > 0 ? budget.spent / budget.limit : null;
-              return (
-                <div key={budget.id}>
-                  <Line
-                    label="Saldo"
-                    value={`$${Math.max(0, budget.limit - budget.spent).toFixed(2)}`}
-                  />
-                  <Bar ratio={ratio} />
-                </div>
-              );
-            })}
-          </section>
-        )}
-
-        <section className="inspector-section">
-          <h3>Fuentes</h3>
-          <Line label="Habilidades" value={`${enabledSkills.length}/${activeSkills.length}`} />
-          <Line label="Servidores MCP" value={`${enabledMcps.length}/${mcpNames.length}`} />
-          <Line label="Agentes" value={String(workspace.agents.length)} />
-          <Line label="Plugins" value={String(workspace.plugins.length)} />
-        </section>
-
-        <section className="inspector-section">
-          <h3>
-            MCP
-            <span className="inspector-count">
-              {enabledMcps.length}/{mcpNames.length}
-            </span>
-          </h3>
-          {mcpNames.length === 0 && (
-            <p className="inspector-empty">
-              Ningún MCP en este workspace. Se añaden desde Ajustes o desde el template.
-            </p>
-          )}
-          {mcpNames.map((name) => mcpRow(name))}
-        </section>
-
-        <section className="inspector-section">
-          <h3>
-            Skills
-            <span className="inspector-count">
-              {enabledSkills.length}/{activeSkills.length}
-            </span>
-          </h3>
-          {activeSkills.length === 0 && (
-            <p className="inspector-empty">
-              Ninguna skill en este workspace. Se añaden desde Ajustes o desde el template.
-            </p>
-          )}
-          {activeSkills.map((skill) => skillRow(skill))}
-        </section>
-
-        {system && (
-          <section className="inspector-section">
-            <h3>Recursos</h3>
-            {resources?.app && (
-              <Line
-                label="App"
-                value={`${bytes(resources.app.memoryBytes)} · ${
-                  system.memoryTotalBytes > 0
-                    ? percent((resources.app.memoryBytes / system.memoryTotalBytes) * 100)
-                    : "—"
-                }`}
-              />
-            )}
-            {resources?.workspace && (
-              <Line
-                label="opencode"
-                value={`${bytes(resources.workspace.memoryBytes)} · ${percent(
-                  resources.workspace.cpuPercent,
-                )} CPU`}
-              />
-            )}
-            <div className="inspector-line">
-              <span>CPU</span>
-              <span className="inspector-value">{percent(system.cpuPercent)}</span>
-            </div>
-            <Bar ratio={system.cpuPercent / 100} />
-            <Line
-              label="Memoria"
-              value={`${bytes(system.memoryUsedBytes)} / ${bytes(system.memoryTotalBytes)}`}
-            />
-            <Bar
-              ratio={
-                system.memoryTotalBytes > 0
-                  ? system.memoryUsedBytes / system.memoryTotalBytes
-                  : null
-              }
-            />
-          </section>
-        )}
+      <div className="inspector-tabs" role="tablist" aria-label="Secciones del panel">
+        {(
+          [
+            ["resumen", "Resumen"],
+            ["cambios", "Cambios"],
+            ["ficheros", "Ficheros"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            type="button"
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            className={tab === id ? "active" : ""}
+            onClick={() => onTabChange?.(id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+      {tab === "cambios" ? (
+        <ChangesPanel
+          client={client}
+          workspace={workspace}
+          sessionId={sessionId}
+          git={root.git}
+          pullRequests={root.pullRequests}
+          confirm={root.confirm}
+        />
+      ) : tab === "ficheros" ? (
+        <FilesPanel client={client} workspace={workspace} />
+      ) : (
+        <div className="inspector-body">
+          {error && <div className="inline-error small-text">{error}</div>}
+
+          <section className="inspector-section">
+            <h3>Sesión</h3>
+            {session ? (
+              <>
+                <div className="inspector-line">
+                  <span>Contexto</span>
+                  <span className="inspector-value">
+                    {contextRatio === null ? "—" : percent(contextRatio * 100)}
+                  </span>
+                </div>
+                <Bar ratio={contextRatio} />
+                <Line
+                  label="Acierto de caché"
+                  value={cacheRatio === null ? "—" : percent(cacheRatio * 100)}
+                />
+                <Line
+                  label="Tokens"
+                  value={`${formatTokens(session.input)} in · ${formatTokens(session.output)} out`}
+                />
+                <Line label="Coste" value={formatCost(session.cost)} />
+                {modelEntry && (
+                  <p
+                    className="inspector-note"
+                    title={`${modelEntry.providerID}/${modelEntry.modelID}`}
+                  >
+                    {modelEntry.name ?? modelEntry.modelID}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="inspector-empty">Sin actividad todavía.</p>
+            )}
+          </section>
+
+          <section className="inspector-section">
+            <h3>Proyecto</h3>
+            <div className="inspector-line">
+              <span className="inspector-strong" title={workspace.projectPath}>
+                {folder}
+              </span>
+              {project?.branch && <span className="inspector-tag">⎇ {project.branch}</span>}
+            </div>
+            <div className="inspector-line">
+              <span>
+                {project
+                  ? `${project.files} ${project.files === 1 ? "archivo" : "archivos"} modificados`
+                  : "Sin datos de git"}
+              </span>
+              {project && project.files > 0 && (
+                <span className="inspector-value">
+                  <span className="inspector-add">+{project.additions}</span>{" "}
+                  <span className="inspector-del">−{project.deletions}</span>
+                </span>
+              )}
+            </div>
+          </section>
+
+          <section className="inspector-section">
+            <h3>
+              Consumo del workspace
+              <span className="inspector-count">
+                {usageRange === "7d" ? "7 días" : usageRange === "30d" ? "30 días" : "total"}
+              </span>
+            </h3>
+            <fieldset className="usage-range">
+              <legend className="sr-only">Rango de consumo</legend>
+              {(
+                [
+                  ["7d", "7 días"],
+                  ["30d", "30 días"],
+                  ["total", "Total"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  type="button"
+                  key={id}
+                  aria-pressed={usageRange === id}
+                  className={usageRange === id ? "active" : ""}
+                  onClick={() => setUsageRange(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </fieldset>
+            {stats ? (
+              <>
+                <div className="usage-total">
+                  <span className="usage-total-value">{formatCost(stats.cost)}</span>
+                  <span className="inspector-muted">coste del rango</span>
+                </div>
+                <Line
+                  label="Tokens"
+                  value={`${formatTokens(stats.tokens.input)} in · ${formatTokens(stats.tokens.output)} out`}
+                />
+                <Line
+                  label="Caché"
+                  value={`${formatTokens(stats.tokens.cache.read)} lectura · ${formatTokens(
+                    stats.tokens.cache.write,
+                  )} escritura`}
+                />
+                {stats.tokens.reasoning > 0 && (
+                  <Line label="Razonamiento" value={formatTokens(stats.tokens.reasoning)} />
+                )}
+                <Line
+                  label="Actividad"
+                  value={`${formatCount(stats.sessions)} sesiones · ${formatCount(
+                    stats.prompts,
+                  )} prompts`}
+                />
+                {(stats.steps > 0 || stats.subagents > 0) && (
+                  <Line
+                    label="Trabajo"
+                    value={`${formatCount(stats.steps)} pasos${
+                      stats.subagents > 0 ? ` · ${formatCount(stats.subagents)} subagentes` : ""
+                    }`}
+                  />
+                )}
+                <Line
+                  label="Días activos"
+                  value={`${formatCount(stats.activeDays)} · racha ${formatCount(stats.streak)}`}
+                />
+
+                {usageActivity.length > 0 && (
+                  <div className="usage-activity">
+                    <div className="inspector-subhead">
+                      <span>Actividad por día</span>
+                      <span className="inspector-muted">pasos</span>
+                    </div>
+                    {usageActivity.map((day) => (
+                      <div
+                        className="usage-activity-row"
+                        key={day.date}
+                        title={`${day.date}: ${formatCount(day.steps)} pasos`}
+                      >
+                        <span className="usage-activity-day">{formatActivityDay(day.date)}</span>
+                        <div className="inspector-bar">
+                          <span style={{ width: `${Math.round(day.ratio * 100)}%` }} />
+                        </div>
+                        <span className="usage-activity-count">{formatCount(day.steps)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {usageModels.length > 0 && (
+                  <div className="usage-models">
+                    <div className="inspector-subhead">
+                      <span>Por modelo</span>
+                      <span className="inspector-muted">coste</span>
+                    </div>
+                    {usageModels.map((entry) => {
+                      const peak = usageModels[0]?.cost ?? 0;
+                      return (
+                        <div className="usage-model" key={usageModelKey(entry.model)}>
+                          <div className="inspector-line">
+                            <span title={usageModelKey(entry.model)}>
+                              {usageModelName(entry.model)}
+                            </span>
+                            <span className="inspector-value">{formatCost(entry.cost)}</span>
+                          </div>
+                          <div className="inspector-bar">
+                            <span
+                              style={{
+                                width: `${peak > 0 ? Math.min(100, (entry.cost / peak) * 100) : 0}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="inspector-muted">
+                            {formatCount(entry.steps)} pasos ·{" "}
+                            {formatTokens(totalTokens(entry.tokens))} tokens
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {monthlyBudget !== null && (
+                  <div className={`usage-budget ${budgetState ?? "ok"}`}>
+                    <Line
+                      label="Presupuesto mensual"
+                      value={`${formatCost(stats.cost)} de ${formatCost(monthlyBudget)}`}
+                    />
+                    <Bar ratio={budgetShare} />
+                    {budgetState === "over" && (
+                      <p className="usage-budget-alert">Has superado el presupuesto mensual.</p>
+                    )}
+                    {budgetState === "warning" && (
+                      <p className="usage-budget-warning">Te acercas al presupuesto mensual.</p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="inspector-empty">{statsError ?? "Sin datos de consumo todavía."}</p>
+            )}
+          </section>
+
+          {hasUsage && (
+            <section className="inspector-section">
+              <h3>Límites del proveedor</h3>
+              {usage?.go?.rolling && (
+                <>
+                  <div className="inspector-line">
+                    <span>5 h</span>
+                    <span className="inspector-value">
+                      {percent(usage.go.rolling.percent)}{" "}
+                      <span className="inspector-muted">
+                        {resetText(usage.go.rolling.resetsAt)}
+                      </span>
+                    </span>
+                  </div>
+                  <Bar ratio={usage.go.rolling.percent / 100} />
+                </>
+              )}
+              {usage?.go?.weekly && (
+                <>
+                  <div className="inspector-line">
+                    <span>Semanal</span>
+                    <span className="inspector-value">
+                      {percent(usage.go.weekly.percent)}{" "}
+                      <span className="inspector-muted">{resetText(usage.go.weekly.resetsAt)}</span>
+                    </span>
+                  </div>
+                  <Bar ratio={usage.go.weekly.percent / 100} />
+                </>
+              )}
+              {usage?.go?.monthly && (
+                <>
+                  <div className="inspector-line">
+                    <span>Mensual</span>
+                    <span className="inspector-value">
+                      {percent(usage.go.monthly.percent)}{" "}
+                      <span className="inspector-muted">
+                        {resetText(usage.go.monthly.resetsAt)}
+                      </span>
+                    </span>
+                  </div>
+                  <Bar ratio={usage.go.monthly.percent / 100} />
+                </>
+              )}
+              {budgets.map((budget) => {
+                const ratio = budget.limit > 0 ? budget.spent / budget.limit : null;
+                return (
+                  <div key={budget.id}>
+                    <Line
+                      label="Saldo"
+                      value={formatCost(Math.max(0, budget.limit - budget.spent))}
+                    />
+                    <Bar ratio={ratio} />
+                  </div>
+                );
+              })}
+            </section>
+          )}
+
+          <section className="inspector-section">
+            <h3>Fuentes</h3>
+            <Line label="Habilidades" value={`${enabledSkills.length}/${activeSkills.length}`} />
+            <Line label="Servidores MCP" value={`${enabledMcps.length}/${mcpNames.length}`} />
+            <Line label="Agentes" value={String(workspace.agents.length)} />
+            <Line label="Plugins" value={String(workspace.plugins.length)} />
+          </section>
+
+          <section className="inspector-section">
+            <h3>
+              MCP
+              <span className="inspector-count">
+                {enabledMcps.length}/{mcpNames.length}
+              </span>
+            </h3>
+            {mcpNames.length === 0 && (
+              <p className="inspector-empty">
+                Ningún MCP en este workspace. Se añaden desde Ajustes o desde el template.
+              </p>
+            )}
+            {mcpNames.map((name) => mcpRow(name))}
+          </section>
+
+          <section className="inspector-section">
+            <h3>
+              Skills
+              <span className="inspector-count">
+                {enabledSkills.length}/{activeSkills.length}
+              </span>
+            </h3>
+            {activeSkills.length === 0 && (
+              <p className="inspector-empty">
+                Ninguna skill en este workspace. Se añaden desde Ajustes o desde el template.
+              </p>
+            )}
+            {activeSkills.map((skill) => skillRow(skill))}
+          </section>
+
+          {system && (
+            <section className="inspector-section">
+              <h3>Recursos</h3>
+              {resources?.app && (
+                <Line
+                  label="App"
+                  value={`${bytes(resources.app.memoryBytes)} · ${
+                    system.memoryTotalBytes > 0
+                      ? percent((resources.app.memoryBytes / system.memoryTotalBytes) * 100)
+                      : "—"
+                  }`}
+                />
+              )}
+              {resources?.workspace && (
+                <Line
+                  label="opencode"
+                  value={`${bytes(resources.workspace.memoryBytes)} · ${percent(
+                    resources.workspace.cpuPercent,
+                  )} CPU`}
+                />
+              )}
+              <div className="inspector-line">
+                <span>CPU</span>
+                <span className="inspector-value">{percent(system.cpuPercent)}</span>
+              </div>
+              <Bar ratio={system.cpuPercent / 100} />
+              <Line
+                label="Memoria"
+                value={`${bytes(system.memoryUsedBytes)} / ${bytes(system.memoryTotalBytes)}`}
+              />
+              <Bar
+                ratio={
+                  system.memoryTotalBytes > 0
+                    ? system.memoryUsedBytes / system.memoryTotalBytes
+                    : null
+                }
+              />
+            </section>
+          )}
+        </div>
+      )}
     </aside>
   );
 }

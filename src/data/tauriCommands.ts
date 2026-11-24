@@ -1,6 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelDetails } from "../domain/models/details";
 import type {
+  GitCommit,
+  GitCommitResult,
+  GitPushResult,
+  GitStatusRaw,
+} from "../domain/workspace/git";
+import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
+import type { PreviewProbe } from "../domain/preview/preview";
+import type {
   AppSettings,
   Bootstrap,
   ConfigOutcome,
@@ -65,6 +73,41 @@ export const api = {
   workspaceLog: (id: string, lines = 200) => invoke<string>("workspace_log", { id, lines }),
   resources: (pid?: number | null) => invoke<ResourceUsage>("resources", { pid: pid ?? null }),
 
+  gitStatus: (projectPath: string) => invoke<GitStatusRaw>("git_status", { projectPath }),
+  gitStage: (projectPath: string, paths: string[]) =>
+    invoke<GitStatusRaw>("git_stage", { projectPath, paths }),
+  gitUnstage: (projectPath: string, paths: string[]) =>
+    invoke<GitStatusRaw>("git_unstage", { projectPath, paths }),
+  gitDiff: (projectPath: string, staged: boolean) =>
+    invoke<string>("git_diff", { projectPath, staged }),
+  gitCommit: (projectPath: string, message: string) =>
+    invoke<GitCommitResult>("git_commit", { projectPath, message }),
+  gitPush: (projectPath: string, branch: string, setUpstream: boolean) =>
+    invoke<GitPushResult>("git_push", { projectPath, branch, setUpstream }),
+  gitCommits: (projectPath: string, base: string, limit?: number) =>
+    invoke<GitCommit[]>("git_commits", { projectPath, base, limit: limit ?? null }),
+
+  ghStatus: () => invoke<GhStatus>("gh_status"),
+  ghPrView: (projectPath: string) => invoke<PullRequestInfo | null>("gh_pr_view", { projectPath }),
+  ghPrChecks: (projectPath: string) => invoke<PullRequestCheck[]>("gh_pr_checks", { projectPath }),
+  ghPrCreate: (input: {
+    projectPath: string;
+    base: string;
+    head: string;
+    title: string;
+    body: string;
+  }) => invoke<string>("gh_pr_create", { input }),
+
+  /** Sondea la URL del preview desde Rust (sin CORS) y devuelve su estado. */
+  previewProbe: (url: string) => invoke<PreviewProbe>("preview_probe", { url }),
+  /** Abre una URL http(s) en el navegador externo del sistema. */
+  openExternal: (url: string) => invoke<void>("open_external", { url }),
+
   getSettings: () => invoke<AppSettings>("get_settings"),
   saveSettings: (settings: AppSettings) => invoke<AppSettings>("save_settings", { settings }),
+
+  /** Escribe texto en una ruta elegida por el diálogo; `false` si ya existía. */
+  writeTextFile: (path: string, contents: string, overwrite: boolean) =>
+    invoke<boolean>("write_text_file", { path, contents, overwrite }),
+  readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
 };

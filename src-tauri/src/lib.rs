@@ -1,8 +1,11 @@
 mod commands;
 mod config;
+mod gh;
 mod git;
 mod library;
 mod model;
+mod preview;
+mod process;
 mod resources;
 mod server;
 mod state;
@@ -46,6 +49,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             migrate_legacy_data_dir(&data_dir);
@@ -78,9 +82,24 @@ pub fn run() {
             commands::workspace_status,
             commands::worktree_status,
             commands::workspace_log,
+            commands::git_status,
+            commands::git_stage,
+            commands::git_unstage,
+            commands::git_diff,
+            commands::git_commit,
+            commands::git_push,
+            commands::git_commits,
+            commands::gh_status,
+            commands::gh_pr_view,
+            commands::gh_pr_checks,
+            commands::gh_pr_create,
             commands::resources,
             commands::get_settings,
             commands::save_settings,
+            commands::write_text_file,
+            commands::read_text_file,
+            commands::preview_probe,
+            commands::open_external,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

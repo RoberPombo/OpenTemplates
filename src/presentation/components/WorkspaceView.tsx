@@ -2,9 +2,13 @@ import { Profiler, useMemo, useState } from "react";
 import type { ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
+import { useCommandAction } from "../context/CommandActions";
 import { Chat } from "./Chat";
-import { Inspector } from "./Inspector";
+import { Inspector, type InspectorTab } from "./Inspector";
+import { PreviewDock } from "./PreviewDock";
+import { RaceControls } from "./RaceControls";
 import { SettingsPanel } from "./SettingsPanel";
+import { TerminalDock } from "./TerminalDock";
 import { Button } from "./ui";
 
 type Props = {
@@ -16,6 +20,10 @@ type Props = {
   onStop: () => void;
   onDelete: () => void;
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
+  /** El workspace terminó un turno sin foco: se marca en el sidebar. */
+  onWorkspaceActivity?: (workspaceId: string) => void;
+  worktreesRoot: string;
+  repoPath: string | null;
 };
 
 function ProfiledChat(props: React.ComponentProps<typeof Chat>) {
@@ -54,20 +62,44 @@ export function WorkspaceView({
   onStop,
   onDelete,
   onUpdated,
+  onWorkspaceActivity,
+  worktreesRoot,
+  repoPath,
 }: Props) {
   const root = useAppContext();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(
     () => root.preferences.get(prefKeys.panelOpen) !== "0",
   );
+  const [panelTab, setPanelTab] = useState<InspectorTab>(() => {
+    const saved = root.preferences.get(prefKeys.panelTab(workspace.id));
+    return saved === "cambios" || saved === "ficheros" ? saved : "resumen";
+  });
+  const [sessionsOpen, setSessionsOpen] = useState(
+    () => root.preferences.get(prefKeys.sessionsOpen) === "1",
+  );
+  const [terminalOpen, setTerminalOpen] = useState(
+    () => root.preferences.get(prefKeys.terminalOpen) === "1",
+  );
+  const [previewOpen, setPreviewOpen] = useState(
+    () => root.preferences.get(prefKeys.previewOpen) === "1",
+  );
   const [sessionId, setSessionId] = useState<string | null>(() =>
     root.preferences.get(prefKeys.session(workspace.id)),
   );
+  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
+  const [liveRace, setLiveRace] = useState(false);
+  // `server` cambia de identidad en cada sondeo de estado; los memo se anclan a
+  // los valores que definen el cliente para no recrear gateways ni terminales.
   const client = useMemo(
     () => (server ? root.provideChatGateway(server) : null),
     [root, server?.baseUrl, server?.password],
   );
-
+  const terminalGateway = useMemo(
+    () => (server ? root.provideTerminalGateway(server) : null),
+    [root, server?.baseUrl, server?.password],
+  );
+  const previewGateway = useMemo(() => root.providePreviewGateway(), [root]);
   function togglePanel() {
     setPanelOpen((prev) => {
       const next = !prev;
@@ -75,6 +107,121 @@ export function WorkspaceView({
       return next;
     });
   }
+
+  function toggleSessions() {
+    setSessionsOpen((prev) => {
+      const next = !prev;
+      root.preferences.set(prefKeys.sessionsOpen, next ? "1" : "0");
+      return next;
+    });
+  }
+  function toggleTerminal() {
+    setTerminalOpen((prev) => {
+      const next = !prev;
+      root.preferences.set(prefKeys.terminalOpen, next ? "1" : "0");
+      return next;
+    });
+  }
+  function togglePreview() {
+    setPreviewOpen((prev) => {
+      const next = !prev;
+      root.preferences.set(prefKeys.previewOpen, next ? "1" : "0");
+      return next;
+    });
+  }
+  /** Al parar el workspace se terminan sus PTYs antes que el proceso. */
+  async function closeWorkspaceTerminals() {
+    if (!terminalGateway) return;
+    const location = { directory: workspace.projectPath };
+    try {
+      const infos = await terminalGateway.list(location);
+      await Promise.all(
+        infos.map((info) => terminalGateway.remove(location, info.id).catch(() => undefined)),
+      );
+    } catch {
+      // El servidor puede haberse caído ya; la parada sigue adelante.
+    }
+  }
+  async function stopWorkspace() {
+    if (
+      liveRace &&
+      !root.confirm.confirm(
+        "Hay una carrera en curso. Si paras el workspace, sus corridas se interrumpirán y quedarán como fallidas. ¿Parar igualmente?",
+      )
+    ) {
+      return;
+    }
+    await closeWorkspaceTerminals();
+    onStop();
+  }
+  function requestDelete() {
+    if (
+      liveRace &&
+      !root.confirm.confirm(
+        "Hay una carrera en curso. Si eliminas el workspace, sus corridas se interrumpirán. Los worktrees de la carrera quedan en la raíz de worktrees para revisarlos o borrarlos a mano. ¿Continuar?",
+      )
+    ) {
+      return;
+    }
+    onDelete();
+  }
+  function changePanelTab(tab: InspectorTab) {
+    setPanelTab(tab);
+    root.preferences.set(prefKeys.panelTab(workspace.id), tab);
+  }
+  function openChanges() {
+    setPanelOpen(true);
+    root.preferences.set(prefKeys.panelOpen, "1");
+    changePanelTab("cambios");
+  }
+  function toggleChanges() {
+    if (panelOpen && panelTab === "cambios") togglePanel();
+    else openChanges();
+  }
+  function closeActivePanel() {
+    if (terminalOpen) toggleTerminal();
+    else if (previewOpen) togglePreview();
+    else if (sessionsOpen) toggleSessions();
+    else if (panelOpen) togglePanel();
+  }
+
+  useCommandAction("workspace.settings", () => setSettingsOpen(true));
+  useCommandAction(
+    "panel.toggle",
+    togglePanel,
+    Boolean(server),
+    "Arranca el workspace para abrir el panel.",
+  );
+  useCommandAction(
+    "panel.sessions",
+    toggleSessions,
+    Boolean(server),
+    "Arranca el workspace para ver sus sesiones.",
+  );
+  useCommandAction(
+    "panel.terminal",
+    toggleTerminal,
+    Boolean(server && terminalGateway),
+    "Arranca el workspace para abrir el terminal.",
+  );
+  useCommandAction(
+    "panel.diff",
+    toggleChanges,
+    Boolean(server),
+    "Arranca el workspace para revisar cambios.",
+  );
+  useCommandAction(
+    "panel.preview",
+    togglePreview,
+    Boolean(server),
+    "Arranca el workspace para ver la app en marcha.",
+  );
+  useCommandAction(
+    "panel.close",
+    closeActivePanel,
+    Boolean(server && (terminalOpen || previewOpen || sessionsOpen || panelOpen)),
+    "No hay ningún panel abierto.",
+  );
 
   const folder = workspace.projectPath.split("/").filter(Boolean).pop();
 
@@ -107,14 +254,57 @@ export function WorkspaceView({
           {server ? (
             <>
               <Button
-                className={panelOpen ? "active" : ""}
+                className={sessionsOpen ? "active" : ""}
+                title={sessionsOpen ? "Ocultar sesiones" : "Mostrar sesiones"}
+                onClick={toggleSessions}
+              >
+                Sesiones
+              </Button>
+              <Button
+                className={panelOpen && panelTab === "resumen" ? "active" : ""}
                 title={panelOpen ? "Ocultar panel" : "Mostrar panel"}
                 onClick={togglePanel}
               >
                 Panel
               </Button>
+              <Button
+                className={panelOpen && panelTab === "cambios" ? "active" : ""}
+                title="Ver cambios del agente y del árbol de trabajo"
+                onClick={openChanges}
+              >
+                Cambios
+              </Button>
+              <Button
+                className={terminalOpen ? "active" : ""}
+                title={terminalOpen ? "Ocultar terminal" : "Abrir terminal del workspace"}
+                onClick={toggleTerminal}
+              >
+                Terminal
+              </Button>
+              <Button
+                className={previewOpen ? "active" : ""}
+                title={previewOpen ? "Ocultar la vista previa" : "Ver la app en marcha"}
+                onClick={togglePreview}
+              >
+                Vista
+              </Button>
+              {client && (
+                <RaceControls
+                  client={client}
+                  workspace={workspace}
+                  worktreesRoot={worktreesRoot}
+                  repoPath={repoPath}
+                  sessionId={sessionId}
+                  onOpenSession={(id) => setOpenSessionId(id)}
+                  onOpenDiff={(id) => {
+                    setOpenSessionId(id);
+                    openChanges();
+                  }}
+                  onLiveChange={setLiveRace}
+                />
+              )}
               <Button onClick={() => setSettingsOpen(true)}>Ajustes</Button>
-              <Button className="danger-text" onClick={onStop}>
+              <Button className="danger-text" onClick={() => void stopWorkspace()}>
                 Parar
               </Button>
             </>
@@ -127,7 +317,7 @@ export function WorkspaceView({
             variant="icon"
             title="Eliminar workspace"
             aria-label="Eliminar workspace"
-            onClick={onDelete}
+            onClick={requestDelete}
           >
             ×
           </Button>
@@ -142,19 +332,49 @@ export function WorkspaceView({
       )}
 
       {server && client ? (
-        <div className="workspace-body">
-          <ProfiledChat client={client} workspace={workspace} onSessionChange={setSessionId} />
-          {panelOpen && (
-            <Inspector
+        <>
+          <div className="workspace-body">
+            <ProfiledChat
+              client={client}
+              workspace={workspace}
+              onSessionChange={setSessionId}
+              sessionsOpen={sessionsOpen}
+              onCloseSessions={toggleSessions}
+              onWorkspaceActivity={onWorkspaceActivity}
+              openSessionId={openSessionId}
+              onSessionOpened={() => setOpenSessionId(null)}
+            />
+            {panelOpen && (
+              <Inspector
+                workspace={workspace}
+                client={client}
+                server={server}
+                sessionId={sessionId}
+                tab={panelTab}
+                onTabChange={changePanelTab}
+                onUpdated={onUpdated}
+                onClose={togglePanel}
+              />
+            )}
+          </div>
+          {previewOpen && (
+            <PreviewDock
+              gateway={previewGateway}
+              preferences={root.preferences}
               workspace={workspace}
               client={client}
-              server={server}
               sessionId={sessionId}
-              onUpdated={onUpdated}
-              onClose={togglePanel}
+              onClose={togglePreview}
             />
           )}
-        </div>
+          {terminalOpen && terminalGateway && (
+            <TerminalDock
+              gateway={terminalGateway}
+              directory={workspace.projectPath}
+              onClose={toggleTerminal}
+            />
+          )}
+        </>
       ) : (
         <div className="start-pane">
           <div className="start-card">

@@ -6,7 +6,10 @@
 import {
   TauriBootstrapGateway,
   TauriLibraryGateway,
+  TauriGitGateway,
   TauriModelCatalogGateway,
+  TauriPullRequestGateway,
+  TauriPreviewGateway,
   TauriRepoGateway,
   TauriResourcesGateway,
   TauriSettingsGateway,
@@ -17,7 +20,10 @@ import { LocalStoragePreferences } from "./data/LocalStoragePreferences";
 import { WindowConfirmDialog } from "./data/WindowConfirmDialog";
 import { TauriFolderPicker } from "./data/TauriFolderPicker";
 import { TauriUpdateGateway } from "./data/TauriUpdateGateway";
+import { TauriNotificationGateway } from "./data/TauriNotificationGateway";
+import { TauriSessionFiles } from "./data/TauriSessionFiles";
 import { createChatGateway } from "./data/OpencodeChatGateway";
+import { createTerminalGateway } from "./data/TerminalGateway";
 import { DeleteWorkspace } from "./domain/usecases/DeleteWorkspace";
 import { CreateWorkspace } from "./domain/usecases/CreateWorkspace";
 import { ApplyWorkspaceSettings } from "./domain/usecases/ApplyWorkspaceSettings";
@@ -28,10 +34,16 @@ import type { ChatGateway, ChatServer } from "./domain/repositories/ChatGateway"
 import type { ConfirmDialog, FolderPicker } from "./domain/repositories/Dialogs";
 import type { LibraryGateway } from "./domain/repositories/LibraryGateway";
 import type { ModelCatalogGateway } from "./domain/repositories/ModelCatalogGateway";
+import type { NotificationGateway } from "./domain/repositories/NotificationGateway";
 import type { Preferences } from "./domain/repositories/Preferences";
 import type { RepoGateway } from "./domain/repositories/RepoGateway";
+import type { GitGateway } from "./domain/repositories/GitGateway";
+import type { PullRequestGateway } from "./domain/repositories/PullRequestGateway";
+import type { PreviewGateway } from "./domain/repositories/PreviewGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
+import type { SessionFiles } from "./domain/repositories/SessionFiles";
 import type { TemplateGateway } from "./domain/repositories/TemplateGateway";
+import type { TerminalGateway } from "./domain/repositories/TerminalGateway";
 import type { UpdateGateway } from "./domain/repositories/UpdateGateway";
 import type { WorkspaceGateway } from "./domain/repositories/WorkspaceGateway";
 import type { ServerInfo } from "./types";
@@ -40,6 +52,9 @@ export type Ports = {
   bootstrap: BootstrapGateway;
   workspaces: WorkspaceGateway;
   repos: RepoGateway;
+  git: GitGateway;
+  pullRequests: PullRequestGateway;
+  preview: PreviewGateway;
   templates: TemplateGateway;
   settings: SettingsGateway;
   library: LibraryGateway;
@@ -49,6 +64,8 @@ export type Ports = {
   confirm: ConfirmDialog;
   folderPicker: FolderPicker;
   updates: UpdateGateway;
+  notifications: NotificationGateway;
+  sessionFiles: SessionFiles;
 };
 
 export class CompositionRoot {
@@ -57,6 +74,9 @@ export class CompositionRoot {
   readonly bootstrap: BootstrapGateway;
   readonly workspaces: WorkspaceGateway;
   readonly repos: RepoGateway;
+  readonly git: GitGateway;
+  readonly pullRequests: PullRequestGateway;
+  readonly preview: PreviewGateway;
   readonly templates: TemplateGateway;
   readonly settings: SettingsGateway;
   readonly library: LibraryGateway;
@@ -66,11 +86,16 @@ export class CompositionRoot {
   readonly confirm: ConfirmDialog;
   readonly folderPicker: FolderPicker;
   readonly updates: UpdateGateway;
+  readonly notifications: NotificationGateway;
+  readonly sessionFiles: SessionFiles;
 
   constructor(overrides: Partial<Ports> = {}) {
     this.bootstrap = overrides.bootstrap ?? new TauriBootstrapGateway();
     this.workspaces = overrides.workspaces ?? new TauriWorkspaceGateway();
     this.repos = overrides.repos ?? new TauriRepoGateway();
+    this.git = overrides.git ?? new TauriGitGateway();
+    this.pullRequests = overrides.pullRequests ?? new TauriPullRequestGateway();
+    this.preview = overrides.preview ?? new TauriPreviewGateway();
     this.templates = overrides.templates ?? new TauriTemplateGateway();
     this.settings = overrides.settings ?? new TauriSettingsGateway();
     this.library = overrides.library ?? new TauriLibraryGateway();
@@ -80,6 +105,8 @@ export class CompositionRoot {
     this.confirm = overrides.confirm ?? new WindowConfirmDialog();
     this.folderPicker = overrides.folderPicker ?? new TauriFolderPicker();
     this.updates = overrides.updates ?? new TauriUpdateGateway();
+    this.notifications = overrides.notifications ?? new TauriNotificationGateway();
+    this.sessionFiles = overrides.sessionFiles ?? new TauriSessionFiles();
   }
 
   static getInstance(): CompositionRoot {
@@ -111,5 +138,12 @@ export class CompositionRoot {
 
   provideChatGateway(server: ServerInfo): ChatServer {
     return createChatGateway(server);
+  }
+  provideTerminalGateway(server: ServerInfo): TerminalGateway {
+    return createTerminalGateway(server);
+  }
+
+  providePreviewGateway(): PreviewGateway {
+    return this.preview;
   }
 }

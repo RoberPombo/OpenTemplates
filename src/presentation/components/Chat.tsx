@@ -1,17 +1,38 @@
-import { useEffect, useMemo, useRef } from "react";
+// oxlint-disable jsx-a11y/prefer-tag-over-role -- El textarea del composer es un combobox con aria-activedescendant.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import type { Workspace } from "../../types";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import { folderName, formatDuration } from "../../domain/shared";
+import {
+  detectSlashTrigger,
+  filterChatMenu,
+  stripSlashTrigger,
+  type ChatMenuItem,
+} from "../../domain/chat/commands";
 import type { ToolActivity } from "../../domain/chat/messages";
 import { useChat } from "../hooks/useChat";
+import { useCommandAction } from "../context/CommandActions";
 import { Markdown } from "./Markdown";
 import { ModelInfoCard } from "./ModelInfoCard";
+import { RequestDock } from "./RequestDock";
+import { SessionsPanel } from "./SessionsPanel";
+import { GoalChip } from "./GoalChip";
+import { GoalDialog } from "./GoalDialog";
+import { SLASH_MENU_ID, SlashMenu, slashOptionId } from "./SlashMenu";
 import { AsyncSearchableSelect, Select } from "./ui";
 
 type Props = {
   client: ChatServer;
   workspace: Workspace;
   onSessionChange?: (sessionId: string | null) => void;
+  sessionsOpen?: boolean;
+  onCloseSessions?: () => void;
+  /** Actividad terminada sin foco, para marcarla en el sidebar. */
+  onWorkspaceActivity?: (workspaceId: string) => void;
+  /** Sesión que debe abrirse (p. ej. una corrida de la carrera). */
+  openSessionId?: string | null;
+  onSessionOpened?: () => void;
 };
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -28,14 +49,38 @@ function effortLabel(id: string) {
   return EFFORT_LABELS[id] ?? id;
 }
 
-export function Chat({ client, workspace, onSessionChange }: Props) {
+export function Chat({
+  client,
+  workspace,
+  onSessionChange,
+  sessionsOpen,
+  onCloseSessions,
+  onWorkspaceActivity,
+  openSessionId,
+  onSessionOpened,
+}: Props) {
   const {
     sessionId,
     messages,
+    sessions,
+    sessionsError,
+    sessionsNotice,
+    permissions,
+    forms,
+    requestError,
+    requestBusy,
+    goal,
+    goalError,
+    decisionModel,
+    goalSessionIds,
     input,
     setInput,
     models,
     agents,
+    commands,
+    skills,
+    command,
+    selectedSkills,
     streaming,
     busy,
     liveTools,
@@ -52,13 +97,125 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
     chooseModel,
     chooseVariant,
     chooseAgent,
+    chooseCommand,
+    clearCommand,
+    chooseSkill,
+    removeSkill,
     send,
     stop,
     newConversation,
-  } = useChat({ client, workspace, onSessionChange });
+    selectSession,
+    renameSession,
+    deleteSession,
+    exportSession,
+    importSession,
+    forkSession,
+    replyPermission,
+    replyForm,
+    cancelForm,
+    saveGoal,
+    pauseGoal,
+    resumeGoal,
+    removeGoal,
+  } = useChat({
+    client,
+    workspace,
+    onSessionChange,
+    onWorkspaceActivity,
+    openSessionId,
+    onSessionOpened,
+  });
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [caret, setCaret] = useState(0);
+  const [menuStart, setMenuStart] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [pendingCaret, setPendingCaret] = useState<number | null>(null);
+
+  const trigger = useMemo(() => detectSlashTrigger(input, caret), [input, caret]);
+  const menuOpen = trigger !== null && menuStart === trigger.start;
+  const menuGroups = useMemo(
+    () => filterChatMenu(commands, skills, trigger?.query ?? ""),
+    [commands, skills, trigger?.query],
+  );
+  const menuItems = useMemo(() => menuGroups.flatMap((group) => group.items), [menuGroups]);
+  const activeItem =
+    menuItems.length === 0
+      ? null
+      : (menuItems[Math.min(activeIndex, menuItems.length - 1)] ?? null);
+  const resultCount = menuItems.length;
+  const resultLabel =
+    resultCount === 0
+      ? "Sin resultados"
+      : `${resultCount} ${resultCount === 1 ? "resultado" : "resultados"}${
+          trigger?.query ? ` para «${trigger.query}»` : ""
+        }`;
+
+  useEffect(() => {
+    if (pendingCaret === null) return;
+    const element = textareaRef.current;
+    if (!element) return;
+    element.focus();
+    element.setSelectionRange(pendingCaret, pendingCaret);
+    setPendingCaret(null);
+  }, [pendingCaret, input]);
+
+  const chooseMenuItem = useCallback(
+    (item: ChatMenuItem) => {
+      if (!trigger) return;
+      setInput(stripSlashTrigger(input, trigger));
+      setCaret(trigger.start);
+      setPendingCaret(trigger.start);
+      if (item.kind === "command") chooseCommand(item.command);
+      else chooseSkill(item.skill);
+      setMenuStart(null);
+      setActiveIndex(0);
+    },
+    [chooseCommand, chooseSkill, input, setInput, trigger],
+  );
+
+  function syncTrigger(value: string, position: number) {
+    const next = detectSlashTrigger(value, position);
+    setMenuStart(next ? next.start : null);
+    if (next) setActiveIndex(0);
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (menuOpen) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuStart(null);
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((prev) => (menuItems.length === 0 ? 0 : (prev + 1) % menuItems.length));
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((prev) =>
+          menuItems.length === 0 ? 0 : (prev - 1 + menuItems.length) % menuItems.length,
+        );
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        if (activeItem) chooseMenuItem(activeItem);
+        else {
+          setMenuStart(null);
+          void send();
+        }
+        return;
+      }
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void send();
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -96,203 +253,348 @@ export function Chat({ client, workspace, onSessionChange }: Props) {
     [agents],
   );
 
+  useCommandAction("session.new", newConversation, !busy, "Espera a que termine el turno.");
+  useCommandAction("session.stop", () => void stop(), busy, "No hay ningún turno en curso.");
+  useCommandAction(
+    "session.export",
+    () => {
+      if (sessionId) void exportSession(sessionId, true);
+    },
+    Boolean(sessionId),
+    "Abre una sesión para poder exportarla.",
+  );
+  useCommandAction(
+    "session.goal",
+    () => setGoalOpen(true),
+    Boolean(sessionId),
+    "Abre una sesión para definir su objetivo.",
+  );
+
   return (
-    <section className="chat">
-      <div className="messages">
-        {messages.length === 0 && streaming.length === 0 && (
-          <div className="empty-chat">
-            <p>Pregunta, planifica o pide cambios en {workspace.name}.</p>
-            <p className="muted small-text">
-              {workspace.mcpNames.length} MCPs · {workspace.skills.length} skills ·{" "}
-              {workspace.agents.length} agentes
-            </p>
-          </div>
-        )}
-
-        {messages.map((message) =>
-          message.role === "user" ? (
-            <article key={message.id} className="msg user">
-              <div className="user-bubble">
-                <Markdown text={message.text} />
-              </div>
-            </article>
-          ) : (
-            <article key={message.id} className="msg assistant">
-              {message.tools.length > 0 && <Activity tools={message.tools} />}
-              {message.reasoning && (
-                <details className="reasoning">
-                  <summary>Razonamiento</summary>
-                  <Markdown text={message.reasoning} />
-                </details>
-              )}
-              {message.text && <Markdown text={message.text} />}
-              <MessageMeta
-                model={modelName(message.model)}
-                agent={agentName(message.agent)}
-                duration={formatDuration((message.completed ?? 0) - message.created)}
-              />
-            </article>
-          ),
-        )}
-
-        {streaming.map((part) => (
-          <article key={`stream-${part.id}`} className="msg assistant streaming">
-            {part.reasoning && (
-              <details className="reasoning">
-                <summary>Razonamiento</summary>
-                <Markdown text={part.reasoning} />
-              </details>
-            )}
-            {part.text ? <Markdown text={part.text} /> : null}
-            <MessageMeta
-              model={selectedModel?.name ?? ""}
-              agent={agentName(agentChoice)}
-              status={
-                part.text
-                  ? "escribiendo…"
-                  : liveTools > 0
-                    ? `ejecutando ${liveTools} comando${liveTools === 1 ? "" : "s"}…`
-                    : "pensando…"
-              }
-            />
-          </article>
-        ))}
-
-        {busy && streaming.length === 0 && (
-          <article className="msg assistant streaming">
-            <div className="thinking">
-              {liveTools > 0
-                ? `Ejecutando ${liveTools} comando${liveTools === 1 ? "" : "s"}…`
-                : "Pensando…"}
+    <div className="chat-shell">
+      {sessionsOpen && (
+        <SessionsPanel
+          sessions={sessions}
+          activeId={sessionId}
+          busy={busy}
+          error={sessionsError}
+          notice={sessionsNotice}
+          onSelect={selectSession}
+          onRename={renameSession}
+          onDelete={deleteSession}
+          onExport={exportSession}
+          onImport={importSession}
+          onFork={forkSession}
+          onNew={newConversation}
+          onClose={() => onCloseSessions?.()}
+          goalSessionIds={goalSessionIds}
+        />
+      )}
+      <section className="chat">
+        <div className="messages">
+          {messages.length === 0 && streaming.length === 0 && (
+            <div className="empty-chat">
+              <p>Pregunta, planifica o pide cambios en {workspace.name}.</p>
+              <p className="muted small-text">
+                {workspace.mcpNames.length} MCPs · {workspace.skills.length} skills ·{" "}
+                {workspace.agents.length} agentes
+              </p>
             </div>
-          </article>
-        )}
-        <div ref={bottomRef} />
-      </div>
+          )}
 
-      {error && <div className="inline-error">{error}</div>}
-
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send();
-        }}
-      >
-        <div className="composer-card">
-          <div className="composer-project">
-            <span className="context-chip" title={`Proyecto: ${workspace.projectPath}`}>
-              <FolderIcon />
-              <span className="context-key">Proyecto</span>
-              <span className="context-label">{folder}</span>
-            </span>
-            {branch && (
-              <span className="context-chip branch" title={`Rama ${branch}`}>
-                <BranchIcon />
-                <span className="context-key">Rama</span>
-                <span className="context-label">{branch}</span>
-              </span>
-            )}
-          </div>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            rows={1}
-            placeholder={
-              sessionId
-                ? "Planifica, construye o pregunta. @ menciona archivos, / usa comandos"
-                : "Preparando sesión…"
-            }
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <div className="composer-bar">
-            <div className="composer-context">
+          {messages.map((message) => (
+            <article key={message.id} className={`msg ${message.role}`}>
+              {message.role === "user" ? (
+                <div className="user-bubble">
+                  <Markdown text={message.text} />
+                </div>
+              ) : (
+                <>
+                  {message.tools.length > 0 && <Activity tools={message.tools} />}
+                  {message.reasoning && (
+                    <details className="reasoning">
+                      <summary>Razonamiento</summary>
+                      <Markdown text={message.reasoning} />
+                    </details>
+                  )}
+                  {message.text && <Markdown text={message.text} />}
+                  <MessageMeta
+                    model={modelName(message.model)}
+                    agent={agentName(message.agent)}
+                    duration={formatDuration((message.completed ?? 0) - message.created)}
+                  />
+                </>
+              )}
               <button
                 type="button"
-                className="composer-icon"
-                title="Nueva conversación"
-                aria-label="Nueva conversación"
-                onClick={newConversation}
-                disabled={busy}
+                className="msg-fork"
+                title="Bifurca la sesión con el historial anterior a este mensaje"
+                disabled={busy || !sessionId}
+                onClick={() => {
+                  if (sessionId) void forkSession(sessionId, message.id);
+                }}
               >
-                <PlusIcon />
+                Continuar desde aquí
               </button>
-            </div>
+            </article>
+          ))}
 
-            <div className="composer-controls">
-              <div className="select-chip" title="Modelo">
-                <SparkIcon />
-                <AsyncSearchableSelect
-                  aria-label="Modelo"
-                  value={modelChoice}
-                  placeholder={models.length === 0 ? "Cargando modelos…" : "Buscar modelo…"}
-                  disabled={models.length === 0 || busy}
-                  options={modelSelectOptions}
-                  variant="chip"
-                  onValueChange={chooseModel}
-                />
-              </div>
-
-              {variants.length > 0 && (
-                <div className="select-chip" title="Razonamiento">
-                  <BrainIcon />
-                  <Select
-                    aria-label="Razonamiento"
-                    value={effectiveVariant || ""}
-                    placeholder="predeterminado"
-                    disabled={busy}
-                    options={variantSelectOptions}
-                    variant="chip"
-                    onValueChange={chooseVariant}
-                  />
-                </div>
+          {streaming.map((part) => (
+            <article key={`stream-${part.id}`} className="msg assistant streaming">
+              {part.reasoning && (
+                <details className="reasoning">
+                  <summary>Razonamiento</summary>
+                  <Markdown text={part.reasoning} />
+                </details>
               )}
+              {part.text ? <Markdown text={part.text} /> : null}
+              <MessageMeta
+                model={selectedModel?.name ?? ""}
+                agent={agentName(agentChoice)}
+                status={
+                  part.text
+                    ? "escribiendo…"
+                    : liveTools > 0
+                      ? `ejecutando ${liveTools} comando${liveTools === 1 ? "" : "s"}…`
+                      : "pensando…"
+                }
+              />
+            </article>
+          ))}
 
-              <div className="select-chip" title="Agente">
-                <AgentIcon />
-                <Select
-                  aria-label="Agente"
-                  value={agentChoice}
-                  placeholder="Cargando agentes…"
-                  disabled={agents.length === 0 || busy}
-                  options={agentSelectOptions}
-                  variant="chip"
-                  onValueChange={chooseAgent}
-                />
+          {busy && streaming.length === 0 && (
+            <article className="msg assistant streaming">
+              <div className="thinking">
+                {liveTools > 0
+                  ? `Ejecutando ${liveTools} comando${liveTools === 1 ? "" : "s"}…`
+                  : "Pensando…"}
               </div>
+            </article>
+          )}
+          <div ref={bottomRef} />
+        </div>
 
-              {busy ? (
+        {error && <div className="inline-error">{error}</div>}
+
+        <RequestDock
+          permissions={permissions}
+          forms={forms}
+          busy={requestBusy}
+          error={requestError}
+          onPermission={(request, decision) => void replyPermission(request, decision)}
+          onFormReply={(form, answer) => void replyForm(form, answer)}
+          onFormCancel={(form) => void cancelForm(form)}
+        />
+
+        <form
+          className="composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send();
+          }}
+        >
+          <div className="composer-card">
+            <div className="composer-project">
+              <span className="context-chip" title={`Proyecto: ${workspace.projectPath}`}>
+                <FolderIcon />
+                <span className="context-key">Proyecto</span>
+                <span className="context-label">{folder}</span>
+              </span>
+              {branch && (
+                <span className="context-chip branch" title={`Rama ${branch}`}>
+                  <BranchIcon />
+                  <span className="context-key">Rama</span>
+                  <span className="context-label">{branch}</span>
+                </span>
+              )}
+            </div>
+            {(command || selectedSkills.length > 0) && (
+              <div className="composer-tokens">
+                {command && (
+                  <span className="composer-token command">
+                    <TerminalIcon />
+                    <span className="composer-token-name">/{command.name}</span>
+                    <button
+                      type="button"
+                      className="composer-token-remove"
+                      aria-label={`Quitar comando /${command.name}`}
+                      onClick={clearCommand}
+                    >
+                      <CloseIcon />
+                    </button>
+                  </span>
+                )}
+                {selectedSkills.map((skill) => (
+                  <span className="composer-token skill" key={skill.id}>
+                    <SparkIcon />
+                    <span className="composer-token-name">{skill.name}</span>
+                    <button
+                      type="button"
+                      className="composer-token-remove"
+                      aria-label={`Quitar skill ${skill.name}`}
+                      onClick={() => removeSkill(skill.id)}
+                    >
+                      <CloseIcon />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {menuOpen && (
+              <SlashMenu
+                groups={menuGroups}
+                activeKey={activeItem?.key ?? null}
+                query={trigger?.query ?? ""}
+                onHover={(key) => {
+                  const index = menuItems.findIndex((item) => item.key === key);
+                  if (index >= 0) setActiveIndex(index);
+                }}
+                onChoose={chooseMenuItem}
+              />
+            )}
+            <output className="sr-only" aria-live="polite">
+              {menuOpen ? resultLabel : ""}
+            </output>
+            <textarea
+              ref={textareaRef}
+              value={input}
+              rows={1}
+              role="combobox"
+              aria-label="Mensaje"
+              aria-expanded={menuOpen}
+              aria-autocomplete="list"
+              aria-controls={menuOpen ? SLASH_MENU_ID : undefined}
+              aria-activedescendant={
+                menuOpen && activeItem ? slashOptionId(activeItem.key) : undefined
+              }
+              placeholder={
+                sessionId
+                  ? "Planifica, construye o pregunta. @ menciona archivos, / comandos y skills"
+                  : "Preparando sesión…"
+              }
+              onChange={(event) => {
+                const value = event.target.value;
+                const position = event.target.selectionStart ?? value.length;
+                setInput(value);
+                setCaret(position);
+                syncTrigger(value, position);
+              }}
+              onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+              onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+              onKeyDown={handleComposerKeyDown}
+            />
+            <div className="composer-bar">
+              <div className="composer-context">
                 <button
                   type="button"
-                  className="send-button stop"
-                  title="Parar"
-                  aria-label="Parar"
-                  onClick={() => void stop()}
+                  className="composer-icon"
+                  title="Nueva conversación"
+                  aria-label="Nueva conversación"
+                  onClick={newConversation}
+                  disabled={busy}
                 >
-                  <StopIcon />
+                  <PlusIcon />
                 </button>
-              ) : (
-                <button
-                  type="submit"
-                  className="send-button"
-                  title="Enviar"
-                  aria-label="Enviar"
-                  disabled={!canSend}
-                >
-                  <ArrowUpIcon />
-                </button>
-              )}
+                {goal ? (
+                  <GoalChip goal={goal} onOpen={() => setGoalOpen(true)} />
+                ) : (
+                  <button
+                    type="button"
+                    className="composer-icon"
+                    title="Definir un objetivo para la sesión"
+                    aria-label="Definir un objetivo para la sesión"
+                    onClick={() => setGoalOpen(true)}
+                    disabled={busy || !sessionId}
+                  >
+                    <GoalIcon />
+                  </button>
+                )}
+              </div>
+
+              <div className="composer-controls">
+                <div className="select-chip" title="Modelo">
+                  <SparkIcon />
+                  <AsyncSearchableSelect
+                    aria-label="Modelo"
+                    value={modelChoice}
+                    placeholder={models.length === 0 ? "Cargando modelos…" : "Buscar modelo…"}
+                    disabled={models.length === 0 || busy}
+                    options={modelSelectOptions}
+                    variant="chip"
+                    onValueChange={chooseModel}
+                  />
+                </div>
+
+                {variants.length > 0 && (
+                  <div className="select-chip" title="Razonamiento">
+                    <BrainIcon />
+                    <Select
+                      aria-label="Razonamiento"
+                      value={effectiveVariant || ""}
+                      placeholder="predeterminado"
+                      disabled={busy}
+                      options={variantSelectOptions}
+                      variant="chip"
+                      onValueChange={chooseVariant}
+                    />
+                  </div>
+                )}
+
+                <div className="select-chip" title="Agente">
+                  <AgentIcon />
+                  <Select
+                    aria-label="Agente"
+                    value={agentChoice}
+                    placeholder="Cargando agentes…"
+                    disabled={agents.length === 0 || busy}
+                    options={agentSelectOptions}
+                    variant="chip"
+                    onValueChange={chooseAgent}
+                  />
+                </div>
+
+                {busy ? (
+                  <button
+                    type="button"
+                    className="send-button stop"
+                    title="Parar"
+                    aria-label="Parar"
+                    onClick={() => void stop()}
+                  >
+                    <StopIcon />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="send-button"
+                    title="Enviar"
+                    aria-label="Enviar"
+                    disabled={!canSend}
+                  >
+                    <ArrowUpIcon />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </form>
-    </section>
+        </form>
+      </section>
+      {goalOpen && (
+        <GoalDialog
+          goal={goal}
+          decisionModel={decisionModel}
+          error={goalError}
+          onSave={saveGoal}
+          onPause={pauseGoal}
+          onResume={resumeGoal}
+          onRemove={() => {
+            removeGoal();
+            setGoalOpen(false);
+          }}
+          onClose={() => setGoalOpen(false)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -431,6 +733,22 @@ function PlusIcon() {
   return (
     <svg {...iconProps()}>
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+function GoalIcon() {
+  return (
+    <svg {...iconProps()}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg {...iconProps()}>
+      <path d="M6 6l12 12M18 6 6 18" />
     </svg>
   );
 }

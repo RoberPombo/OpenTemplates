@@ -8,10 +8,12 @@ use crate::config;
 use crate::git;
 use crate::library;
 use crate::model::{
-    AppSettings, Bootstrap, ConfigOutcome, CreateWorkspaceInput, Library, McpInfo, ModelCost,
-    ModelDetail, ModelLimit, Repo, ServerInfo, SkillInfo, SkillRef, TemplateManifest, Workspace,
-    WorkspaceMode, WorktreeStatus,
+    AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, GhStatus,
+    GitCommitResult, GitCommitSummary, GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost,
+    ModelDetail, ModelLimit, PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo,
+    SkillRef, TemplateManifest, Workspace, WorkspaceMode, WorktreeStatus,
 };
+use crate::preview::{self, PreviewProbe};
 use crate::server::{self, ServerHandle};
 use crate::state::{AppState, ensure_workspace_dir, expand_tilde};
 use crate::templates;
@@ -1182,4 +1184,215 @@ pub fn save_settings(
     }
     state.save()?;
     Ok(stored)
+}
+
+// ---------------------------------------------------------------------------
+// Ficheros de sesión
+// ---------------------------------------------------------------------------
+
+/// Tope de lectura: un export con muchas herramientas crece, pero no debe
+/// permitir cargar un fichero arbitrario en memoria.
+const SESSION_FILE_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Solo se leen y escriben ficheros `.json`; el diálogo nativo ya filtra, pero
+/// la ruta también puede llegar manipulada.
+fn session_file_path(raw: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(raw);
+    let is_json = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
+    if !is_json {
+        return Err("El archivo debe tener extensión .json".into());
+    }
+    Ok(path)
+}
+
+/// Escribe un export de sesión. Devuelve `false` si el fichero ya existe y no
+/// se pidió sobrescribir: el frontend pregunta y reintenta con `overwrite`.
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String, overwrite: bool) -> Result<bool, String> {
+    let path = session_file_path(&path)?;
+    if path.exists() && !overwrite {
+        return Ok(false);
+    }
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("No se pudo crear {}: {e}", parent.display()))?;
+    }
+    fs::write(&path, contents)
+        .map_err(|e| format!("No se pudo escribir {}: {e}", path.display()))?;
+    Ok(true)
+}
+
+/// Lee un export de sesión desde una ruta elegida en el diálogo nativo.
+#[tauri::command]
+pub fn read_text_file(path: String) -> Result<String, String> {
+    let path = session_file_path(&path)?;
+    let metadata =
+        fs::metadata(&path).map_err(|e| format!("No se pudo leer {}: {e}", path.display()))?;
+    if metadata.len() > SESSION_FILE_MAX_BYTES {
+        return Err(format!(
+            "El archivo supera el máximo de {} MiB",
+            SESSION_FILE_MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    fs::read_to_string(&path).map_err(|e| format!("No se pudo leer {}: {e}", path.display()))
+}
+
+/// Comprueba la URL del preview desde Rust, sin CORS ni DOM del webview.
+#[tauri::command]
+pub fn preview_probe(url: String) -> PreviewProbe {
+    preview::probe(&url)
+}
+
+/// Abre una URL http(s) en el navegador externo del sistema.
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    preview::open_external(&url)
+}
+
+/// Estado del árbol de trabajo para el panel de commit (salida cruda de git).
+#[tauri::command]
+pub fn git_status(project_path: String) -> Result<GitStatusOutput, String> {
+    git::status(Path::new(&project_path))
+}
+
+/// Prepara ficheros concretos y devuelve el estado ya actualizado.
+#[tauri::command]
+pub fn git_stage(project_path: String, paths: Vec<String>) -> Result<GitStatusOutput, String> {
+    let repo = Path::new(&project_path);
+    git::stage(repo, &paths)?;
+    git::status(repo)
+}
+
+/// Quita ficheros del índice y devuelve el estado ya actualizado.
+#[tauri::command]
+pub fn git_unstage(project_path: String, paths: Vec<String>) -> Result<GitStatusOutput, String> {
+    let repo = Path::new(&project_path);
+    git::unstage(repo, &paths)?;
+    git::status(repo)
+}
+
+/// Diff unificado; `staged` decide entre el índice y el árbol de trabajo.
+#[tauri::command]
+pub fn git_diff(project_path: String, staged: bool) -> Result<String, String> {
+    git::diff(Path::new(&project_path), staged)
+}
+
+#[tauri::command]
+pub fn git_commit(project_path: String, message: String) -> Result<GitCommitResult, String> {
+    git::commit(Path::new(&project_path), &message)
+}
+
+#[tauri::command]
+pub fn git_push(
+    project_path: String,
+    branch: String,
+    set_upstream: bool,
+) -> Result<GitPushResult, String> {
+    git::push(Path::new(&project_path), &branch, set_upstream)
+}
+
+#[tauri::command]
+pub fn git_commits(
+    project_path: String,
+    base: String,
+    limit: Option<usize>,
+) -> Result<Vec<GitCommitSummary>, String> {
+    git::commits(Path::new(&project_path), &base, limit)
+}
+
+#[tauri::command]
+pub fn gh_status() -> GhStatus {
+    crate::gh::status()
+}
+
+#[tauri::command]
+pub fn gh_pr_view(project_path: String) -> Result<Option<PullRequestInfo>, String> {
+    crate::gh::pr_view(Path::new(&project_path))
+}
+
+#[tauri::command]
+pub fn gh_pr_checks(project_path: String) -> Result<Vec<PullRequestCheck>, String> {
+    crate::gh::pr_checks(Path::new(&project_path))
+}
+
+#[tauri::command]
+pub fn gh_pr_create(input: CreatePullRequestInput) -> Result<String, String> {
+    crate::gh::pr_create(&input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "opentemplates-sesion-{label}-{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn escribe_y_lee_un_json() {
+        let dir = temp_dir("escribe");
+        let path = dir.join("sesion.json");
+        let contents = "{\"hola\":\"mundo\"}\n".to_string();
+
+        assert_eq!(
+            write_text_file(path.to_string_lossy().into(), contents.clone(), false),
+            Ok(true)
+        );
+        assert_eq!(read_text_file(path.to_string_lossy().into()), Ok(contents));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn no_sobrescribe_sin_permiso() {
+        let dir = temp_dir("sobrescribe");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sesion.json");
+        fs::write(&path, "previo").unwrap();
+
+        assert_eq!(
+            write_text_file(path.to_string_lossy().into(), "nuevo".into(), false),
+            Ok(false)
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "previo");
+
+        assert_eq!(
+            write_text_file(path.to_string_lossy().into(), "nuevo".into(), true),
+            Ok(true)
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "nuevo");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rechaza_extensiones_que_no_son_json() {
+        let dir = temp_dir("extension");
+        let path = dir.join("sesion.txt");
+
+        assert!(write_text_file(path.to_string_lossy().into(), "{}".into(), false).is_err());
+        assert!(read_text_file(path.to_string_lossy().into()).is_err());
+    }
+
+    #[test]
+    fn lee_extension_en_mayusculas() {
+        let dir = temp_dir("mayusculas");
+        let path = dir.join("sesion.JSON");
+        assert_eq!(
+            write_text_file(path.to_string_lossy().into(), "{}".into(), false),
+            Ok(true)
+        );
+        assert_eq!(
+            read_text_file(path.to_string_lossy().into()),
+            Ok("{}".to_string())
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

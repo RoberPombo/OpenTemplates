@@ -8,8 +8,24 @@ export interface Preferences {
 /** Claves centralizadas (antes repartidas como strings ad-hoc en los componentes). */
 export const prefKeys = {
   selectedWorkspace: "opentemplates:selected",
+  recentWorkspaces: "opentemplates:recent-workspaces",
+  theme: "opentemplates:theme",
+  accent: "opentemplates:accent",
   panelOpen: "opentemplates:panel",
+  sessionsOpen: "opentemplates:sessions",
+  terminalOpen: "opentemplates:terminal",
+  notifications: "opentemplates:notifications",
+  panelTab: (workspaceId: string) => `opentemplates:panel-tab:${workspaceId}`,
+  budget: (workspaceId: string) => `opentemplates:budget:${workspaceId}`,
+  budgetAlert: (workspaceId: string, threshold: number) =>
+    `opentemplates:budget-alert:${workspaceId}:${threshold}`,
   session: (workspaceId: string) => `opentemplates:session:${workspaceId}`,
+  goal: (workspaceId: string, sessionId: string) =>
+    `opentemplates:goal:${workspaceId}:${sessionId}`,
+  race: (workspaceId: string) => `opentemplates:race:${workspaceId}`,
+  previewOpen: "opentemplates:preview",
+  previewUrl: (workspaceId: string) => `opentemplates:preview-url:${workspaceId}`,
+  previewDevice: (workspaceId: string) => `opentemplates:preview-device:${workspaceId}`,
   model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
   agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,
   variant: (workspaceId: string) => `opentemplates:variant:${workspaceId}`,

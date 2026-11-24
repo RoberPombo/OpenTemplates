@@ -1,12 +1,12 @@
-import { describe, expect, test, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingsPanel } from "../SettingsPanel";
 import { AppProvider } from "../../context/AppContext";
 import { CompositionRoot } from "../../../CompositionRoot";
 import type { ChatGateway } from "../../../domain/repositories/ChatGateway";
 import type { McpInfo, Workspace } from "../../../types";
-import { makeWorkspace } from "../../../tests/fakes";
+import { makeNotificationGateway, makeWorkspace } from "../../../tests/fakes";
 
 const mcpA: McpInfo = { name: "a", config: { url: "http://a" }, source: "global" };
 const mcpB: McpInfo = { name: "b", config: { command: ["b"] }, source: "global" };
@@ -22,7 +22,11 @@ function fakeServer() {
   };
 }
 
-function setup(workspace: Workspace, server: ReturnType<typeof fakeServer> | null) {
+function setup(
+  workspace: Workspace,
+  server: ReturnType<typeof fakeServer> | null,
+  notifications = makeNotificationGateway(),
+) {
   const update = vi.fn(
     async (input: { mcpNames: string[]; skills: unknown[]; model: string | null }) => ({
       workspace: { ...workspace, mcpNames: input.mcpNames, model: input.model },
@@ -43,6 +47,7 @@ function setup(workspace: Workspace, server: ReturnType<typeof fakeServer> | nul
       mcps: async () => [mcpA, mcpB],
       skills: async () => [],
     } as never,
+    notifications,
   });
   const onUpdated = vi.fn();
   render(
@@ -55,7 +60,7 @@ function setup(workspace: Workspace, server: ReturnType<typeof fakeServer> | nul
       />
     </AppProvider>,
   );
-  return { update, reapplyTemplate, onUpdated };
+  return { update, reapplyTemplate, onUpdated, notifications };
 }
 
 describe("SettingsPanel — aplicar", () => {
@@ -127,6 +132,56 @@ describe("SettingsPanel — aplicar", () => {
   });
 });
 
+describe("SettingsPanel — notificaciones", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test("activarlas pide permiso y persiste la preferencia", async () => {
+    const user = userEvent.setup();
+    const workspace = makeWorkspace({ mcpNames: [], skills: [] });
+    const { notifications } = setup(workspace, null);
+
+    const toggle = screen.getByRole("checkbox", { name: /Avisarme cuando el agente/ });
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+
+    expect(notifications.requestPermission).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(toggle).toBeChecked());
+    expect(localStorage.getItem("opentemplates:notifications")).toBe("1");
+  });
+
+  test("si el sistema deniega el permiso no se activa y avisa", async () => {
+    const user = userEvent.setup();
+    const workspace = makeWorkspace({ mcpNames: [], skills: [] });
+    const { notifications } = setup(workspace, null, makeNotificationGateway("denied"));
+
+    const toggle = screen.getByRole("checkbox", { name: /Avisarme cuando el agente/ });
+    await user.click(toggle);
+
+    expect(notifications.requestPermission).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/denegó el permiso de notificaciones/)).toBeInTheDocument();
+    expect(toggle).not.toBeChecked();
+    expect(localStorage.getItem("opentemplates:notifications")).toBeNull();
+  });
+
+  test("desactivarlas no vuelve a pedir permiso y persiste el apagado", async () => {
+    localStorage.setItem("opentemplates:notifications", "1");
+    const user = userEvent.setup();
+    const workspace = makeWorkspace({ mcpNames: [], skills: [] });
+    const { notifications } = setup(workspace, null);
+
+    const toggle = screen.getByRole("checkbox", { name: /Avisarme cuando el agente/ });
+    expect(toggle).toBeChecked();
+
+    await user.click(toggle);
+
+    expect(notifications.requestPermission).not.toHaveBeenCalled();
+    expect(localStorage.getItem("opentemplates:notifications")).toBe("0");
+  });
+});
+
 describe("SettingsPanel — reaplicar template", () => {
   test("delega en el gateway y notifica el workspace actualizado", async () => {
     const user = userEvent.setup();
@@ -146,5 +201,34 @@ describe("SettingsPanel — reaplicar template", () => {
     expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ mcpNames: ["a", "b"] }), [
       "reaplicado",
     ]);
+  });
+});
+
+describe("SettingsPanel — presupuesto", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test("guarda el presupuesto por workspace y lo borra al vaciar el campo", async () => {
+    const user = userEvent.setup();
+    setup(makeWorkspace({ mcpNames: [], skills: [] }), null);
+
+    const input = screen.getByLabelText("Presupuesto mensual en dólares");
+    await user.type(input, "12.5");
+    expect(localStorage.getItem("opentemplates:budget:w1")).toBe("12.5");
+
+    await user.clear(input);
+    expect(localStorage.getItem("opentemplates:budget:w1")).toBeNull();
+  });
+
+  test("no persiste importes no positivos y muestra el error", async () => {
+    const user = userEvent.setup();
+    setup(makeWorkspace({ mcpNames: [], skills: [] }), null);
+
+    await user.type(screen.getByLabelText("Presupuesto mensual en dólares"), "0");
+    expect(
+      await screen.findByText("Introduce un importe mayor que 0 o deja el campo vacío."),
+    ).toBeInTheDocument();
+    expect(localStorage.getItem("opentemplates:budget:w1")).toBeNull();
   });
 });
