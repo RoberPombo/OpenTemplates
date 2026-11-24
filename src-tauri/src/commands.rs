@@ -8,9 +8,10 @@ use crate::config;
 use crate::git;
 use crate::library;
 use crate::model::{
-    AppSettings, Bootstrap, ConfigOutcome, CreateWorkspaceInput, Library, McpInfo, ModelCost,
-    ModelDetail, ModelLimit, Repo, ServerInfo, SkillInfo, SkillRef, TemplateManifest, Workspace,
-    WorkspaceMode, WorktreeStatus,
+    AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, GhStatus,
+    GitCommitResult, GitCommitSummary, GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost,
+    ModelDetail, ModelLimit, PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo,
+    SkillRef, TemplateManifest, Workspace, WorkspaceMode, WorktreeStatus,
 };
 use crate::server::{self, ServerHandle};
 use crate::state::{AppState, ensure_workspace_dir, expand_tilde};
@@ -1239,6 +1240,77 @@ pub fn read_text_file(path: String) -> Result<String, String> {
         ));
     }
     fs::read_to_string(&path).map_err(|e| format!("No se pudo leer {}: {e}", path.display()))
+}
+
+/// Estado del árbol de trabajo para el panel de commit (salida cruda de git).
+#[tauri::command]
+pub fn git_status(project_path: String) -> Result<GitStatusOutput, String> {
+    git::status(Path::new(&project_path))
+}
+
+/// Prepara ficheros concretos y devuelve el estado ya actualizado.
+#[tauri::command]
+pub fn git_stage(project_path: String, paths: Vec<String>) -> Result<GitStatusOutput, String> {
+    let repo = Path::new(&project_path);
+    git::stage(repo, &paths)?;
+    git::status(repo)
+}
+
+/// Quita ficheros del índice y devuelve el estado ya actualizado.
+#[tauri::command]
+pub fn git_unstage(project_path: String, paths: Vec<String>) -> Result<GitStatusOutput, String> {
+    let repo = Path::new(&project_path);
+    git::unstage(repo, &paths)?;
+    git::status(repo)
+}
+
+/// Diff unificado; `staged` decide entre el índice y el árbol de trabajo.
+#[tauri::command]
+pub fn git_diff(project_path: String, staged: bool) -> Result<String, String> {
+    git::diff(Path::new(&project_path), staged)
+}
+
+#[tauri::command]
+pub fn git_commit(project_path: String, message: String) -> Result<GitCommitResult, String> {
+    git::commit(Path::new(&project_path), &message)
+}
+
+#[tauri::command]
+pub fn git_push(
+    project_path: String,
+    branch: String,
+    set_upstream: bool,
+) -> Result<GitPushResult, String> {
+    git::push(Path::new(&project_path), &branch, set_upstream)
+}
+
+#[tauri::command]
+pub fn git_commits(
+    project_path: String,
+    base: String,
+    limit: Option<usize>,
+) -> Result<Vec<GitCommitSummary>, String> {
+    git::commits(Path::new(&project_path), &base, limit)
+}
+
+#[tauri::command]
+pub fn gh_status() -> GhStatus {
+    crate::gh::status()
+}
+
+#[tauri::command]
+pub fn gh_pr_view(project_path: String) -> Result<Option<PullRequestInfo>, String> {
+    crate::gh::pr_view(Path::new(&project_path))
+}
+
+#[tauri::command]
+pub fn gh_pr_checks(project_path: String) -> Result<Vec<PullRequestCheck>, String> {
+    crate::gh::pr_checks(Path::new(&project_path))
+}
+
+#[tauri::command]
+pub fn gh_pr_create(input: CreatePullRequestInput) -> Result<String, String> {
+    crate::gh::pr_create(&input)
 }
 
 #[cfg(test)]

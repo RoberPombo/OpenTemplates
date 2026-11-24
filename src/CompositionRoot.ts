@@ -6,7 +6,9 @@
 import {
   TauriBootstrapGateway,
   TauriLibraryGateway,
+  TauriGitGateway,
   TauriModelCatalogGateway,
+  TauriPullRequestGateway,
   TauriRepoGateway,
   TauriResourcesGateway,
   TauriSettingsGateway,
@@ -34,6 +36,8 @@ import type { ModelCatalogGateway } from "./domain/repositories/ModelCatalogGate
 import type { NotificationGateway } from "./domain/repositories/NotificationGateway";
 import type { Preferences } from "./domain/repositories/Preferences";
 import type { RepoGateway } from "./domain/repositories/RepoGateway";
+import type { GitGateway } from "./domain/repositories/GitGateway";
+import type { PullRequestGateway } from "./domain/repositories/PullRequestGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
 import type { SessionFiles } from "./domain/repositories/SessionFiles";
 import type { TemplateGateway } from "./domain/repositories/TemplateGateway";
@@ -46,6 +50,8 @@ export type Ports = {
   bootstrap: BootstrapGateway;
   workspaces: WorkspaceGateway;
   repos: RepoGateway;
+  git: GitGateway;
+  pullRequests: PullRequestGateway;
   templates: TemplateGateway;
   settings: SettingsGateway;
   library: LibraryGateway;
@@ -65,6 +71,8 @@ export class CompositionRoot {
   readonly bootstrap: BootstrapGateway;
   readonly workspaces: WorkspaceGateway;
   readonly repos: RepoGateway;
+  readonly git: GitGateway;
+  readonly pullRequests: PullRequestGateway;
   readonly templates: TemplateGateway;
   readonly settings: SettingsGateway;
   readonly library: LibraryGateway;
@@ -81,6 +89,8 @@ export class CompositionRoot {
     this.bootstrap = overrides.bootstrap ?? new TauriBootstrapGateway();
     this.workspaces = overrides.workspaces ?? new TauriWorkspaceGateway();
     this.repos = overrides.repos ?? new TauriRepoGateway();
+    this.git = overrides.git ?? new TauriGitGateway();
+    this.pullRequests = overrides.pullRequests ?? new TauriPullRequestGateway();
     this.templates = overrides.templates ?? new TauriTemplateGateway();
     this.settings = overrides.settings ?? new TauriSettingsGateway();
     this.library = overrides.library ?? new TauriLibraryGateway();
