@@ -497,6 +497,9 @@ mod tests {
         let repo = root.join("repo");
         fs::create_dir_all(&repo).unwrap();
         run_git(&repo, &["init", "-q"]);
+        // CI no tiene identidad global: el repo temporal la fija en local.
+        run_git(&repo, &["config", "user.name", "test"]);
+        run_git(&repo, &["config", "user.email", "test@example.com"]);
         fs::write(repo.join("readme.md"), "hola\n").unwrap();
         run_git(&repo, &["add", "."]);
         run_git(&repo, &["commit", "-q", "-m", "init"]);
