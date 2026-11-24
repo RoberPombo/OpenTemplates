@@ -385,6 +385,43 @@ Implementado (fases 1-4 + wizard básico):
   abren desde la carrera; la fusión automática del resultado ganador queda para
   el siguiente paso (`Race.merge` reservado y siempre `null`).
 
+- **Paleta de comandos, atajos y temas**: `Ctrl/Cmd+K` o el botón discreto
+  «Comandos» del sidebar abren una paleta con búsqueda incremental. El catálogo
+  es declarativo en `domain/palette/catalog.ts` (ids, grupos, palabras clave,
+  atajos y disponibilidad según workspace, servidor y handlers montados) y el
+  filtro puntúa prefijo, inicio de palabra y palabras clave, ignorando acentos y
+  mayúsculas. La paleta navega con flechas/Home/End, ejecuta con Enter, cierra
+  con Escape y expone `listbox`/`option` con `aria-activedescendant`; no añade
+  dependencias. Acciones reales: nuevo workspace, ir a los workspaces recientes
+  (orden persistido en `prefKeys.recentWorkspaces`), siguiente/anterior, ajustes
+  del workspace, nueva sesión, parar turno, exportar la sesión activa saneada,
+  definir objetivo, panel del workspace, sesiones, diff/cambios, terminal,
+  cerrar el dock activo y lanzar carrera multi-run. Las acciones que dependen de
+  estado local se registran con `useCommandAction`
+  (`presentation/context/CommandActions.tsx`); las de workspace y navegación se
+  resuelven en `App.tsx`. Atajos en `domain/palette/keybindings.ts`:
+  `Ctrl/Cmd+K` paleta, `Ctrl/Cmd+N` nueva sesión, `Ctrl/Cmd+.` parar turno,
+  `Escape` cerrar dock, `Ctrl/Cmd+Alt+←/→` workspace anterior/siguiente,
+  ``Ctrl/Cmd+` `` terminal y `Ctrl/Cmd+Shift+D` diff. Los atajos con modificador
+  funcionan con foco en el composer y no interceptan Enter/Shift+Enter ni la
+  escritura normal. La página «Atajos» de ajustes lista el set; personalizarlos
+  queda pendiente para no abrir un editor a medias.
+- **Temas**: `styles.css` ya no contiene hex ni `rgba()`: todos los colores son
+  custom properties semánticas (`--surface-2`, `--text-soft`, `--accent-border`,
+  `--warning-soft`, etc.) definidas en `domain/theme/themes.ts`. Hay dos temas
+  completos (oscuro actual y claro legible) y tres acentos (verde, azul y
+  violeta). `themeStyle` se aplica en `main.tsx` antes de montar React y hay un
+  preload mínimo en `index.html` que fija `data-theme`/`color-scheme`; la
+  selección se persiste en `prefKeys.theme` y `prefKeys.accent`. La página
+  «Apariencia» de ajustes aplica los cambios al momento y previsualiza ambos
+  temas con los tokens del dominio. Los tests comprueban que los dos temas y
+  todos los acentos declaran el juego completo de tokens, que ningún token queda
+  sin usar, que toda `var(--…)` de la hoja existe, que no hay colores fijos y
+  que texto principal, secundario, acentos y estados superan el contraste WCAG
+  AA. Verificación visual: `pnpm tauri dev` arranca sin errores y las vistas de
+  paleta y ajustes se revisaron en oscuro y claro con capturas headless del
+  mismo CSS/componentes.
+
 Pendiente de las fases 5-8:
 
 - Fusionar el resultado ganador de una carrera (`Race.merge` ya reservado): hoy
@@ -394,3 +431,5 @@ Pendiente de las fases 5-8:
 - Reparar workspaces `missing` recreando su worktree.
 - Selector de modelo/agentes por workspace como overrides explícitos (hoy se
   editan en el template y se reaplican).
+- Personalización de atajos: la página los lista y el dominio ya resuelve
+  conflictos, pero falta un editor que persista combinaciones por usuario.

@@ -1,14 +1,20 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { folderName } from "./domain/shared";
 import { useWorkspaces } from "./presentation/hooks/useWorkspaces";
 import { CreateWorkspace } from "./presentation/components/CreateWorkspace";
 import { ManagePanel } from "./presentation/components/ManagePanel";
 import { UpdateDialog } from "./presentation/components/UpdateDialog";
 import { WorkspaceView } from "./presentation/components/WorkspaceView";
+import { CommandPalette } from "./presentation/components/CommandPalette";
+import { useCommandActions } from "./presentation/context/CommandActions";
+import { buildPaletteCommands } from "./domain/palette/catalog";
+import { formatShortcut, resolveShortcut, shortcutFor } from "./domain/palette/keybindings";
 import { Button } from "./presentation/components/ui";
 import { useUpdater } from "./presentation/hooks/useUpdater";
 import type { Workspace } from "./types";
 import "./styles.css";
+
+const PALETTE_SHORTCUT = shortcutFor("palette.open");
 
 const PerformanceCapture = import.meta.env.DEV
   ? lazy(() => import("./presentation/components/PerformanceCapture"))
@@ -25,6 +31,7 @@ function App() {
     running,
     selectedId,
     selected,
+    recentWorkspaceIds,
     groups,
     startingId,
     notice,
@@ -44,7 +51,95 @@ function App() {
   } = useWorkspaces();
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const { entries, run: runRegisteredAction } = useCommandActions();
   const updater = useUpdater();
+
+  const paletteCommands = useMemo(
+    () =>
+      buildPaletteCommands({
+        workspace: selected
+          ? {
+              id: selected.id,
+              name: selected.name,
+              detail:
+                selected.mode === "worktree"
+                  ? (selected.branch ?? folderName(selected.projectPath))
+                  : selected.projectPath,
+            }
+          : null,
+        workspaces: workspaces.map((workspace) => ({
+          id: workspace.id,
+          name: workspace.name,
+          detail:
+            workspace.mode === "worktree"
+              ? (workspace.branch ?? folderName(workspace.projectPath))
+              : workspace.projectPath,
+        })),
+        recentWorkspaceIds,
+        hasServer: Boolean(selected && running[selected.id]),
+        handlers: entries,
+      }),
+    [selected, workspaces, recentWorkspaceIds, running, entries],
+  );
+
+  const runPaletteAction = useCallback(
+    (id: string) => {
+      if (id === "workspace.create") {
+        setCreating(true);
+        return true;
+      }
+      if (id === "workspace.next" || id === "workspace.previous") {
+        if (workspaces.length < 2) return false;
+        const current = workspaces.findIndex((workspace) => workspace.id === selectedId);
+        const delta = id === "workspace.next" ? 1 : -1;
+        const from = current < 0 ? (delta === 1 ? -1 : 0) : current;
+        const index = (from + delta + workspaces.length) % workspaces.length;
+        select(workspaces[index].id);
+        return true;
+      }
+      if (id.startsWith("workspace.select:")) {
+        const workspaceId = id.slice("workspace.select:".length);
+        if (!workspaces.some((workspace) => workspace.id === workspaceId)) return false;
+        select(workspaceId);
+        return true;
+      }
+      if (id === "palette.open") {
+        setPaletteOpen(true);
+        return true;
+      }
+      return runRegisteredAction(id);
+    },
+    [workspaces, selectedId, select, runRegisteredAction],
+  );
+
+  useEffect(() => {
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (paletteOpen) return;
+      // Los modales existentes gestionan su propia interacción; no actuamos detrás.
+      if (document.querySelector(".modal-backdrop")) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const tag = target?.tagName.toLowerCase();
+      const inComposer = tag === "textarea";
+      const inEditable =
+        inComposer || tag === "input" || tag === "select" || Boolean(target?.isContentEditable);
+      const action = resolveShortcut(
+        {
+          key: event.key,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+          defaultPrevented: event.defaultPrevented,
+        },
+        { paletteOpen, inComposer, inEditable },
+      );
+      if (!action) return;
+      if (runPaletteAction(action)) event.preventDefault();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [paletteOpen, runPaletteAction]);
 
   const templateName = useMemo(() => {
     if (!selected?.templateId) return null;
@@ -143,6 +238,18 @@ function App() {
         </nav>
 
         <div className="sidebar-foot">
+          <Button
+            variant="ghost"
+            className="sidebar-link command-trigger"
+            onClick={() => setPaletteOpen(true)}
+          >
+            <span>Comandos</span>
+            {PALETTE_SHORTCUT && (
+              <kbd className="command-trigger-key">
+                {formatShortcut(PALETTE_SHORTCUT, navigator.platform || "linux")}
+              </kbd>
+            )}
+          </Button>
           <Button variant="ghost" className="sidebar-link" onClick={() => setManaging(true)}>
             Repos y templates
           </Button>
@@ -235,6 +342,13 @@ function App() {
           onInstall={() => void updater.install()}
           onRestart={updater.restart}
           onDismiss={updater.dismiss}
+        />
+      )}
+      {paletteOpen && (
+        <CommandPalette
+          commands={paletteCommands}
+          onRun={runPaletteAction}
+          onClose={() => setPaletteOpen(false)}
         />
       )}
       {PerformanceCapture && (

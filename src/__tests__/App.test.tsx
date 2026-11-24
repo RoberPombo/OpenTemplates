@@ -290,6 +290,33 @@ describe("App — borrado con política", () => {
   });
 });
 
+describe("App — paleta de comandos", () => {
+  test("Ctrl+K abre la paleta y ejecuta una acción", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await screen.findByText("view:Primero");
+
+    await user.keyboard("{Control>}k{/Control}");
+    expect(await screen.findByRole("dialog", { name: "Paleta de comandos" })).toBeInTheDocument();
+
+    await user.type(screen.getByRole("combobox", { name: "Buscar una acción" }), "nuevo workspace");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText("create")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Paleta de comandos" })).toBeNull();
+  });
+
+  test("el botón discreto de comandos también la abre", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await screen.findByText("view:Primero");
+
+    await user.click(screen.getByText("Comandos"));
+
+    expect(screen.getByRole("dialog", { name: "Paleta de comandos" })).toBeInTheDocument();
+  });
+});
+
 describe("App — creación y gestión", () => {
   test("crear añade, selecciona y avisa de warnings", async () => {
     const user = userEvent.setup();

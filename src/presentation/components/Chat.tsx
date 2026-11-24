@@ -12,6 +12,7 @@ import {
 } from "../../domain/chat/commands";
 import type { ToolActivity } from "../../domain/chat/messages";
 import { useChat } from "../hooks/useChat";
+import { useCommandAction } from "../context/CommandActions";
 import { Markdown } from "./Markdown";
 import { ModelInfoCard } from "./ModelInfoCard";
 import { RequestDock } from "./RequestDock";
@@ -250,6 +251,23 @@ export function Chat({
   const agentSelectOptions = useMemo(
     () => agents.map((agent) => ({ value: agent.id, label: agent.name })),
     [agents],
+  );
+
+  useCommandAction("session.new", newConversation, !busy, "Espera a que termine el turno.");
+  useCommandAction("session.stop", () => void stop(), busy, "No hay ningún turno en curso.");
+  useCommandAction(
+    "session.export",
+    () => {
+      if (sessionId) void exportSession(sessionId, true);
+    },
+    Boolean(sessionId),
+    "Abre una sesión para poder exportarla.",
+  );
+  useCommandAction(
+    "session.goal",
+    () => setGoalOpen(true),
+    Boolean(sessionId),
+    "Abre una sesión para definir su objetivo.",
   );
 
   return (
