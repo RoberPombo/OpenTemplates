@@ -58,9 +58,10 @@ justo el ruido que este corte quiere quitar.
 `huella = sha256(json normalizado)` de la capa base **más la raíz del proyecto**
 (el checkout principal, no el worktree), incluido el texto materializado del
 AGENTS.md y del `profile.lock.json`. Así la huella identifica un contexto completo y
-dos repos distintos nunca colisionan. El modelo por defecto no entra: vive por
-agente. El algoritmo se versiona (`huella-v1`) para poder invalidar todo al cambiar
-el formato.
+dos repos distintos nunca colisionan. El **modelo no entra** en la huella: se pasa
+en cada `session.create` y el de la config del contexto queda solo como fallback.
+El algoritmo se versiona (`huella-v1`) para poder invalidar todo al cambiar el
+formato.
 
 Corolario: las instrucciones específicas de rol van en el **prompt del agente**,
 nunca en el AGENTS.md base. Si backend y frontend solo difieren en método de
@@ -184,7 +185,8 @@ suyos. No se duplica lo instalado; los assets propios viven en su carpeta.
 
 1. Huella y store de contextos (`contexts/<huella>`), reutilización y reinicio
    limpio.
-2. Perfiles: CRUD sobre `profiles.json` y renombrado desde templates.
+2. Perfiles: CRUD sobre `profiles.json`, renombrado desde templates y modelo fuera
+   de la huella (se elige por sesión).
 3. Proyectos y repos: agrupación y raíz.
 4. Workspaces sin perfil obligatorio.
 5. Sesión con perfil y agente; servidor por huella.

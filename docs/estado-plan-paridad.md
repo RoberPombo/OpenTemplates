@@ -51,7 +51,10 @@ todavía entra en la huella hasta que el perfil por sesión lo sustituya.
 Fase 2 entregada: el template pasa a llamarse **perfil** en tipos, comandos, UI y
 persistencia (`profiles.json`, `profiles/<id>/`, `profile.lock.json`,
 `profileId`). La migración lee `templates.json`, `templates/` y `template.lock.json`
-como fallback y reescribe el formato nuevo.
+como fallback y reescribe el formato nuevo. Además, el modelo deja de entrar en la
+huella: se pasa al crear cada sesión y el contexto lo usa solo como fallback.
+La elección de perfil por sesión (varios contextos vivos por workspace) sigue
+pendiente: hoy se elige cambiando de workspace.
 
 ## Qué queda
 

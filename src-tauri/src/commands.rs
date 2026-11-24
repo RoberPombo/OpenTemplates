@@ -92,10 +92,7 @@ fn materialize_workspace(
     let global_dir = config::global_config_dir();
     let plan = config::plan(workspace, workspace_dir, &global_dir, &global);
     let root = project_root(state, workspace);
-    // La huella cubre la config renderizada, que hoy incluye el modelo por
-    // defecto. Cuando el modelo pase a elegirse por agente/sesión (fase 2)
-    // dejará de formar parte de la huella y dos roles compartirán contexto.
-    let hash = context::fingerprint(&root, &plan.config, &plan.agents_md);
+    let hash = context::fingerprint_without_model(&root, &plan.config, &plan.agents_md);
     let context_dir = context::ensure(&state.data_dir, &hash, &root)?;
     let mut materialized = config::write_plan(workspace, workspace_dir, &context_dir, &plan)?;
     // Los workspaces anteriores guardaban su DB en workspaces/<id>. La primera

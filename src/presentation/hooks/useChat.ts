@@ -165,6 +165,15 @@ export function useChat({
     () => models.find((model) => model.key === modelChoice) ?? null,
     [models, modelChoice],
   );
+  // El modelo del perfil se pasa a la sesión al crearla: el contexto ya no lo
+  // fija en la config para que dos perfiles puedan compartir servidor.
+  const workspaceModelRef = useMemo(() => {
+    const raw = workspace.model?.trim();
+    if (!raw) return null;
+    const slash = raw.indexOf("/");
+    if (slash <= 0 || slash === raw.length - 1) return null;
+    return { providerID: raw.slice(0, slash), id: raw.slice(slash + 1) };
+  }, [workspace.model]);
   const modelGroups = useMemo(() => {
     const groups = new Map<string, ModelOption[]>();
     for (const model of models) {
@@ -469,6 +478,7 @@ export function useChat({
         const session = await client.session.create({
           location: { directory: workspace.projectPath },
           title: `Chat · ${workspace.name}`,
+          ...(workspaceModelRef ? { model: workspaceModelRef } : {}),
         });
         if (!alive) return;
         setSessionId(session.id);
@@ -481,7 +491,16 @@ export function useChat({
     return () => {
       alive = false;
     };
-  }, [client, sessionId, storageKey, workspace.name, workspace.projectPath, root, refreshSessions]);
+  }, [
+    client,
+    sessionId,
+    storageKey,
+    workspace.name,
+    workspace.projectPath,
+    workspaceModelRef,
+    root,
+    refreshSessions,
+  ]);
 
   // Catálogo de modelos y agentes del workspace.
   useEffect(() => {

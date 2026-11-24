@@ -568,5 +568,10 @@ multiwebview con soporte Wayland), screenshot/consola y captura de una región.
   `opentemplates:*`.
 - Los assets de un perfil llevan `source: "profile"`; los locks antiguos conservan
   `template` como etiqueta hasta reaplicar.
+- El modelo ya no entra en la huella: `fingerprint_without_model` lo quita antes de
+  hashear. `useChat` pasa `workspace.model` a `session.create` (y el multi-run ya lo
+  hacía), así dos perfiles con distinto modelo comparten contexto.
+- `WorkspaceView` muestra «comparte servidor con …» cuando otro workspace arrancado
+  tiene la misma `contextHash`.
 - Verificación: `cargo test` 44 en verde (nuevos de migración de store, rutas y lock),
-  `cargo clippy -D warnings` limpio, `pnpm check` 616 tests en verde.
+  `cargo clippy -D warnings` limpio, `pnpm check` 618 tests en verde.

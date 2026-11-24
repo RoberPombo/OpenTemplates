@@ -57,6 +57,17 @@ pub fn fingerprint(root: &str, config: &Value, agents_md: &str) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// Huella del contexto tal como se comparte entre perfiles: el modelo no entra,
+/// porque se elige por sesión (`session.create` acepta `model`) y no cambia lo
+/// que opencode carga al arrancar.
+pub fn fingerprint_without_model(root: &str, config: &Value, agents_md: &str) -> String {
+    let mut config = config.clone();
+    if let Some(object) = config.as_object_mut() {
+        object.remove("model");
+    }
+    fingerprint(root, &config, agents_md)
+}
+
 /// Crea (si hace falta) la carpeta del contexto y deja constancia de la raíz.
 pub fn ensure(data_dir: &Path, hash: &str, root: &str) -> Result<PathBuf, String> {
     let dir = context_dir(data_dir, hash);
@@ -150,6 +161,25 @@ mod tests {
             )
         );
         assert_ne!(base, fingerprint("/repo", &config, "# Otro AGENTS"));
+    }
+
+    #[test]
+    fn model_does_not_change_the_shared_fingerprint() {
+        let first = json!({ "model": "anthropic/a", "permissions": [] });
+        let second = json!({ "model": "openai/b", "permissions": [] });
+
+        assert_eq!(
+            fingerprint_without_model("/repo", &first, "# AGENTS"),
+            fingerprint_without_model("/repo", &second, "# AGENTS")
+        );
+        assert_ne!(
+            fingerprint_without_model("/repo", &first, "# AGENTS"),
+            fingerprint_without_model(
+                "/repo",
+                &json!({ "model": "anthropic/a", "permissions": [{"action":"skill"}] }),
+                "# AGENTS"
+            )
+        );
     }
 
     #[test]

@@ -141,6 +141,18 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [paletteOpen, runPaletteAction]);
 
+  const sharedWith = useMemo(() => {
+    if (!selected) return [];
+    const hash = running[selected.id]?.contextHash;
+    if (!hash) return [];
+    return Object.values(running)
+      .filter((server) => server.contextHash === hash && server.workspaceId !== selected.id)
+      .map(
+        (server) =>
+          workspaces.find((item) => item.id === server.workspaceId)?.name ?? server.workspaceId,
+      );
+  }, [running, selected, workspaces]);
+
   const profileName = useMemo(() => {
     if (!selected?.profileId) return null;
     const profile = profiles.find((item) => item.id === selected.profileId);
@@ -276,6 +288,7 @@ function App() {
             key={selected.id}
             workspace={selected}
             profileName={profileName}
+            sharedWith={sharedWith}
             server={running[selected.id]}
             starting={startingId === selected.id}
             onStart={() => void start(selected.id)}

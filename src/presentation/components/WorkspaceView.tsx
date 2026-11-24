@@ -14,6 +14,8 @@ import { Button } from "./ui";
 type Props = {
   workspace: Workspace;
   profileName?: string | null;
+  /** Nombres de otros workspaces que comparten el mismo contexto/servidor. */
+  sharedWith?: string[];
   server?: ServerInfo;
   starting: boolean;
   onStart: () => void;
@@ -56,6 +58,7 @@ function modeLabel(workspace: Workspace) {
 export function WorkspaceView({
   workspace,
   profileName,
+  sharedWith = [],
   server,
   starting,
   onStart,
@@ -243,6 +246,7 @@ export function WorkspaceView({
             <p className="muted small-text">
               {modeLabel(workspace)}
               {profileName ? ` · perfil ${profileName}` : " · sin perfil"}
+              {sharedWith.length > 0 ? ` · comparte servidor con ${sharedWith.join(", ")}` : ""}
               {workspace.missing ? " · carpeta no encontrada" : ""}
             </p>
           </div>

@@ -20,7 +20,7 @@ const server: ServerInfo = {
   pid: 42,
 };
 
-function setup() {
+function setup(sharedWith: string[] = []) {
   const store = new Map<string, string>([
     ["opentemplates:panel", "0"],
     ["opentemplates:session:w1", "s1"],
@@ -58,6 +58,7 @@ function setup() {
     <AppProvider root={root}>
       <WorkspaceView
         workspace={makeWorkspace()}
+        sharedWith={sharedWith}
         server={server}
         starting={false}
         onStart={vi.fn()}
@@ -73,6 +74,11 @@ function setup() {
 }
 
 describe("WorkspaceView — panel de cambios", () => {
+  test("muestra con qué workspaces comparte servidor", () => {
+    setup(["Backend", "Métricas"]);
+    expect(screen.getByText(/comparte servidor con Backend, Métricas/)).toBeInTheDocument();
+  });
+
   test("el botón Cambios abre el panel en esa pestaña y la recuerda", async () => {
     const user = userEvent.setup();
     const { client, store } = setup();

@@ -87,6 +87,20 @@ describe("Chat — sesión y carga", () => {
     await waitFor(() => expect(localStorage.getItem("opentemplates:session:w1")).toBe("s1"));
   });
 
+  test("pasa el modelo del perfil al crear la sesión", async () => {
+    const { client } = renderChat(
+      { messages: rawMessages },
+      makeWorkspace({ model: "anthropic/claude" }),
+    );
+    await waitFor(() =>
+      expect(client.session.create).toHaveBeenCalledWith({
+        location: { directory: "/tmp/demo" },
+        title: "Chat · Demo",
+        model: { id: "claude", providerID: "anthropic" },
+      }),
+    );
+  });
+
   test("reutiliza la sesión guardada en localStorage", async () => {
     localStorage.setItem("opentemplates:session:w1", "previa");
     const { client } = renderChat({ messages: rawMessages });
