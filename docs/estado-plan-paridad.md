@@ -44,6 +44,10 @@ migración desde `workspaces/<id>`, 2) perfil por sesión, 3) proyectos y repos,
 4) worktrees e issues, 5) GC y suspensión. Hasta completar 1 y 2, el editor y los
 overrides siguen colgando de `templateId` en el workspace.
 
+Fase 1 entregada: huella, `contexts/<huella>`, servidores compartidos por huella,
+refcount al parar/borrar y copia de la DB legada al contexto. El modelo por defecto
+todavía entra en la huella hasta que el perfil por sesión lo sustituya.
+
 ## Qué queda
 
 Dentro del producto actual, por orden de valor:
