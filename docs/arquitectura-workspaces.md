@@ -142,6 +142,43 @@ La biblioteca de skills de la app escanea como mínimo:
   workspace falla (409 si repite el id de sesión y 500 si repite los ids de
   mensaje); la UI lo explica en vez de ocultarlo.
 
+## Sesiones y carreras en varios directorios
+
+Verificado contra opencode **v2.3.0** con un solo `opencode serve` y un repo git
+con varios worktrees:
+
+1. **Un proceso atiende sesiones en varios directorios.** Cada
+   `POST /api/session` lleva su `location.directory` y la sesión queda asociada a
+   esa carpeta. `GET /api/session?directory=<ruta>` devuelve solo las sesiones de
+   ese directorio; el filtro es el parámetro `directory` plano, **no**
+   `location[directory]` (ese es el de `vcs`, `file`, `mcp`, `pty`, etc.).
+2. **El diff y el estado de git son por directorio.** `session.diff` devuelve
+   los ficheros tocados por esa sesión. `vcs.status` y `vcs.diff` con
+   `location[directory]` ven solo el árbol de trabajo de esa carpeta: dos
+   sesiones que crean `A.txt` y `B.txt` en worktrees distintos no se ven entre
+   sí.
+3. **`session.create` acepta `agent` y `model`.** La sesión nace con ese modelo y
+   agente (`SessionInfo.agent` y `SessionInfo.model` lo confirman), así que una
+   carrera no necesita un `switchModel` posterior.
+4. **`session.get` sirve para reconciliar.** Devuelve `projectID`, `cost`,
+   `tokens`, `outcome` (`succeeded`/`failed`/`interrupted`) y
+   `time.idle`, suficiente para cerrar una corrida que terminó mientras la app
+   estaba en otro workspace.
+5. **`worktree.create`** (`POST /api/worktree`) pide `projectID`, que sale de
+   `project.list` (`canonical` es el checkout principal aunque la sesión viva en
+   un worktree). `branch` es la **referencia base** que se comprueba, no una rama
+   nueva; `directory` es la carpeta padre y `name` la hija, y devuelve
+   `directory/name`. El worktree queda en **HEAD separado** (sin rama propia).
+   `worktree.remove` borra el worktree y exige `force: true` si hay cambios sin
+   commitear. Como no se crea rama por corrida, no hay rama que borrar: la rama
+   base del workspace queda intacta.
+6. **Coste.** El catálogo (`model.list`) trae `cost.input` y `cost.output` por
+   millón de tokens; la app estima antes de lanzar con el prompt y 1.200 tokens
+   de salida por corrida. Si algún modelo no publica precio, no se muestra total.
+
+Por eso una carrera usa **N sesiones dentro del mismo proceso**, cada una en su
+directorio, y no N workspaces temporales.
+
 ## Terminal por workspace
 El servidor expone PTYs por location (`pty.list/create/get/update/remove`) y un
 WebSocket para hablar con cada uno. Verificado contra v2.3.0:
@@ -213,6 +250,8 @@ Implementado en este repo:
 - [x] Estado runtime de MCP con `mcp.list` y `mcp.status.changed`, y
       `connect`/`disconnect` sin reaplicar el template.
 - [x] Terminal por workspace con `pty.*` y WebSocket con ticket.
+- [x] Carreras multi-run: N sesiones en un proceso, cada una en su directorio
+      (worktree opcional), con comparación y elección de ganadora.
 
 Pendiente:
 

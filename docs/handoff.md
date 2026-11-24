@@ -348,8 +348,47 @@ Implementado (fases 1-4 + wizard básico):
   sigue con el modelo de la sesión. El fake de tests incorpora
   `generate.decisions`, y el estrechado vive en
   `data/opencodePayloads.ts` (`toGoalDecisionResult`).
+- **Carreras multi-run**: botón «Carrera» en la cabecera del workspace. El
+  diálogo pide el encargo, de 2 a 5 modelos del catálogo (multi-select buscable),
+  agente opcional y «un worktree por corrida» (activado por defecto si el
+  proyecto es git y hay raíz de worktrees). Si el catálogo trae precios, muestra
+  el coste estimado con el prompt y 1.200 tokens de salida por corrida. Al
+  lanzar, crea las corridas en paralelo: worktree propio vía
+  `worktree.create({projectID, branch: rama actual, directory: raíz, name})`,
+  sesión con `session.create({location:{directory}, agent, model})` y el mismo
+  `session.prompt` para todas. Un fallo de worktree, sesión o prompt solo marca
+  esa corrida como fallida; las demás siguen. El estado se sigue con el SSE
+  existente (`session.execution.*`, `session.idle`, `permission.asked` y
+  `form.created`), sin sondeo; al terminar se piden `session.get` (coste y
+  tokens), `session.diff` (ficheros y líneas) y `message.list` (resumen). La
+  vista de comparación tiene una tarjeta por corrida con modelo, estado, coste,
+  duración, tokens, cambios, resumen o error, y acciones «Abrir sesión» (el chat
+  la abre y se puede seguir como cualquier otra), «Ver diff» (panel de cambios),
+  «Quedarse con esta» y «Descartar». Elegir ganadora pide confirmación, cierra y
+  elimina las sesiones y worktrees de las perdedoras (con `force: true`, sin
+  tocar la rama base) y deja intacta la ganadora. Descartar una corrida hace lo
+  mismo solo con ella. Al parar o eliminar un workspace con carrera viva se
+  avisa; al volver a un workspace la carrera se reconcilia con `session.get`, y
+  si la app se cerró, las corridas activas se marcan como fallidas. Estado
+  puro en `domain/race/races.ts` (máquina de estados, ganadora, limpieza,
+  estimación, serialización, recuperación y resolución de proyecto), hook en
+  `presentation/hooks/useRace.ts`, persistencia en
+  `opentemplates:race:<workspaceId>` (localStorage) y componentes
+  `RaceControls`, `RaceDialog` y `RaceView`. Verificado contra opencode v2.3.0
+  real con un solo servidor y dos worktrees: `session.list?directory=` filtra
+  por carpeta, `session.diff`, `vcs.status` y `vcs.diff` responden por
+  directorio, `session.create` acepta modelo y agente, y `worktree.remove`
+  conserva la rama base. Limitaciones conocidas: `worktree.create` deja el
+  worktree en HEAD separado (no crea rama por corrida, así que no hay rama que
+  conservar más allá de la base); las sesiones de corridas en worktree no salen
+  en el panel de sesiones porque este lista el directorio del workspace, se
+  abren desde la carrera; la fusión automática del resultado ganador queda para
+  el siguiente paso (`Race.merge` reservado y siempre `null`).
+
 Pendiente de las fases 5-8:
 
+- Fusionar el resultado ganador de una carrera (`Race.merge` ya reservado): hoy
+  se elige la ganadora y se descartan las perdedoras, sin integrar su rama.
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).
 - Archivar sesiones (la lista ya no muestra archivadas; falta el gesto).
 - Reparar workspaces `missing` recreando su worktree.
