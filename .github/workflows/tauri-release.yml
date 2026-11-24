@@ -14,6 +14,9 @@ concurrency:
 
 jobs:
   build-and-attach:
+    # The signing key lives in the `release` environment, whose deployment
+    # policy only allows tags matching v*.*.*.
+    environment: release
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 90
     strategy:
