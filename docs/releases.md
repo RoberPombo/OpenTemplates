@@ -7,8 +7,11 @@ compila y publica, y la app consulta el updater al arrancar.
 
 1. El trabajo entra en `develop` por PR desde una rama de feature.
 2. `release-please` (push a `main`) mantiene abierto un PR de release que sube la
-   versión en `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`,
-   `src-tauri/Cargo.lock` y `.release-please-manifest.json`, y escribe `CHANGELOG.md`.
+   versión en `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
+   y `.release-please-manifest.json`, y escribe `CHANGELOG.md`. Un paso posterior
+   de `release-please.yml` sincroniza `src-tauri/Cargo.lock` en la misma PR: el
+   updater TOML de release-please no puede filtrar entradas de un array, y sin
+   ese paso `cargo test --locked` falla en el PR de release.
 3. Al mergear ese PR en `main`, `release-please` crea el tag `vX.Y.Z` y un draft
    de release.
 4. El tag dispara `.github/workflows/tauri-release.yml`: compila Linux (deb),

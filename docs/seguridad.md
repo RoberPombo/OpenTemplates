@@ -22,7 +22,7 @@ Revisión aplicada sobre el repo de OpenTemplates. Lo que depende de una persona
 | Auditoría semanal npm + cargo | `security-audit.yml` |
 | Updater firmado con clave fuera del repo | `tauri.conf.json`, entorno `release` |
 | Secretos de firma solo legibles desde tags `v*.*.*` | entorno `release` + `tauri-release.yml` |
-| PR de release con `Cargo.lock` incluido | `.release-please-config.json` |
+| `Cargo.lock` sincronizado en el PR de release | `release-please.yml` |
 | PR de sync `main -> develop` abierto con el PAT de release-please | `sync-develop.yml` |
 | `GITHUB_TOKEN` sin permiso para crear PRs | settings de Actions |
 | Releases en draft, publicadas tras comprobar duplicados | `tauri-release.yml` |
