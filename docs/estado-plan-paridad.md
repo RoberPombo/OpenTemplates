@@ -33,7 +33,16 @@ Decisiones que conviene no reabrir sin motivo:
   no N procesos.
 - El preview no inspecciona el DOM: el selector de elemento necesita proxy propio o
   multiwebview con Wayland (`docs/preview-viabilidad.md`).
-- Los permisos se responden en el dock; no se relajan en el template.
+- Los permisos se responden en el dock; no se relajan en el perfil.
+
+## Cambio de modelo en curso
+
+El template deja de asociarse al repo o al workspace y pasa a ser un **perfil por
+sesión**, con un servidor por (raíz, huella de contexto). El diseño y las fases
+están en `docs/modelo-templates-repos.md`. Orden: 1) store de contextos por huella y
+migración desde `workspaces/<id>`, 2) perfil por sesión, 3) proyectos y repos,
+4) worktrees e issues, 5) GC y suspensión. Hasta completar 1 y 2, el editor y los
+overrides siguen colgando de `templateId` en el workspace.
 
 ## Qué queda
 
@@ -47,7 +56,8 @@ Dentro del producto actual, por orden de valor:
    soporte Wayland; incluye screenshot y consola.
 4. **Archivar sesiones** (S). El listado ya excluye archivadas; falta el gesto.
 5. **Reparar workspaces `missing`** (S). Recrear el worktree desde el estado guardado.
-6. **Overrides de modelo/agente por workspace** (S). Hoy se editan en el template.
+6. **Modelo y agente por sesión** (S). Con el modelo nuevo dejan de ser overrides del
+   workspace: se eligen al abrir cada sesión.
 7. **Editor de atajos** (S). El dominio resuelve conflictos; falta persistir
    combinaciones por usuario.
 8. **Pill de todos** (S). El SDK lo tiene detrás del flag experimental `todo`:
