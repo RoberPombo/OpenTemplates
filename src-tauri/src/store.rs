@@ -4,13 +4,15 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::model::{AppSettings, RepoStore, TemplateManifest, TemplateStore, WorkspaceStore};
+use crate::model::{AppSettings, ProfileManifest, ProfileStore, RepoStore, WorkspaceStore};
 
 pub const STORE_VERSION: u32 = 2;
 
 pub const WORKSPACES_FILE: &str = "workspaces.json";
 pub const REPOS_FILE: &str = "repos.json";
-pub const TEMPLATES_FILE: &str = "templates.json";
+pub const PROFILES_FILE: &str = "profiles.json";
+const LEGACY_PROFILES_FILE: &str = "templates.json";
+const LEGACY_PROFILES_DIR: &str = "templates";
 pub const SETTINGS_FILE: &str = "settings.json";
 
 fn now_stamp() -> String {
@@ -103,32 +105,55 @@ pub fn load_repos(data_dir: &Path) -> Vec<crate::model::Repo> {
         .unwrap_or_default()
 }
 
-pub fn load_templates(data_dir: &Path) -> (Vec<TemplateManifest>, Vec<String>) {
-    let mut templates = read_json::<TemplateStore>(&data_dir.join(TEMPLATES_FILE))
-        .map(|store| store.templates)
+pub fn load_profiles(data_dir: &Path) -> (Vec<ProfileManifest>, Vec<String>) {
+    let current = data_dir.join(PROFILES_FILE);
+    let legacy = data_dir.join(LEGACY_PROFILES_FILE);
+    let migrated = !current.exists() && legacy.exists();
+    let mut profiles = read_json::<ProfileStore>(&current)
+        .or_else(|| read_json::<ProfileStore>(&legacy))
+        .map(|store| store.profiles)
         .unwrap_or_default();
     let mut warnings = Vec::new();
 
-    // Importa manifiestos presentes en disco pero ausentes del store.
-    let root = data_dir.join("templates");
+    // Migra el directorio anterior la primera vez y conserva sus manifiestos.
+    let mut root = data_dir.join("profiles");
+    let legacy_root = data_dir.join(LEGACY_PROFILES_DIR);
+    if !root.exists() && legacy_root.exists() {
+        let _ = fs::rename(&legacy_root, &root);
+    }
+    if !root.exists() && legacy_root.exists() {
+        root = legacy_root;
+    }
     if let Ok(entries) = fs::read_dir(&root) {
         for entry in entries.flatten() {
-            let manifest_path = entry.path().join("template.json");
-            let Some(manifest) = read_json::<TemplateManifest>(&manifest_path) else {
+            let profile_manifest = entry.path().join("profile.json");
+            let manifest_path = if profile_manifest.exists() {
+                profile_manifest
+            } else {
+                entry.path().join("template.json")
+            };
+            let Some(manifest) = read_json::<ProfileManifest>(&manifest_path) else {
                 continue;
             };
-            if !crate::templates::is_safe_id(&manifest.id) {
+            if !crate::profiles::is_safe_id(&manifest.id) {
                 continue;
             }
-            if templates.iter().any(|item| item.id == manifest.id) {
+            if profiles.iter().any(|item| item.id == manifest.id) {
                 continue;
             }
-            warnings.push(format!("Template '{}' recuperado desde disco", manifest.id));
-            templates.push(manifest);
+            warnings.push(format!("Perfil '{}' recuperado desde disco", manifest.id));
+            profiles.push(manifest);
         }
     }
-    templates.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    (templates, warnings)
+    profiles.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    if migrated {
+        let store = ProfileStore {
+            version: STORE_VERSION,
+            profiles: profiles.clone(),
+        };
+        let _ = write_json(data_dir, PROFILES_FILE, &store);
+    }
+    (profiles, warnings)
 }
 
 pub fn load_settings(data_dir: &Path) -> AppSettings {
@@ -158,12 +183,12 @@ pub fn save_repos(data_dir: &Path, repos: &[crate::model::Repo]) -> Result<(), S
     write_json(data_dir, REPOS_FILE, &store)
 }
 
-pub fn save_templates(data_dir: &Path, templates: &[TemplateManifest]) -> Result<(), String> {
-    let store = TemplateStore {
+pub fn save_profiles(data_dir: &Path, profiles: &[ProfileManifest]) -> Result<(), String> {
+    let store = ProfileStore {
         version: STORE_VERSION,
-        templates: templates.to_vec(),
+        profiles: profiles.to_vec(),
     };
-    write_json(data_dir, TEMPLATES_FILE, &store)
+    write_json(data_dir, PROFILES_FILE, &store)
 }
 
 pub fn save_settings(data_dir: &Path, settings: &AppSettings) -> Result<(), String> {
@@ -240,9 +265,9 @@ mod tests {
     }
 
     #[test]
-    fn imports_template_manifests_from_disk() {
-        let dir = temp_dir("templates");
-        let tpl = dir.join("templates").join("backend");
+    fn imports_profile_manifests_from_disk() {
+        let dir = temp_dir("profiles");
+        let tpl = dir.join("profiles").join("backend");
         fs::create_dir_all(&tpl).unwrap();
         fs::write(
             tpl.join("template.json"),
@@ -250,11 +275,32 @@ mod tests {
         )
         .unwrap();
 
-        let (templates, warnings) = load_templates(&dir);
+        let (profiles, warnings) = load_profiles(&dir);
 
-        assert_eq!(templates.len(), 1);
-        assert_eq!(templates[0].version, 1);
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].version, 1);
         assert_eq!(warnings.len(), 1);
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn migrates_the_legacy_templates_file_to_profiles() {
+        let dir = temp_dir("legacy-profiles");
+        fs::write(
+            dir.join(LEGACY_PROFILES_FILE),
+            serde_json::json!({
+                "version": STORE_VERSION,
+                "templates": [{ "id": "backend", "name": "Backend" }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let (profiles, _) = load_profiles(&dir);
+
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].id, "backend");
+        assert!(dir.join(PROFILES_FILE).exists());
         fs::remove_dir_all(dir).ok();
     }
 }

@@ -1,6 +1,6 @@
 /**
  * Ficha de un modelo accesible desde las suscripciones configuradas. Es común
- * al selector del chat (catálogo del servidor) y al de templates (CLI y caché
+ * al selector del chat (catálogo del servidor) y al de perfiles (CLI y caché
  * de models.dev), para que ambos muestren la misma información.
  */
 export type ModelCost = {

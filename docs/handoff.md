@@ -551,3 +551,21 @@ multiwebview con soporte Wayland), screenshot/consola y captura de una región.
 - Pendiente de la fase 2: el modelo por defecto sigue entrando en la huella
   (hace de fallback del servidor); perfiles por sesión y agente; badge de
   «comparte servidor»; GC de contextos sin uso.
+
+## Estado tras renombrar templates a perfiles (fase 2)
+
+- Rust: `templates.rs` → `profiles.rs`; `ProfileManifest`, `ProfileLock`,
+  `Workspace.profileId/profileVersion`, `AppSettings.defaultProfileId`. Comandos
+  `list_profiles`, `save_profile`, `delete_profile`, `profile_agents_md`,
+  `save_profile_agents_md` y `reapply_profile`.
+- Persistencia: `profiles.json`, `profiles/<id>/profile.json` y
+  `profile.lock.json`. Al arrancar se migra `templates.json` (se reescribe) y el
+  directorio `templates/` (renombrado). Los manifiestos y locks antiguos se leen
+  como fallback.
+- Frontend: tipos y gateway `Profile*`, `profileId`, `defaultProfileId`, pestaña y
+  textos «Perfil/Perfiles». Las claves de preferencias siguen siendo
+  `opentemplates:*`.
+- Los assets de un perfil llevan `source: "profile"`; los locks antiguos conservan
+  `template` como etiqueta hasta reaplicar.
+- Verificación: `cargo test` 43 en verde (nuevos de migración de store y lock),
+  `cargo clippy -D warnings` limpio, `pnpm check` 616 tests en verde.

@@ -1,7 +1,8 @@
 # Modelo de perfiles, proyectos y workspaces
 
-> En el código estas piezas siguen llamándose `template`; el renombrado a **perfil**
-> es mecánico y puede hacerse en la misma migración del store.
+> El código ya usa **perfil** (`profile`) en tipos, comandos y persistencia. Los
+> datos anteriores (`templates.json`, `templates/`, `template.lock.json`,
+> `templateId`) se migran al arrancar y siguen leyéndose como fallback.
 
 ## Idea
 

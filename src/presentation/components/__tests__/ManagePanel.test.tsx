@@ -4,10 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { ManagePanel } from "../ManagePanel";
 import { AppProvider } from "../../context/AppContext";
 import { CompositionRoot } from "../../../CompositionRoot";
-import type { Library, Repo, TemplateManifest } from "../../../types";
+import type { Library, Repo, ProfileManifest } from "../../../types";
 
 // Caracterización de ManagePanel con los puertos fake inyectados por
-// CompositionRoot: repos, templates, ajustes, selector de carpetas y confirmación.
+// CompositionRoot: repos, perfiles, ajustes, selector de carpetas y confirmación.
 
 const repo: Repo = {
   id: "r1",
@@ -20,7 +20,7 @@ const repo: Repo = {
   updatedAt: 0,
 };
 
-const template: TemplateManifest = {
+const profile: ProfileManifest = {
   id: "plantilla",
   name: "Plantilla",
   description: "",
@@ -47,20 +47,20 @@ const library: Library = {
   mcps: [{ name: "mcp-a", config: { url: "http://a" }, source: "global" }],
 };
 
-function setup(templates: TemplateManifest[] = [template]) {
-  let stored = [...templates];
+function setup(profiles: ProfileManifest[] = [profile]) {
+  let stored = [...profiles];
   const reposList = vi.fn(async () => [repo]);
   const add = vi.fn(async () => repo);
   const refresh = vi.fn(async () => repo);
   const remove = vi.fn(async () => undefined);
-  const save = vi.fn(async (manifest: TemplateManifest) => {
+  const save = vi.fn(async (manifest: ProfileManifest) => {
     const saved = { ...manifest };
     stored = [saved];
     return saved;
   });
   const saveAgentsMd = vi.fn(async () => "");
   const list = vi.fn(async () => stored);
-  const deleteTemplate = vi.fn(async () => undefined);
+  const deleteProfile = vi.fn(async () => undefined);
   const agentsMd = vi.fn(async () => "# AGENTS");
   const saveSettings = vi.fn(async (settings: { worktreesRoot?: string | null }) => settings);
   const confirm = vi.fn(() => true);
@@ -86,11 +86,11 @@ function setup(templates: TemplateManifest[] = [template]) {
 
   const root = new CompositionRoot({
     repos: { list: reposList, add, refresh, remove } as never,
-    templates: {
+    profiles: {
       save,
       saveAgentsMd,
       list,
-      delete: deleteTemplate,
+      delete: deleteProfile,
       agentsMd,
     } as never,
     settings: { save: saveSettings } as never,
@@ -100,19 +100,19 @@ function setup(templates: TemplateManifest[] = [template]) {
   });
 
   const onReposChanged = vi.fn();
-  const onTemplatesChanged = vi.fn();
+  const onProfilesChanged = vi.fn();
   const onWorktreesRootChanged = vi.fn();
   render(
     <AppProvider root={root}>
       <ManagePanel
         repos={[repo]}
-        templates={templates}
+        profiles={profiles}
         library={library}
         workspaces={[]}
         worktreesRoot="/wt"
-        defaultTemplateId={null}
+        defaultProfileId={null}
         onReposChanged={onReposChanged}
-        onTemplatesChanged={onTemplatesChanged}
+        onProfilesChanged={onProfilesChanged}
         onWorktreesRootChanged={onWorktreesRootChanged}
         onClose={vi.fn()}
       />
@@ -128,13 +128,13 @@ function setup(templates: TemplateManifest[] = [template]) {
     save,
     saveAgentsMd,
     list,
-    deleteTemplate,
+    deleteProfile,
     agentsMd,
     saveSettings,
     confirm,
     pickDirectory,
     onReposChanged,
-    onTemplatesChanged,
+    onProfilesChanged,
     onWorktreesRootChanged,
   };
 }
@@ -164,19 +164,19 @@ describe("ManagePanel — repos", () => {
   });
 });
 
-describe("ManagePanel — templates", () => {
-  test("crea un template nuevo con id derivado del nombre y modelos normalizados", async () => {
+describe("ManagePanel — perfiles", () => {
+  test("crea un perfil nuevo con id derivado del nombre y modelos normalizados", async () => {
     const user = userEvent.setup();
-    const { save, saveAgentsMd, onTemplatesChanged } = setup();
+    const { save, saveAgentsMd, onProfilesChanged } = setup();
 
-    await user.click(screen.getByRole("button", { name: "Templates" }));
-    await user.click(screen.getByRole("button", { name: /Nuevo template/ }));
+    await user.click(screen.getByRole("button", { name: "Perfiles" }));
+    await user.click(screen.getByRole("button", { name: /Nuevo perfil/ }));
     await user.type(screen.getByLabelText("Nombre"), "Backend review");
-    const models = await screen.findByRole("combobox", { name: "Modelos del template" });
+    const models = await screen.findByRole("combobox", { name: "Modelos del perfil" });
     await user.click(models);
     await user.type(models, "claude");
     await user.click(await screen.findByRole("option", { name: /claude/ }));
-    await user.click(screen.getByRole("button", { name: "Guardar template" }));
+    await user.click(screen.getByRole("button", { name: "Guardar perfil" }));
 
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -187,22 +187,22 @@ describe("ManagePanel — templates", () => {
       }),
     );
     expect(saveAgentsMd).toHaveBeenCalledWith("backend-review", "");
-    expect(onTemplatesChanged).toHaveBeenCalledWith([
+    expect(onProfilesChanged).toHaveBeenCalledWith([
       expect.objectContaining({ id: "backend-review", name: "Backend review" }),
     ]);
-    expect(await screen.findByText(/Template guardado/)).toBeInTheDocument();
+    expect(await screen.findByText(/Profile guardado/)).toBeInTheDocument();
   });
 
   test("el selector de suscripción filtra los modelos disponibles", async () => {
     const user = userEvent.setup();
     setup();
 
-    await user.click(screen.getByRole("button", { name: "Templates" }));
+    await user.click(screen.getByRole("button", { name: "Perfiles" }));
     const subscription = await screen.findByRole("combobox", { name: "Suscripción" });
     await user.click(subscription);
     await user.click(await screen.findByRole("option", { name: "openai" }));
 
-    const models = await screen.findByRole("combobox", { name: "Modelos del template" });
+    const models = await screen.findByRole("combobox", { name: "Modelos del perfil" });
     await user.click(models);
 
     expect(await screen.findByRole("option", { name: /gpt \(openai\)/ })).toBeInTheDocument();
@@ -213,19 +213,19 @@ describe("ManagePanel — templates", () => {
     const user = userEvent.setup();
     const { save } = setup();
 
-    await user.click(screen.getByRole("button", { name: "Templates" }));
-    await user.click(screen.getByRole("button", { name: /Nuevo template/ }));
-    await user.click(screen.getByRole("button", { name: "Guardar template" }));
+    await user.click(screen.getByRole("button", { name: "Perfiles" }));
+    await user.click(screen.getByRole("button", { name: /Nuevo perfil/ }));
+    await user.click(screen.getByRole("button", { name: "Guardar perfil" }));
 
-    expect(screen.getByText("El template necesita un nombre.")).toBeInTheDocument();
+    expect(screen.getByText("El perfil necesita un nombre.")).toBeInTheDocument();
     expect(save).not.toHaveBeenCalled();
   });
 
-  test("seleccionar un template carga su AGENTS.md", async () => {
+  test("seleccionar un perfil carga su AGENTS.md", async () => {
     const user = userEvent.setup();
     setup();
 
-    await user.click(screen.getByRole("button", { name: "Templates" }));
+    await user.click(screen.getByRole("button", { name: "Perfiles" }));
     expect(await screen.findByDisplayValue("# AGENTS")).toBeInTheDocument();
     expect(screen.getByLabelText("Nombre")).toHaveValue("Plantilla");
   });
@@ -245,7 +245,7 @@ describe("ManagePanel — ajustes", () => {
     expect(saveSettings).toHaveBeenCalledWith({
       version: 2,
       worktreesRoot: "/nuevo/wt",
-      defaultTemplateId: null,
+      defaultProfileId: null,
     });
     expect(onWorktreesRootChanged).toHaveBeenCalledWith("/nuevo/wt");
     expect(await screen.findByText("Ajustes guardados.")).toBeInTheDocument();

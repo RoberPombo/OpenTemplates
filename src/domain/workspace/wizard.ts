@@ -55,19 +55,19 @@ export function canContinue(step: number, input: WizardStepInput): boolean {
   return true;
 }
 
-export function quickTemplateId(
+export function quickProfileId(
   name: string,
   existingIds: string[],
 ): { id: string } | { error: string } {
   if (!name.trim()) {
-    return { error: "Ponle un nombre al template." };
+    return { error: "Ponle un nombre al perfil." };
   }
   const id = slugify(name);
   if (!id) {
-    return { error: "El nombre del template no genera un identificador válido." };
+    return { error: "El nombre del perfil no genera un identificador válido." };
   }
   if (existingIds.includes(id)) {
-    return { error: `Ya existe un template con el id "${id}".` };
+    return { error: `Ya existe un perfil con el id "${id}".` };
   }
   return { id };
 }

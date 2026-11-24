@@ -48,6 +48,11 @@ Fase 1 entregada: huella, `contexts/<huella>`, servidores compartidos por huella
 refcount al parar/borrar y copia de la DB legada al contexto. El modelo por defecto
 todavía entra en la huella hasta que el perfil por sesión lo sustituya.
 
+Fase 2 entregada: el template pasa a llamarse **perfil** en tipos, comandos, UI y
+persistencia (`profiles.json`, `profiles/<id>/`, `profile.lock.json`,
+`profileId`). La migración lee `templates.json`, `templates/` y `template.lock.json`
+como fallback y reescribe el formato nuevo.
+
 ## Qué queda
 
 Dentro del producto actual, por orden de valor:

@@ -436,7 +436,7 @@ export function Inspector({
               disabled={savingMcp !== null}
               title={
                 action === "connect"
-                  ? `Conectar ${name} sin reaplicar el template`
+                  ? `Conectar ${name} sin reaplicar el perfil`
                   : `Desconectar ${name} sin borrar su configuración`
               }
               onClick={() => void toggleMcpRuntime(name, action)}
@@ -800,7 +800,7 @@ export function Inspector({
             </h3>
             {mcpNames.length === 0 && (
               <p className="inspector-empty">
-                Ningún MCP en este workspace. Se añaden desde Ajustes o desde el template.
+                Ningún MCP en este workspace. Se añaden desde Ajustes o desde el perfil.
               </p>
             )}
             {mcpNames.map((name) => mcpRow(name))}
@@ -815,7 +815,7 @@ export function Inspector({
             </h3>
             {activeSkills.length === 0 && (
               <p className="inspector-empty">
-                Ninguna skill en este workspace. Se añaden desde Ajustes o desde el template.
+                Ninguna skill en este workspace. Se añaden desde Ajustes o desde el perfil.
               </p>
             )}
             {activeSkills.map((skill) => skillRow(skill))}

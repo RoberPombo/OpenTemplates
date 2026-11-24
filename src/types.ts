@@ -25,8 +25,8 @@ export type Workspace = {
   mode: WorkspaceMode;
   branch?: string | null;
   worktreePath?: string | null;
-  templateId?: string | null;
-  templateVersion?: number | null;
+  profileId?: string | null;
+  profileVersion?: number | null;
   issue?: IssueRef | null;
   mcpNames: string[];
   disabledMcps: string[];
@@ -55,7 +55,7 @@ export type Repo = {
   updatedAt: number;
 };
 
-export type TemplateManifest = {
+export type ProfileManifest = {
   id: string;
   name: string;
   description: string;
@@ -106,7 +106,7 @@ export type Library = {
 export type AppSettings = {
   version: number;
   worktreesRoot?: string | null;
-  defaultTemplateId?: string | null;
+  defaultProfileId?: string | null;
 };
 
 export type ServerInfo = {
@@ -148,7 +148,7 @@ export type ResourceUsage = {
 export type Bootstrap = {
   workspaces: Workspace[];
   repos: Repo[];
-  templates: TemplateManifest[];
+  profiles: ProfileManifest[];
   settings: AppSettings;
   worktreesRoot: string;
   running: ServerInfo[];
@@ -169,7 +169,7 @@ export type CreateWorkspaceInput = {
   name: string;
   repoId?: string | null;
   projectPath?: string | null;
-  templateId?: string | null;
+  profileId?: string | null;
   mode?: WorkspaceMode;
   branch?: string | null;
   base?: string | null;

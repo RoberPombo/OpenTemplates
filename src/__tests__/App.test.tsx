@@ -126,7 +126,7 @@ const bootstrap: Bootstrap = {
       updatedAt: 0,
     },
   ],
-  templates: [],
+  profiles: [],
   settings: { version: 1 },
   worktreesRoot: "/wt",
   running: [],
@@ -333,7 +333,7 @@ describe("App — creación y gestión", () => {
     const user = userEvent.setup();
     renderApp();
     await screen.findByText("Primero");
-    await user.click(screen.getByText("Repos y templates"));
+    await user.click(screen.getByText("Repos y perfiles"));
     expect(screen.getByText("close-manage")).toBeInTheDocument();
     await user.click(screen.getByText("close-manage"));
     expect(screen.queryByText("close-manage")).toBeNull();

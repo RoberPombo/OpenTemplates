@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::model::{AppSettings, Repo, TemplateManifest, Workspace};
+use crate::model::{AppSettings, ProfileManifest, Repo, Workspace};
 use crate::server::ServerHandle;
 use crate::store;
 
@@ -11,7 +11,7 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub workspaces: Mutex<Vec<Workspace>>,
     pub repos: Mutex<Vec<Repo>>,
-    pub templates: Mutex<Vec<TemplateManifest>>,
+    pub profiles: Mutex<Vec<ProfileManifest>>,
     pub settings: Mutex<AppSettings>,
     pub servers: Mutex<HashMap<String, ServerHandle>>,
     pub notices: Mutex<Vec<String>>,
@@ -21,22 +21,22 @@ impl AppState {
     pub fn load(data_dir: PathBuf) -> Self {
         let (workspaces, mut notices) = store::load_workspaces(&data_dir);
         let repos = store::load_repos(&data_dir);
-        let (templates, template_notices) = store::load_templates(&data_dir);
-        notices.extend(template_notices);
+        let (profiles, profile_notices) = store::load_profiles(&data_dir);
+        notices.extend(profile_notices);
         let settings = store::load_settings(&data_dir);
         Self {
             data_dir,
             workspaces: Mutex::new(workspaces),
             repos: Mutex::new(repos),
-            templates: Mutex::new(templates),
+            profiles: Mutex::new(profiles),
             settings: Mutex::new(settings),
             servers: Mutex::new(HashMap::new()),
             notices: Mutex::new(notices),
         }
     }
 
-    pub fn templates_root(&self) -> PathBuf {
-        crate::templates::templates_dir(&self.data_dir)
+    pub fn profiles_root(&self) -> PathBuf {
+        crate::profiles::profiles_dir(&self.data_dir)
     }
 
     /// Raíz configurable de worktrees; por defecto `<appdata>/worktrees`.
@@ -62,8 +62,8 @@ impl AppState {
             .map_err(|_| "estado bloqueado")?
             .clone();
         let repos = self.repos.lock().map_err(|_| "estado bloqueado")?.clone();
-        let templates = self
-            .templates
+        let profiles = self
+            .profiles
             .lock()
             .map_err(|_| "estado bloqueado")?
             .clone();
@@ -75,7 +75,7 @@ impl AppState {
 
         store::save_workspaces(&self.data_dir, &workspaces)?;
         store::save_repos(&self.data_dir, &repos)?;
-        store::save_templates(&self.data_dir, &templates)?;
+        store::save_profiles(&self.data_dir, &profiles)?;
         store::save_settings(&self.data_dir, &settings)?;
         Ok(())
     }

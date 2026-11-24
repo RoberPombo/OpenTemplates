@@ -8,14 +8,7 @@ import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { groupWorkspacesByRepo } from "../../domain/workspace/grouping";
 import { prefKeys } from "../../domain/repositories/Preferences";
-import type {
-  Bootstrap,
-  Library,
-  Repo,
-  ServerInfo,
-  TemplateManifest,
-  Workspace,
-} from "../../types";
+import type { Bootstrap, Library, Repo, ServerInfo, ProfileManifest, Workspace } from "../../types";
 
 const EMPTY_LIBRARY: Library = {
   agents: [],
@@ -46,7 +39,7 @@ export function useWorkspaces() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [repos, setRepos] = useState<Repo[]>([]);
-  const [templates, setTemplates] = useState<TemplateManifest[]>([]);
+  const [profiles, setProfiles] = useState<ProfileManifest[]>([]);
   const [library, setLibrary] = useState<Library>(EMPTY_LIBRARY);
   const [worktreesRoot, setWorktreesRoot] = useState("");
   const [running, setRunning] = useState<Record<string, ServerInfo>>({});
@@ -90,7 +83,7 @@ export function useWorkspaces() {
       setBoot(bootstrap);
       setWorkspaces(bootstrap.workspaces);
       setRepos(bootstrap.repos);
-      setTemplates(bootstrap.templates);
+      setProfiles(bootstrap.profiles);
       setWorktreesRoot(bootstrap.worktreesRoot);
       setRunning(
         Object.fromEntries(bootstrap.running.map((server) => [server.workspaceId, server])),
@@ -245,7 +238,7 @@ export function useWorkspaces() {
     boot,
     workspaces,
     repos,
-    templates,
+    profiles,
     library,
     worktreesRoot,
     running,
@@ -266,7 +259,7 @@ export function useWorkspaces() {
     created,
     setNotice,
     setRepos,
-    setTemplates,
+    setProfiles,
     setWorktreesRoot,
   };
 }

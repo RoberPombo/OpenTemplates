@@ -5,8 +5,8 @@ use serde_json::{Map, Value, json};
 use walkdir::WalkDir;
 
 use crate::library;
-use crate::model::{McpInfo, SkillRef, TemplateLock, Workspace};
-use crate::templates;
+use crate::model::{McpInfo, ProfileLock, SkillRef, Workspace};
+use crate::profiles;
 
 pub fn global_config_dir() -> PathBuf {
     dirs::config_dir()
@@ -90,7 +90,7 @@ pub fn list_mcps() -> Vec<McpInfo> {
 /// Config aislada del workspace antes de escribirla a disco.
 pub fn render_config(
     workspace: &Workspace,
-    lock: Option<&TemplateLock>,
+    lock: Option<&ProfileLock>,
     global: &Value,
 ) -> (Value, Vec<String>) {
     let mut warnings = Vec::new();
@@ -196,7 +196,7 @@ pub fn render_config(
     }
     root["permissions"] = Value::Array(permissions);
 
-    // El modelo por defecto del template se escribe en la config para que lo hereden
+    // El modelo por defecto del perfil se escribe en la config para que lo hereden
     // los agentes que no tengan uno asignado.
     let model = match lock {
         Some(lock) => lock.model.clone().or_else(|| lock.models.first().cloned()),
@@ -354,14 +354,14 @@ pub fn build_agents_md(
 ) -> String {
     let mut sections: Vec<String> = Vec::new();
     sections.push(
-        "# AGENTS.md combinado\n\n<!-- Generado por OpenTemplates. No editar a mano: se regenera al arrancar o al reaplicar el template. -->".into(),
+        "# AGENTS.md combinado\n\n<!-- Generado por OpenTemplates. No editar a mano: se regenera al arrancar o al reaplicar el perfil. -->".into(),
     );
     if let Some(global) = global_md.filter(|text| !text.trim().is_empty()) {
         sections.push(format!("## Instrucciones globales\n\n{}", global.trim()));
     }
     if let Some(template) = template_md.filter(|text| !text.trim().is_empty()) {
         sections.push(format!(
-            "## Instrucciones del template\n\n{}",
+            "## Instrucciones del perfil\n\n{}",
             template.trim()
         ));
     }
@@ -415,7 +415,7 @@ pub struct Plan {
     pub config: Value,
     pub agents_md: String,
     pub warnings: Vec<String>,
-    pub lock: Option<TemplateLock>,
+    pub lock: Option<ProfileLock>,
     pub global_dir: PathBuf,
 }
 
@@ -427,7 +427,7 @@ pub fn plan(
     global_dir: &Path,
     global_config: &Value,
 ) -> Plan {
-    let lock = templates::read_lock(workspace_dir);
+    let lock = profiles::read_lock(workspace_dir);
     let (mut root, warnings) = render_config(workspace, lock.as_ref(), global_config);
 
     let allowed: Vec<String> = match &lock {
@@ -652,20 +652,20 @@ mod tests {
 
     #[test]
     fn uses_the_frozen_lock_for_mcps_skills_and_assets() {
-        let lock = TemplateLock {
-            template_id: Some("backend".into()),
-            template_version: Some(4),
+        let lock = ProfileLock {
+            profile_id: Some("backend".into()),
+            profile_version: Some(4),
             frozen_at: 0,
             agents: vec![AssetRef {
                 id: "reviewer".into(),
                 path: "/tpl/agents/reviewer.md".into(),
-                source: "template".into(),
+                source: "profile".into(),
             }],
             commands: vec![],
             plugins: vec![AssetRef {
                 id: "guard".into(),
                 path: "/tpl/plugins/guard.ts".into(),
-                source: "template".into(),
+                source: "profile".into(),
             }],
             skills: vec![SkillRef {
                 id: "testing".into(),
@@ -705,9 +705,9 @@ mod tests {
 
     #[test]
     fn default_model_applies_when_the_agent_has_none() {
-        let lock = TemplateLock {
+        let lock = ProfileLock {
             models: vec!["first/model".into(), "second/model".into()],
-            ..TemplateLock::default()
+            ..ProfileLock::default()
         };
         let global = json!({});
 
@@ -715,7 +715,7 @@ mod tests {
 
         assert_eq!(config["model"], "first/model");
 
-        let with_default = TemplateLock {
+        let with_default = ProfileLock {
             model: Some("second/model".into()),
             ..lock
         };
@@ -749,7 +749,7 @@ mod tests {
         let root = temp_dir("materialize");
         let global_dir = root.join("global");
         let workspace_dir = root.join("ws");
-        let templates_root = root.join("templates");
+        let profiles_root = root.join("profiles");
         let project = root.join("project");
         for dir in [&global_dir, &workspace_dir, &project] {
             fs::create_dir_all(dir).unwrap();
@@ -763,26 +763,26 @@ mod tests {
         std::os::unix::fs::symlink(global_dir.join("AGENTS.md"), config_dir.join("AGENTS.md"))
             .unwrap();
 
-        let agent_file = templates_root.join("backend/agents/reviewer.md");
-        let plugin_file = templates_root.join("backend/plugins/guard.ts");
+        let agent_file = profiles_root.join("backend/agents/reviewer.md");
+        let plugin_file = profiles_root.join("backend/plugins/guard.ts");
         fs::create_dir_all(agent_file.parent().unwrap()).unwrap();
         fs::create_dir_all(plugin_file.parent().unwrap()).unwrap();
         fs::write(&agent_file, "# reviewer").unwrap();
         fs::write(&plugin_file, "export {}").unwrap();
-        let lock = TemplateLock {
-            template_id: Some("backend".into()),
-            template_version: Some(1),
+        let lock = ProfileLock {
+            profile_id: Some("backend".into()),
+            profile_version: Some(1),
             frozen_at: 0,
             agents: vec![AssetRef {
                 id: "reviewer".into(),
                 path: agent_file.to_string_lossy().to_string(),
-                source: "template".into(),
+                source: "profile".into(),
             }],
             commands: vec![],
             plugins: vec![AssetRef {
                 id: "guard".into(),
                 path: plugin_file.to_string_lossy().to_string(),
-                source: "template".into(),
+                source: "profile".into(),
             }],
             skills: vec![],
             mcps: BTreeMap::new(),
@@ -790,9 +790,9 @@ mod tests {
             model: None,
             tools: None,
             permissions: vec![],
-            agents_md: Some("instrucciones del template".into()),
+            agents_md: Some("instrucciones del perfil".into()),
         };
-        templates::write_lock(&workspace_dir, &lock).unwrap();
+        profiles::write_lock(&workspace_dir, &lock).unwrap();
 
         let workspace = Workspace {
             project_path: project.to_string_lossy().to_string(),
@@ -812,7 +812,7 @@ mod tests {
         assert!(!meta.file_type().is_symlink());
         let combined = fs::read_to_string(&materialized.agents_path).unwrap();
         assert!(combined.contains("global original"));
-        assert!(combined.contains("instrucciones del template"));
+        assert!(combined.contains("instrucciones del perfil"));
         assert!(combined.contains("instrucciones del repo"));
 
         assert!(config_dir.join("agents/reviewer.md").is_file());

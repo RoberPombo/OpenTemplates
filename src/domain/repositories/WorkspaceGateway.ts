@@ -20,7 +20,7 @@ export interface WorkspaceGateway {
     disabledMcps: string[];
     disabledSkills: string[];
   }): Promise<ConfigOutcome>;
-  reapplyTemplate(id: string): Promise<ConfigOutcome>;
+  reapplyProfile(id: string): Promise<ConfigOutcome>;
   delete(
     id: string,
     options?: { removeWorktree?: boolean; force?: boolean; deleteDb?: boolean },

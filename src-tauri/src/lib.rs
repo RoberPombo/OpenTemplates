@@ -7,11 +7,11 @@ mod library;
 mod model;
 mod preview;
 mod process;
+mod profiles;
 mod resources;
 mod server;
 mod state;
 mod store;
-mod templates;
 
 use std::path::Path;
 
@@ -68,15 +68,15 @@ pub fn run() {
             commands::add_repo,
             commands::refresh_repo,
             commands::remove_repo,
-            commands::list_templates,
-            commands::save_template,
-            commands::delete_template,
-            commands::template_agents_md,
-            commands::save_template_agents_md,
+            commands::list_profiles,
+            commands::save_profile,
+            commands::delete_profile,
+            commands::profile_agents_md,
+            commands::save_profile_agents_md,
             commands::create_workspace,
             commands::update_workspace,
             commands::set_workspace_disabled,
-            commands::reapply_template,
+            commands::reapply_profile,
             commands::delete_workspace,
             commands::start_workspace,
             commands::stop_workspace,

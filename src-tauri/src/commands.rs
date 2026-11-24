@@ -11,13 +11,13 @@ use crate::library;
 use crate::model::{
     AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, GhStatus,
     GitCommitResult, GitCommitSummary, GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost,
-    ModelDetail, ModelLimit, PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo,
-    SkillRef, TemplateManifest, Workspace, WorkspaceMode, WorktreeStatus,
+    ModelDetail, ModelLimit, ProfileManifest, PullRequestCheck, PullRequestInfo, Repo, ServerInfo,
+    SkillInfo, SkillRef, Workspace, WorkspaceMode, WorktreeStatus,
 };
 use crate::preview::{self, PreviewProbe};
+use crate::profiles;
 use crate::server::{self, ServerHandle};
 use crate::state::{AppState, ensure_workspace_dir, expand_tilde};
-use crate::templates;
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -247,12 +247,12 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
         .lock()
         .map(|items| items.clone())
         .unwrap_or_default();
-    let mut templates = state
-        .templates
+    let mut profiles = state
+        .profiles
         .lock()
         .map(|items| items.clone())
         .unwrap_or_default();
-    templates.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    profiles.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     let settings = state
         .settings
         .lock()
@@ -269,7 +269,7 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
     Bootstrap {
         workspaces,
         repos,
-        templates,
+        profiles,
         settings,
         worktrees_root,
         running,
@@ -518,10 +518,10 @@ pub fn remove_repo(state: State<'_, AppState>, id: String) -> Result<(), String>
 // Templates
 // ---------------------------------------------------------------------------
 
-fn normalize_template_id(raw: &str) -> Result<String, String> {
+fn normalize_profile_id(raw: &str) -> Result<String, String> {
     let id = raw.trim();
     if id.is_empty() || id == "." || id == ".." {
-        return Err("El template necesita un identificador".into());
+        return Err("El perfil necesita un identificador".into());
     }
     if !id
         .chars()
@@ -529,7 +529,7 @@ fn normalize_template_id(raw: &str) -> Result<String, String> {
         || id.contains("..")
     {
         return Err(
-            "El identificador del template solo admite letras, números, guiones, guiones bajos y puntos"
+            "El identificador del perfil solo admite letras, números, guiones, guiones bajos y puntos"
                 .into(),
         );
     }
@@ -537,26 +537,26 @@ fn normalize_template_id(raw: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn list_templates(state: State<'_, AppState>) -> Vec<TemplateManifest> {
+pub fn list_profiles(state: State<'_, AppState>) -> Vec<ProfileManifest> {
     let mut items = state
-        .templates
+        .profiles
         .lock()
-        .map(|templates| templates.clone())
+        .map(|profiles| profiles.clone())
         .unwrap_or_default();
     items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     items
 }
 
 #[tauri::command]
-pub fn save_template(
+pub fn save_profile(
     state: State<'_, AppState>,
-    manifest: TemplateManifest,
-) -> Result<TemplateManifest, String> {
+    manifest: ProfileManifest,
+) -> Result<ProfileManifest, String> {
     let mut manifest = manifest;
-    manifest.id = normalize_template_id(&manifest.id)?;
+    manifest.id = normalize_profile_id(&manifest.id)?;
     manifest.name = manifest.name.trim().to_string();
     if manifest.name.is_empty() {
-        return Err("El template necesita un nombre".into());
+        return Err("El perfil necesita un nombre".into());
     }
     manifest.version = manifest.version.max(1);
     let mut models: Vec<String> = Vec::new();
@@ -579,17 +579,17 @@ pub fn save_template(
     if manifest.model.is_none() {
         manifest.model = manifest.models.first().cloned();
     }
-    let root = state.templates_root();
-    let existing = templates::read_manifest(&root, &manifest.id);
+    let root = state.profiles_root();
+    let existing = profiles::read_manifest(&root, &manifest.id);
     manifest.created_at = existing
         .as_ref()
         .map(|item| item.created_at)
         .unwrap_or_else(now_ms);
     manifest.updated_at = now_ms();
-    templates::save_manifest(&root, &manifest)?;
+    profiles::save_manifest(&root, &manifest)?;
 
     {
-        let mut stored = state.templates.lock().map_err(|_| "estado bloqueado")?;
+        let mut stored = state.profiles.lock().map_err(|_| "estado bloqueado")?;
         match stored.iter_mut().find(|item| item.id == manifest.id) {
             Some(item) => *item = manifest.clone(),
             None => stored.push(manifest.clone()),
@@ -601,27 +601,27 @@ pub fn save_template(
 }
 
 #[tauri::command]
-pub fn delete_template(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    templates::remove_template_dir(&state.templates_root(), &id)?;
+pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    profiles::remove_profile_dir(&state.profiles_root(), &id)?;
     {
-        let mut stored = state.templates.lock().map_err(|_| "estado bloqueado")?;
+        let mut stored = state.profiles.lock().map_err(|_| "estado bloqueado")?;
         stored.retain(|item| item.id != id);
     }
     state.save()
 }
 
 #[tauri::command]
-pub fn template_agents_md(state: State<'_, AppState>, id: String) -> String {
-    templates::read_agents_md(&state.templates_root(), &id)
+pub fn profile_agents_md(state: State<'_, AppState>, id: String) -> String {
+    profiles::read_agents_md(&state.profiles_root(), &id)
 }
 
 #[tauri::command]
-pub fn save_template_agents_md(
+pub fn save_profile_agents_md(
     state: State<'_, AppState>,
     id: String,
     content: String,
 ) -> Result<String, String> {
-    templates::write_agents_md(&state.templates_root(), &id, &content)?;
+    profiles::write_agents_md(&state.profiles_root(), &id, &content)?;
     Ok(content)
 }
 
@@ -654,17 +654,17 @@ pub fn create_workspace(
     }
 
     let mut warnings: Vec<String> = Vec::new();
-    let templates_root = state.templates_root();
-    let manifest = match input.template_id.as_deref().filter(|id| !id.is_empty()) {
+    let profiles_root = state.profiles_root();
+    let manifest = match input.profile_id.as_deref().filter(|id| !id.is_empty()) {
         Some(id) => Some(
             state
-                .templates
+                .profiles
                 .lock()
                 .map_err(|_| "estado bloqueado")?
                 .iter()
                 .find(|template| template.id == id)
                 .cloned()
-                .ok_or_else(|| format!("El template '{id}' no existe"))?,
+                .ok_or_else(|| format!("El perfil '{id}' no existe"))?,
         ),
         None => None,
     };
@@ -790,8 +790,8 @@ pub fn create_workspace(
         worktree_path: worktree_path
             .as_ref()
             .map(|path| path.to_string_lossy().to_string()),
-        template_id: manifest.as_ref().map(|manifest| manifest.id.clone()),
-        template_version: None,
+        profile_id: manifest.as_ref().map(|manifest| manifest.id.clone()),
+        profile_version: None,
         issue: input.issue.clone(),
         mcp_names: input.mcp_names.clone(),
         disabled_mcps: Vec::new(),
@@ -810,10 +810,10 @@ pub fn create_workspace(
 
     let workspace_dir = ensure_workspace_dir(&state.data_dir, &id);
     let lock = if let Some(manifest) = &manifest {
-        match templates::freeze(manifest, &templates_root) {
+        match profiles::freeze(manifest, &profiles_root) {
             Ok((lock, freeze_warnings)) => {
                 warnings.extend(freeze_warnings);
-                workspace.template_version = Some(manifest.version);
+                workspace.profile_version = Some(manifest.version);
                 workspace.mcp_names = manifest.mcps.clone();
                 workspace.skills = lock.skills.clone();
                 workspace.agents = lock.agents.clone();
@@ -832,7 +832,7 @@ pub fn create_workspace(
         None
     };
     if let Some(lock) = &lock
-        && let Err(err) = templates::write_lock(&workspace_dir, lock)
+        && let Err(err) = profiles::write_lock(&workspace_dir, lock)
     {
         rollback_worktree(&repo, &worktree_path);
         return Err(err);
@@ -903,19 +903,19 @@ pub fn update_workspace(
     let mut warnings = Vec::new();
 
     // El lock congela la definición de los MCPs y la selección de skills.
-    if let Some(mut lock) = templates::read_lock(&workspace_dir) {
+    if let Some(mut lock) = profiles::read_lock(&workspace_dir) {
         let global = config::list_mcps();
-        let (mcps, mcp_warnings) = templates::resolve_mcps(
+        let (mcps, mcp_warnings) = profiles::resolve_mcps(
             &workspace.mcp_names,
-            workspace.template_id.as_deref(),
-            &state.templates_root(),
+            workspace.profile_id.as_deref(),
+            &state.profiles_root(),
             &global,
         );
         lock.mcps = mcps;
         lock.skills = workspace.skills.clone();
         lock.model = workspace.model.clone();
         warnings.extend(mcp_warnings);
-        templates::write_lock(&workspace_dir, &lock)?;
+        profiles::write_lock(&workspace_dir, &lock)?;
     }
 
     let (workspace, materialized) = materialize_and_remember(&state, &workspace, &workspace_dir)?;
@@ -959,7 +959,7 @@ pub fn set_workspace_disabled(
 }
 
 #[tauri::command]
-pub fn reapply_template(state: State<'_, AppState>, id: String) -> Result<ConfigOutcome, String> {
+pub fn reapply_profile(state: State<'_, AppState>, id: String) -> Result<ConfigOutcome, String> {
     let workspace = {
         let workspaces = state.workspaces.lock().map_err(|_| "estado bloqueado")?;
         workspaces
@@ -968,22 +968,22 @@ pub fn reapply_template(state: State<'_, AppState>, id: String) -> Result<Config
             .cloned()
             .ok_or_else(|| format!("Workspace '{id}' no existe"))?
     };
-    let template_id = workspace
-        .template_id
+    let profile_id = workspace
+        .profile_id
         .clone()
-        .ok_or("Este workspace no usa ningún template")?;
+        .ok_or("Este workspace no usa ningún perfil")?;
     let manifest = state
-        .templates
+        .profiles
         .lock()
         .map_err(|_| "estado bloqueado")?
         .iter()
-        .find(|template| template.id == template_id)
+        .find(|template| template.id == profile_id)
         .cloned()
-        .ok_or_else(|| format!("El template '{template_id}' ya no existe"))?;
+        .ok_or_else(|| format!("El perfil '{profile_id}' ya no existe"))?;
 
     let workspace_dir = ensure_workspace_dir(&state.data_dir, &id);
-    let (lock, mut warnings) = templates::freeze(&manifest, &state.templates_root())?;
-    templates::write_lock(&workspace_dir, &lock)?;
+    let (lock, mut warnings) = profiles::freeze(&manifest, &state.profiles_root())?;
+    profiles::write_lock(&workspace_dir, &lock)?;
 
     let refreshed = {
         let mut workspaces = state.workspaces.lock().map_err(|_| "estado bloqueado")?;
@@ -996,7 +996,7 @@ pub fn reapply_template(state: State<'_, AppState>, id: String) -> Result<Config
         workspace.agents = lock.agents.clone();
         workspace.commands = lock.commands.clone();
         workspace.plugins = lock.plugins.clone();
-        workspace.template_version = Some(manifest.version);
+        workspace.profile_version = Some(manifest.version);
         workspace.model = lock.model.clone();
         workspace.models = lock.models.clone();
         workspace.updated_at = now_ms();

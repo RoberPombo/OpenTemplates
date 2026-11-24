@@ -184,7 +184,7 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
     setError(null);
     setWarnings([]);
     try {
-      const outcome = await root.workspaces.reapplyTemplate(workspace.id);
+      const outcome = await root.workspaces.reapplyProfile(workspace.id);
       setSelectedMcps(new Set(outcome.workspace.mcpNames));
       setSelectedSkills(new Map(outcome.workspace.skills.map((skill) => [skill.id, skill])));
       setModel(outcome.workspace.model ?? "");
@@ -254,20 +254,20 @@ export function SettingsPanel({ workspace, client, onUpdated, onClose }: Props) 
 
         {tab === "workspace" && (
           <div className="settings-body">
-            {workspace.templateId && (
+            {workspace.profileId && (
               <section>
                 <div className="section-head">
-                  <h3>Template</h3>
+                  <h3>Perfil</h3>
                   <span className="muted">
-                    {workspace.templateId} · v{workspace.templateVersion ?? "?"}
+                    {workspace.profileId} · v{workspace.profileVersion ?? "?"}
                   </span>
                 </div>
                 <p className="muted small-text">
                   La selección está congelada por workspace. Reaplicar toma la versión actual del
-                  template; editar el template no cambia este workspace por sí solo.
+                  perfil; editar el perfil no cambia este workspace por sí solo.
                 </p>
                 <button className="ghost" onClick={() => void reapply()} disabled={reapplying}>
-                  {reapplying ? "Reaplicando…" : "Reaplicar template"}
+                  {reapplying ? "Reaplicando…" : "Reaplicar perfil"}
                 </button>
               </section>
             )}

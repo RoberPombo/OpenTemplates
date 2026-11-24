@@ -68,9 +68,9 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "workspace.create",
     label: "Nuevo workspace",
-    description: "Crear un workspace desde un repositorio y un template.",
+    description: "Crear un workspace desde un repositorio y un perfil.",
     group: "Workspace",
-    keywords: ["crear", "nuevo", "repositorio", "template", "wizard"],
+    keywords: ["crear", "nuevo", "repositorio", "perfil", "wizard"],
     requires: "always",
   },
   {
@@ -92,7 +92,7 @@ const DEFINITIONS: readonly Definition[] = [
   {
     id: "workspace.settings",
     label: "Ajustes del workspace",
-    description: "Revisar template, MCPs, skills, modelo y presupuesto.",
+    description: "Revisar perfil, MCPs, skills, modelo y presupuesto.",
     group: "Workspace",
     keywords: ["ajustes", "configurar", "configuración", "preferencias", "mcps", "skills"],
     requires: "workspace",

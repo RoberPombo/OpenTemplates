@@ -25,7 +25,7 @@ function App() {
     boot,
     workspaces,
     repos,
-    templates,
+    profiles,
     library,
     worktreesRoot,
     running,
@@ -46,7 +46,7 @@ function App() {
     markUnseen,
     setNotice,
     setRepos,
-    setTemplates,
+    setProfiles,
     setWorktreesRoot,
   } = useWorkspaces();
   const [creating, setCreating] = useState(false);
@@ -141,13 +141,13 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [paletteOpen, runPaletteAction]);
 
-  const templateName = useMemo(() => {
-    if (!selected?.templateId) return null;
-    const template = templates.find((item) => item.id === selected.templateId);
-    return template
-      ? `${template.name} · v${selected.templateVersion ?? template.version}`
-      : selected.templateId;
-  }, [selected?.templateId, selected?.templateVersion, templates]);
+  const profileName = useMemo(() => {
+    if (!selected?.profileId) return null;
+    const profile = profiles.find((item) => item.id === selected.profileId);
+    return profile
+      ? `${profile.name} · v${selected.profileVersion ?? profile.version}`
+      : selected.profileId;
+  }, [selected?.profileId, selected?.profileVersion, profiles]);
 
   const selectedRepoPath = useMemo(() => {
     if (!selected?.repoId) return null;
@@ -251,7 +251,7 @@ function App() {
             )}
           </Button>
           <Button variant="ghost" className="sidebar-link" onClick={() => setManaging(true)}>
-            Repos y templates
+            Repos y perfiles
           </Button>
           {boot.error ? (
             <span className="danger-text">{boot.error}</span>
@@ -275,7 +275,7 @@ function App() {
           <WorkspaceView
             key={selected.id}
             workspace={selected}
-            templateName={templateName}
+            profileName={profileName}
             server={running[selected.id]}
             starting={startingId === selected.id}
             onStart={() => void start(selected.id)}
@@ -291,8 +291,8 @@ function App() {
             <div className="start-card">
               <h2>Workspaces aislados sobre opencode</h2>
               <p className="muted">
-                Cada workspace arranca su propio servidor con la configuración, el template, los
-                MCPs, las skills y las sesiones que le asignes. Los demás no se enteran.
+                Cada workspace arranca su propio servidor con la configuración, el perfil, los MCPs,
+                las skills y las sesiones que le asignes. Los demás no se enteran.
               </p>
               <Button variant="primary" onClick={() => setCreating(true)}>
                 Crear el primero
@@ -305,13 +305,13 @@ function App() {
       {creating && (
         <CreateWorkspace
           repos={repos}
-          templates={templates}
+          profiles={profiles}
           library={library}
           workspaces={workspaces}
           worktreesRoot={worktreesRoot}
           onClose={() => setCreating(false)}
           onRepoAdded={(repo) => setRepos((prev) => [...prev, repo])}
-          onTemplateSaved={(template) => setTemplates((prev) => [...prev, template])}
+          onProfileSaved={(profile) => setProfiles((prev) => [...prev, profile])}
           onCreated={(workspace, warnings, startNow) => {
             created(workspace, warnings, startNow);
             setCreating(false);
@@ -322,13 +322,13 @@ function App() {
       {managing && (
         <ManagePanel
           repos={repos}
-          templates={templates}
+          profiles={profiles}
           library={library}
           workspaces={workspaces}
           worktreesRoot={worktreesRoot}
-          defaultTemplateId={boot.settings.defaultTemplateId}
+          defaultProfileId={boot.settings.defaultProfileId}
           onReposChanged={setRepos}
-          onTemplatesChanged={setTemplates}
+          onProfilesChanged={setProfiles}
           onWorktreesRootChanged={setWorktreesRoot}
           onClose={() => setManaging(false)}
         />

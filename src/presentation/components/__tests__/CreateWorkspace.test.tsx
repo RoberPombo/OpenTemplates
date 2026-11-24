@@ -5,7 +5,7 @@ import { CreateWorkspace } from "../CreateWorkspace";
 import { AppProvider } from "../../context/AppContext";
 import { CompositionRoot } from "../../../CompositionRoot";
 import { makeWorkspace } from "../../../tests/fakes";
-import type { Library, Repo, TemplateManifest, Workspace } from "../../../types";
+import type { Library, Repo, ProfileManifest, Workspace } from "../../../types";
 
 const repo: Repo = {
   id: "r1",
@@ -18,7 +18,7 @@ const repo: Repo = {
   updatedAt: 0,
 };
 
-const template: TemplateManifest = {
+const profile: ProfileManifest = {
   id: "plantilla",
   name: "Plantilla",
   description: "",
@@ -44,10 +44,10 @@ function setup(workspaces: Workspace[] = []) {
     agentsPath: "/agents",
     warnings: ["aviso"],
   }));
-  const saveTemplate = vi.fn(async (manifest: TemplateManifest) => manifest);
+  const saveProfile = vi.fn(async (manifest: ProfileManifest) => manifest);
   const root = new CompositionRoot({
     workspaces: { create } as never,
-    templates: { save: saveTemplate } as never,
+    profiles: { save: saveProfile } as never,
     folderPicker: { pickDirectory: vi.fn(async () => "/carpeta") },
   });
   const onCreated = vi.fn();
@@ -55,18 +55,18 @@ function setup(workspaces: Workspace[] = []) {
     <AppProvider root={root}>
       <CreateWorkspace
         repos={[repo]}
-        templates={[template]}
+        profiles={[profile]}
         library={library}
         workspaces={workspaces}
         worktreesRoot="/wt"
         onClose={vi.fn()}
         onRepoAdded={vi.fn()}
-        onTemplateSaved={vi.fn()}
+        onProfileSaved={vi.fn()}
         onCreated={onCreated}
       />
     </AppProvider>,
   );
-  return { create, saveTemplate, onCreated };
+  return { create, saveProfile, onCreated };
 }
 
 async function goToNameStep(user: ReturnType<typeof userEvent.setup>) {
@@ -75,7 +75,7 @@ async function goToNameStep(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("CreateWorkspace — wizard", () => {
-  test("camino feliz: repo → template → nombre → crear con el input correcto", async () => {
+  test("camino feliz: repo → perfil → nombre → crear con el input correcto", async () => {
     const user = userEvent.setup();
     const { create, onCreated } = setup();
 
@@ -98,7 +98,7 @@ describe("CreateWorkspace — wizard", () => {
       expect.objectContaining({
         name: "Login Safari",
         repoId: "r1",
-        templateId: "plantilla",
+        profileId: "plantilla",
         mode: "worktree",
         branch: null,
         worktreePath: null,
@@ -139,16 +139,16 @@ describe("CreateWorkspace — wizard", () => {
     expect(screen.getByText(/Ocupado/)).toBeInTheDocument();
   });
 
-  test("template rápido con id colisionado muestra error y no guarda", async () => {
+  test("perfil rápido con id colisionado muestra error y no guarda", async () => {
     const user = userEvent.setup();
-    const { saveTemplate } = setup();
+    const { saveProfile } = setup();
     await user.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    await user.click(screen.getByRole("button", { name: "Crear template" }));
+    await user.click(screen.getByRole("button", { name: "Crear perfil" }));
     await user.type(screen.getByPlaceholderText("Backend, revisión, observabilidad…"), "Plantilla");
     await user.click(screen.getByRole("button", { name: "Crear y elegir" }));
 
-    expect(screen.getByText('Ya existe un template con el id "plantilla".')).toBeInTheDocument();
-    expect(saveTemplate).not.toHaveBeenCalled();
+    expect(screen.getByText('Ya existe un perfil con el id "plantilla".')).toBeInTheDocument();
+    expect(saveProfile).not.toHaveBeenCalled();
   });
 });

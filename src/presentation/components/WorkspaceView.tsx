@@ -13,7 +13,7 @@ import { Button } from "./ui";
 
 type Props = {
   workspace: Workspace;
-  templateName?: string | null;
+  profileName?: string | null;
   server?: ServerInfo;
   starting: boolean;
   onStart: () => void;
@@ -55,7 +55,7 @@ function modeLabel(workspace: Workspace) {
 
 export function WorkspaceView({
   workspace,
-  templateName,
+  profileName,
   server,
   starting,
   onStart,
@@ -242,7 +242,7 @@ export function WorkspaceView({
             </p>
             <p className="muted small-text">
               {modeLabel(workspace)}
-              {templateName ? ` · template ${templateName}` : " · sin template"}
+              {profileName ? ` · perfil ${profileName}` : " · sin perfil"}
               {workspace.missing ? " · carpeta no encontrada" : ""}
             </p>
           </div>

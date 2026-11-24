@@ -10,7 +10,7 @@ import {
   TauriRepoGateway,
   TauriResourcesGateway,
   TauriSettingsGateway,
-  TauriTemplateGateway,
+  TauriProfileGateway,
   TauriWorkspaceGateway,
 } from "../data/TauriGateways";
 import { LocalStoragePreferences } from "../data/LocalStoragePreferences";
@@ -41,12 +41,12 @@ describe("TauriGateways — mapeo de comandos y argumentos", () => {
     expect(invoke).toHaveBeenCalledWith("workspace_log", { id: "w1", lines: 200 });
   });
 
-  test("repo/template/settings/library/resources/bootstrap", async () => {
+  test("repo/perfil/settings/library/resources/bootstrap", async () => {
     invoke.mockResolvedValue(null);
     await new TauriRepoGateway().add("/repo");
     expect(invoke).toHaveBeenCalledWith("add_repo", { path: "/repo" });
-    await new TauriTemplateGateway().saveAgentsMd("t1", "contenido");
-    expect(invoke).toHaveBeenCalledWith("save_template_agents_md", {
+    await new TauriProfileGateway().saveAgentsMd("t1", "contenido");
+    expect(invoke).toHaveBeenCalledWith("save_profile_agents_md", {
       id: "t1",
       content: "contenido",
     });

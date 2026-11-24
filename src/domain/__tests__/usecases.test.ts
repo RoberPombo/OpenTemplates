@@ -17,7 +17,7 @@ function fakeGateway(overrides: Partial<WorkspaceGateway> = {}): WorkspaceGatewa
     create: vi.fn(notImplemented),
     update: vi.fn(notImplemented),
     setDisabled: vi.fn(notImplemented),
-    reapplyTemplate: vi.fn(notImplemented),
+    reapplyProfile: vi.fn(notImplemented),
     delete: vi.fn(async () => undefined),
     start: vi.fn(notImplemented),
     stop: vi.fn(notImplemented),
