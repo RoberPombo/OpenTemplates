@@ -7,8 +7,8 @@ compila y publica, y la app consulta el updater al arrancar.
 
 1. El trabajo entra en `develop` por PR desde una rama de feature.
 2. `release-please` (push a `main`) mantiene abierto un PR de release que sube la
-   versión en `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
-   y `.release-please-manifest.json`, y escribe `CHANGELOG.md`.
+   versión en `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`,
+   `src-tauri/Cargo.lock` y `.release-please-manifest.json`, y escribe `CHANGELOG.md`.
 3. Al mergear ese PR en `main`, `release-please` crea el tag `vX.Y.Z` y un draft
    de release.
 4. El tag dispara `.github/workflows/tauri-release.yml`: compila Linux (deb),
@@ -34,16 +34,25 @@ en `.release-please-manifest.json`.
 - Rama por defecto: `develop` (las releases se abren contra `main`, por eso el
   workflow pasa `target-branch: main` al action).
 - Ruleset de `main`: PR obligatorio, sin force-push y sin borrado.
-- Settings → Actions → General: **Allow GitHub Actions to create and approve pull
-  requests**, o `sync-develop` no puede abrir su PR.
+- Settings → Actions → General: *Workflow permissions* en **Read repository
+  contents**, y **Allow GitHub Actions to create and approve pull requests**
+  desmarcado. Por eso `sync-develop.yml` abre su PR con `RELEASE_PLEASE_TOKEN`:
+  con ese ajuste apagado, `GITHUB_TOKEN` no puede crear PRs.
+- Entorno `release` con *deployment branch policy* de tipo tag `v*.*.*` y **sin
+  required reviewers** (los reviewers bloquearían cada tag y `Release Binaries`
+  no arrancaría). El job `build-and-attach` declara `environment: release`; ningún
+  otro workflow lo declara.
 
 ## Secretos del repositorio
 
-| Secreto | Para qué |
-| --- | --- |
-| `RELEASE_PLEASE_TOKEN` | PAT con `contents: write` y `pull-requests: write`. Necesario porque los tags creados con `GITHUB_TOKEN` no disparan otros workflows. |
-| `TAURI_SIGNING_PRIVATE_KEY` | Clave privada minisign que firma los artefactos del updater. |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Contraseña de esa clave. |
+| Secreto | Nivel | Para qué |
+| --- | --- | --- |
+| `RELEASE_PLEASE_TOKEN` | repositorio | PAT con `contents: write` y `pull-requests: write`. Necesario porque los tags creados con `GITHUB_TOKEN` no disparan otros workflows; también abre el PR de sync. |
+| `TAURI_SIGNING_PRIVATE_KEY` | entorno `release` | Clave privada minisign que firma los artefactos del updater. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | entorno `release` | Contraseña de esa clave. |
+
+No debe quedar ninguna copia de los secretos de firma a nivel de repositorio: si
+existen, bórralas en cuanto el release funcione con el entorno.
 
 La clave vive fuera del repo, en `~/.config/opentemplates/updater.key` (y su
 contraseña en `updater.key.password`, ambos con permisos 600). La pública está en
