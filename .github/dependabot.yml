@@ -57,3 +57,9 @@ updates:
       default-days: 2
     commit-message:
       prefix: "ci"
+    groups:
+      # Todos los pasos de github/codeql-action deben usar la misma versión:
+      # si se actualizan por separado, CodeQL falla con "configuration error".
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
