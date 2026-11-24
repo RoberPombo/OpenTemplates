@@ -20,7 +20,7 @@ import type {
   ServerInfo,
   SkillInfo,
   SkillRef,
-  TemplateManifest,
+  ProfileManifest,
   WorktreeStatus,
 } from "../types";
 
@@ -37,13 +37,12 @@ export const api = {
   removeRepo: (id: string) => invoke<void>("remove_repo", { id }),
 
   listAvailableModels: () => invoke<ModelDetails[]>("list_available_models"),
-  listTemplates: () => invoke<TemplateManifest[]>("list_templates"),
-  saveTemplate: (manifest: TemplateManifest) =>
-    invoke<TemplateManifest>("save_template", { manifest }),
-  deleteTemplate: (id: string) => invoke<void>("delete_template", { id }),
-  templateAgentsMd: (id: string) => invoke<string>("template_agents_md", { id }),
-  saveTemplateAgentsMd: (id: string, content: string) =>
-    invoke<string>("save_template_agents_md", { id, content }),
+  listProfiles: () => invoke<ProfileManifest[]>("list_profiles"),
+  saveProfile: (manifest: ProfileManifest) => invoke<ProfileManifest>("save_profile", { manifest }),
+  deleteProfile: (id: string) => invoke<void>("delete_profile", { id }),
+  profileAgentsMd: (id: string) => invoke<string>("profile_agents_md", { id }),
+  saveProfileAgentsMd: (id: string, content: string) =>
+    invoke<string>("save_profile_agents_md", { id, content }),
 
   createWorkspace: (input: CreateWorkspaceInput) =>
     invoke<ConfigOutcome>("create_workspace", { input }),
@@ -55,7 +54,7 @@ export const api = {
   }) => invoke<ConfigOutcome>("update_workspace", input),
   setWorkspaceDisabled: (input: { id: string; disabledMcps: string[]; disabledSkills: string[] }) =>
     invoke<ConfigOutcome>("set_workspace_disabled", input),
-  reapplyTemplate: (id: string) => invoke<ConfigOutcome>("reapply_template", { id }),
+  reapplyProfile: (id: string) => invoke<ConfigOutcome>("reapply_profile", { id }),
   deleteWorkspace: (
     id: string,
     options?: { removeWorktree?: boolean; force?: boolean; deleteDb?: boolean },
@@ -67,6 +66,8 @@ export const api = {
       deleteDb: options?.deleteDb,
     }),
   startWorkspace: (id: string) => invoke<ServerInfo>("start_workspace", { id }),
+  startProfile: (workspaceId: string, profileId: string) =>
+    invoke<ServerInfo>("start_profile", { workspaceId, profileId }),
   stopWorkspace: (id: string) => invoke<void>("stop_workspace", { id }),
   workspaceStatus: () => invoke<ServerInfo[]>("workspace_status"),
   worktreeStatus: (id: string) => invoke<WorktreeStatus>("worktree_status", { id }),

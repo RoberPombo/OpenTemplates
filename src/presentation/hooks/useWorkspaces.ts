@@ -8,14 +8,7 @@ import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { groupWorkspacesByRepo } from "../../domain/workspace/grouping";
 import { prefKeys } from "../../domain/repositories/Preferences";
-import type {
-  Bootstrap,
-  Library,
-  Repo,
-  ServerInfo,
-  TemplateManifest,
-  Workspace,
-} from "../../types";
+import type { Bootstrap, Library, Repo, ServerInfo, ProfileManifest, Workspace } from "../../types";
 
 const EMPTY_LIBRARY: Library = {
   agents: [],
@@ -46,10 +39,10 @@ export function useWorkspaces() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [repos, setRepos] = useState<Repo[]>([]);
-  const [templates, setTemplates] = useState<TemplateManifest[]>([]);
+  const [profiles, setProfiles] = useState<ProfileManifest[]>([]);
   const [library, setLibrary] = useState<Library>(EMPTY_LIBRARY);
   const [worktreesRoot, setWorktreesRoot] = useState("");
-  const [running, setRunning] = useState<Record<string, ServerInfo>>({});
+  const [contexts, setContexts] = useState<ServerInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     root.preferences.get(prefKeys.selectedWorkspace),
   );
@@ -71,6 +64,22 @@ export function useWorkspaces() {
     [workspaces, selectedId],
   );
 
+  // Un workspace puede tener varios contextos arrancados (un perfil cada uno).
+  // `running` conserva el servidor por defecto para el resto de la UI.
+  const running = useMemo(() => {
+    const map: Record<string, ServerInfo> = {};
+    for (const context of contexts) {
+      const workspace = workspaces.find((item) => item.id === context.workspaceId);
+      const isDefault = Boolean(
+        workspace?.contextHash && workspace.contextHash === context.contextHash,
+      );
+      if (isDefault || !map[context.workspaceId]) {
+        map[context.workspaceId] = context;
+      }
+    }
+    return map;
+  }, [contexts, workspaces]);
+
   const groups = useMemo(() => groupWorkspacesByRepo(workspaces, repos), [workspaces, repos]);
 
   const rememberWorkspace = useCallback(
@@ -90,11 +99,9 @@ export function useWorkspaces() {
       setBoot(bootstrap);
       setWorkspaces(bootstrap.workspaces);
       setRepos(bootstrap.repos);
-      setTemplates(bootstrap.templates);
+      setProfiles(bootstrap.profiles);
       setWorktreesRoot(bootstrap.worktreesRoot);
-      setRunning(
-        Object.fromEntries(bootstrap.running.map((server) => [server.workspaceId, server])),
-      );
+      setContexts(bootstrap.running);
       if (bootstrap.notices.length > 0) {
         setNotice(bootstrap.notices.join(" · "));
       }
@@ -123,7 +130,7 @@ export function useWorkspaces() {
       void root.workspaces
         .status()
         .then((items) => {
-          setRunning(Object.fromEntries(items.map((server) => [server.workspaceId, server])));
+          setContexts(items);
         })
         .catch(() => undefined);
     }, 5000);
@@ -157,7 +164,7 @@ export function useWorkspaces() {
       setNotice(null);
       try {
         const server = await root.workspaces.start(id);
-        setRunning((prev) => ({ ...prev, [id]: server }));
+        setContexts((prev) => [...prev.filter((context) => context.workspaceId !== id), server]);
       } catch (error) {
         setNotice(errorText(error));
       } finally {
@@ -172,11 +179,7 @@ export function useWorkspaces() {
       setNotice(null);
       try {
         await root.workspaces.stop(id);
-        setRunning((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
+        setContexts((prev) => prev.filter((context) => context.workspaceId !== id));
       } catch (error) {
         setNotice(errorText(error));
       }
@@ -198,11 +201,7 @@ export function useWorkspaces() {
           delete next[id];
           return next;
         });
-        setRunning((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
+        setContexts((prev) => prev.filter((context) => context.workspaceId !== id));
         setRecentWorkspaceIds((prev) => {
           if (!prev.includes(id)) return prev;
           const next = prev.filter((item) => item !== id);
@@ -226,6 +225,18 @@ export function useWorkspaces() {
     [root, workspaces, selectedId, rememberWorkspace],
   );
 
+  const startProfile = useCallback(
+    async (workspaceId: string, profileId: string) => {
+      const server = await root.workspaces.startProfile(workspaceId, profileId);
+      setContexts((prev) => [
+        ...prev.filter((context) => context.contextHash !== server.contextHash),
+        server,
+      ]);
+      return server;
+    },
+    [root],
+  );
+
   const updated = useCallback((workspace: Workspace, warnings: string[]) => {
     setWorkspaces((prev) => prev.map((item) => (item.id === workspace.id ? workspace : item)));
     if (warnings.length > 0) setNotice(warnings.join(" · "));
@@ -245,10 +256,11 @@ export function useWorkspaces() {
     boot,
     workspaces,
     repos,
-    templates,
+    profiles,
     library,
     worktreesRoot,
     running,
+    contexts,
     selectedId,
     selected,
     recentWorkspaceIds,
@@ -260,13 +272,14 @@ export function useWorkspaces() {
     select,
     markUnseen,
     start,
+    startProfile,
     stop,
     remove,
     updated,
     created,
     setNotice,
     setRepos,
-    setTemplates,
+    setProfiles,
     setWorktreesRoot,
   };
 }

@@ -19,14 +19,22 @@ export const prefKeys = {
   budget: (workspaceId: string) => `opentemplates:budget:${workspaceId}`,
   budgetAlert: (workspaceId: string, threshold: number) =>
     `opentemplates:budget-alert:${workspaceId}:${threshold}`,
-  session: (workspaceId: string) => `opentemplates:session:${workspaceId}`,
+  session: (workspaceId: string, scope?: string) =>
+    scope
+      ? `opentemplates:session:${workspaceId}:${scope}`
+      : `opentemplates:session:${workspaceId}`,
   goal: (workspaceId: string, sessionId: string) =>
     `opentemplates:goal:${workspaceId}:${sessionId}`,
   race: (workspaceId: string) => `opentemplates:race:${workspaceId}`,
   previewOpen: "opentemplates:preview",
   previewUrl: (workspaceId: string) => `opentemplates:preview-url:${workspaceId}`,
   previewDevice: (workspaceId: string) => `opentemplates:preview-device:${workspaceId}`,
-  model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
-  agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,
-  variant: (workspaceId: string) => `opentemplates:variant:${workspaceId}`,
+  model: (workspaceId: string, scope?: string) =>
+    scope ? `opentemplates:model:${workspaceId}:${scope}` : `opentemplates:model:${workspaceId}`,
+  agent: (workspaceId: string, scope?: string) =>
+    scope ? `opentemplates:agent:${workspaceId}:${scope}` : `opentemplates:agent:${workspaceId}`,
+  variant: (workspaceId: string, scope?: string) =>
+    scope
+      ? `opentemplates:variant:${workspaceId}:${scope}`
+      : `opentemplates:variant:${workspaceId}`,
 };

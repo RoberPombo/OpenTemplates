@@ -5,8 +5,8 @@ use serde_json::{Map, Value, json};
 use walkdir::WalkDir;
 
 use crate::library;
-use crate::model::{McpInfo, SkillRef, TemplateLock, Workspace};
-use crate::templates;
+use crate::model::{McpInfo, ProfileLock, SkillRef, Workspace};
+use crate::profiles;
 
 pub fn global_config_dir() -> PathBuf {
     dirs::config_dir()
@@ -90,7 +90,7 @@ pub fn list_mcps() -> Vec<McpInfo> {
 /// Config aislada del workspace antes de escribirla a disco.
 pub fn render_config(
     workspace: &Workspace,
-    lock: Option<&TemplateLock>,
+    lock: Option<&ProfileLock>,
     global: &Value,
 ) -> (Value, Vec<String>) {
     let mut warnings = Vec::new();
@@ -196,7 +196,7 @@ pub fn render_config(
     }
     root["permissions"] = Value::Array(permissions);
 
-    // El modelo por defecto del template se escribe en la config para que lo hereden
+    // El modelo por defecto del perfil se escribe en la config para que lo hereden
     // los agentes que no tengan uno asignado.
     let model = match lock {
         Some(lock) => lock.model.clone().or_else(|| lock.models.first().cloned()),
@@ -354,14 +354,14 @@ pub fn build_agents_md(
 ) -> String {
     let mut sections: Vec<String> = Vec::new();
     sections.push(
-        "# AGENTS.md combinado\n\n<!-- Generado por OpenTemplates. No editar a mano: se regenera al arrancar o al reaplicar el template. -->".into(),
+        "# AGENTS.md combinado\n\n<!-- Generado por OpenTemplates. No editar a mano: se regenera al arrancar o al reaplicar el perfil. -->".into(),
     );
     if let Some(global) = global_md.filter(|text| !text.trim().is_empty()) {
         sections.push(format!("## Instrucciones globales\n\n{}", global.trim()));
     }
     if let Some(template) = template_md.filter(|text| !text.trim().is_empty()) {
         sections.push(format!(
-            "## Instrucciones del template\n\n{}",
+            "## Instrucciones del perfil\n\n{}",
             template.trim()
         ));
     }
@@ -402,32 +402,44 @@ fn write_replacing(path: &Path, content: &str) -> Result<(), String> {
     fs::write(path, content).map_err(|e| format!("No se pudo escribir {}: {e}", path.display()))
 }
 
-pub struct MaterializeInput<'a> {
-    pub workspace: &'a Workspace,
-    pub workspace_dir: &'a Path,
-    pub global_dir: &'a Path,
-    pub global_config: &'a Value,
-}
-
-#[derive(Debug)]
 pub struct Materialized {
     pub config_path: PathBuf,
     pub agents_path: PathBuf,
     pub warnings: Vec<String>,
 }
 
-/// Materializa la config del workspace a partir del lock congelado (si existe)
-/// o de los campos del propio workspace (workspaces ad-hoc de la v1).
-pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> {
-    let MaterializeInput {
-        workspace,
-        workspace_dir,
-        global_dir,
-        global_config,
-    } = input;
+/// Config y AGENTS.md que produce un workspace, antes de escribir nada.
+/// Separar el cálculo de la escritura permite calcular la huella del contexto
+/// y reutilizar el mismo resultado para materializar.
+pub struct Plan {
+    pub config: Value,
+    pub agents_md: String,
+    pub warnings: Vec<String>,
+    pub lock: Option<ProfileLock>,
+    pub global_dir: PathBuf,
+}
 
-    let lock = templates::read_lock(workspace_dir);
-    let (mut root, mut warnings) = render_config(workspace, lock.as_ref(), global_config);
+/// Calcula la config del workspace a partir del lock congelado (si existe) o de
+/// los campos del propio workspace (workspaces ad-hoc de la v1).
+pub fn plan(
+    workspace: &Workspace,
+    workspace_dir: &Path,
+    global_dir: &Path,
+    global_config: &Value,
+) -> Plan {
+    let lock = profiles::read_lock(workspace_dir);
+    plan_with_lock(workspace, lock, global_dir, global_config)
+}
+
+/// Igual que `plan`, pero con una selección de perfil explícita. Permite
+/// materializar un perfil concreto sin tocar el lock por defecto del workspace.
+pub fn plan_with_lock(
+    workspace: &Workspace,
+    lock: Option<ProfileLock>,
+    global_dir: &Path,
+    global_config: &Value,
+) -> Plan {
+    let (mut root, warnings) = render_config(workspace, lock.as_ref(), global_config);
 
     let allowed: Vec<String> = match &lock {
         Some(lock) => lock.skills.iter().map(|skill| skill.id.clone()).collect(),
@@ -453,11 +465,37 @@ pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> 
         }
     }
 
-    let config_dir = workspace_dir.join("xdg/opencode");
+    let global_md = fs::read_to_string(global_dir.join("AGENTS.md")).ok();
+    let repo_files = repo_agents_files(Path::new(&workspace.project_path));
+    let agents_md = build_agents_md(
+        lock.as_ref().and_then(|lock| lock.agents_md.as_deref()),
+        global_md.as_deref(),
+        &repo_files,
+        workspace.issue.as_ref(),
+    );
+
+    Plan {
+        config: root,
+        agents_md,
+        warnings,
+        lock,
+        global_dir: global_dir.to_path_buf(),
+    }
+}
+
+/// Escribe un plan ya calculado en el directorio de contexto indicado.
+pub fn write_plan(
+    workspace: &Workspace,
+    workspace_dir: &Path,
+    context_dir: &Path,
+    plan: &Plan,
+) -> Result<Materialized, String> {
+    let mut warnings = plan.warnings.clone();
+    let config_dir = context_dir.join("xdg/opencode");
     fs::create_dir_all(&config_dir)
         .map_err(|e| format!("No se pudo crear {}: {e}", config_dir.display()))?;
 
-    match &lock {
+    match &plan.lock {
         Some(lock) => {
             sync_asset_dir(&config_dir, "agents", &lock.agents, true, &mut warnings)?;
             sync_asset_dir(&config_dir, "commands", &lock.commands, true, &mut warnings)?;
@@ -465,9 +503,15 @@ pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> 
         }
         None => {
             // Workspace v1/ad-hoc: conserva el comportamiento anterior.
-            ensure_symlink(&global_dir.join("agents"), &config_dir.join("agents"));
-            ensure_symlink(&global_dir.join("commands"), &config_dir.join("commands"));
-            ensure_symlink(&global_dir.join("plugins"), &config_dir.join("plugins"));
+            ensure_symlink(&plan.global_dir.join("agents"), &config_dir.join("agents"));
+            ensure_symlink(
+                &plan.global_dir.join("commands"),
+                &config_dir.join("commands"),
+            );
+            ensure_symlink(
+                &plan.global_dir.join("plugins"),
+                &config_dir.join("plugins"),
+            );
         }
     }
 
@@ -484,19 +528,11 @@ pub fn materialize(input: MaterializeInput<'_>) -> Result<Materialized, String> 
             .map_err(|e| format!("No se pudo escribir ISSUE.md: {e}"))?;
     }
 
-    let global_md = fs::read_to_string(global_dir.join("AGENTS.md")).ok();
-    let repo_files = repo_agents_files(Path::new(&workspace.project_path));
-    let combined = build_agents_md(
-        lock.as_ref().and_then(|lock| lock.agents_md.as_deref()),
-        global_md.as_deref(),
-        &repo_files,
-        workspace.issue.as_ref(),
-    );
     let agents_path = config_dir.join("AGENTS.md");
-    write_replacing(&agents_path, &combined)?;
+    write_replacing(&agents_path, &plan.agents_md)?;
 
     let config_path = config_dir.join("opencode.json");
-    let pretty = serde_json::to_string_pretty(&root)
+    let pretty = serde_json::to_string_pretty(&plan.config)
         .map_err(|e| format!("No se pudo serializar la config: {e}"))?;
     let tmp = config_dir.join(".opencode.json.tmp");
     fs::write(&tmp, pretty).map_err(|e| format!("No se pudo escribir {}: {e}", tmp.display()))?;
@@ -627,20 +663,20 @@ mod tests {
 
     #[test]
     fn uses_the_frozen_lock_for_mcps_skills_and_assets() {
-        let lock = TemplateLock {
-            template_id: Some("backend".into()),
-            template_version: Some(4),
+        let lock = ProfileLock {
+            profile_id: Some("backend".into()),
+            profile_version: Some(4),
             frozen_at: 0,
             agents: vec![AssetRef {
                 id: "reviewer".into(),
                 path: "/tpl/agents/reviewer.md".into(),
-                source: "template".into(),
+                source: "profile".into(),
             }],
             commands: vec![],
             plugins: vec![AssetRef {
                 id: "guard".into(),
                 path: "/tpl/plugins/guard.ts".into(),
-                source: "template".into(),
+                source: "profile".into(),
             }],
             skills: vec![SkillRef {
                 id: "testing".into(),
@@ -680,9 +716,9 @@ mod tests {
 
     #[test]
     fn default_model_applies_when_the_agent_has_none() {
-        let lock = TemplateLock {
+        let lock = ProfileLock {
             models: vec!["first/model".into(), "second/model".into()],
-            ..TemplateLock::default()
+            ..ProfileLock::default()
         };
         let global = json!({});
 
@@ -690,7 +726,7 @@ mod tests {
 
         assert_eq!(config["model"], "first/model");
 
-        let with_default = TemplateLock {
+        let with_default = ProfileLock {
             model: Some("second/model".into()),
             ..lock
         };
@@ -724,7 +760,7 @@ mod tests {
         let root = temp_dir("materialize");
         let global_dir = root.join("global");
         let workspace_dir = root.join("ws");
-        let templates_root = root.join("templates");
+        let profiles_root = root.join("profiles");
         let project = root.join("project");
         for dir in [&global_dir, &workspace_dir, &project] {
             fs::create_dir_all(dir).unwrap();
@@ -738,26 +774,26 @@ mod tests {
         std::os::unix::fs::symlink(global_dir.join("AGENTS.md"), config_dir.join("AGENTS.md"))
             .unwrap();
 
-        let agent_file = templates_root.join("backend/agents/reviewer.md");
-        let plugin_file = templates_root.join("backend/plugins/guard.ts");
+        let agent_file = profiles_root.join("backend/agents/reviewer.md");
+        let plugin_file = profiles_root.join("backend/plugins/guard.ts");
         fs::create_dir_all(agent_file.parent().unwrap()).unwrap();
         fs::create_dir_all(plugin_file.parent().unwrap()).unwrap();
         fs::write(&agent_file, "# reviewer").unwrap();
         fs::write(&plugin_file, "export {}").unwrap();
-        let lock = TemplateLock {
-            template_id: Some("backend".into()),
-            template_version: Some(1),
+        let lock = ProfileLock {
+            profile_id: Some("backend".into()),
+            profile_version: Some(1),
             frozen_at: 0,
             agents: vec![AssetRef {
                 id: "reviewer".into(),
                 path: agent_file.to_string_lossy().to_string(),
-                source: "template".into(),
+                source: "profile".into(),
             }],
             commands: vec![],
             plugins: vec![AssetRef {
                 id: "guard".into(),
                 path: plugin_file.to_string_lossy().to_string(),
-                source: "template".into(),
+                source: "profile".into(),
             }],
             skills: vec![],
             mcps: BTreeMap::new(),
@@ -765,9 +801,9 @@ mod tests {
             model: None,
             tools: None,
             permissions: vec![],
-            agents_md: Some("instrucciones del template".into()),
+            agents_md: Some("instrucciones del perfil".into()),
         };
-        templates::write_lock(&workspace_dir, &lock).unwrap();
+        profiles::write_lock(&workspace_dir, &lock).unwrap();
 
         let workspace = Workspace {
             project_path: project.to_string_lossy().to_string(),
@@ -775,13 +811,8 @@ mod tests {
         };
         let global_config = json!({ "permissions": [] });
 
-        let materialized = materialize(MaterializeInput {
-            workspace: &workspace,
-            workspace_dir: &workspace_dir,
-            global_dir: &global_dir,
-            global_config: &global_config,
-        })
-        .unwrap();
+        let plan = plan(&workspace, &workspace_dir, &global_dir, &global_config);
+        let materialized = write_plan(&workspace, &workspace_dir, &workspace_dir, &plan).unwrap();
 
         // El AGENTS.md global no se toca, aunque antes fuera un symlink.
         assert_eq!(
@@ -792,7 +823,7 @@ mod tests {
         assert!(!meta.file_type().is_symlink());
         let combined = fs::read_to_string(&materialized.agents_path).unwrap();
         assert!(combined.contains("global original"));
-        assert!(combined.contains("instrucciones del template"));
+        assert!(combined.contains("instrucciones del perfil"));
         assert!(combined.contains("instrucciones del repo"));
 
         assert!(config_dir.join("agents/reviewer.md").is_file());

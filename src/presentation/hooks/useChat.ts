@@ -86,6 +86,8 @@ import {
 type UseChatInput = {
   client: ChatServer;
   workspace: Workspace;
+  /** Ámbito de sesiones (huella del contexto/perfil); separa historiales. */
+  scope?: string;
   onSessionChange?: (sessionId: string | null) => void;
   /** Marca actividad de este workspace terminada sin foco (aviso en el sidebar). */
   onWorkspaceActivity?: (workspaceId: string) => void;
@@ -102,16 +104,17 @@ function errorText(error: unknown): string {
 export function useChat({
   client,
   workspace,
+  scope,
   onSessionChange,
   onWorkspaceActivity,
   openSessionId,
   onSessionOpened,
 }: UseChatInput) {
   const root = useAppContext();
-  const storageKey = prefKeys.session(workspace.id);
-  const modelStorageKey = prefKeys.model(workspace.id);
-  const agentStorageKey = prefKeys.agent(workspace.id);
-  const variantStorageKey = prefKeys.variant(workspace.id);
+  const storageKey = prefKeys.session(workspace.id, scope);
+  const modelStorageKey = prefKeys.model(workspace.id, scope);
+  const agentStorageKey = prefKeys.agent(workspace.id, scope);
+  const variantStorageKey = prefKeys.variant(workspace.id, scope);
 
   const [sessionId, setSessionId] = useState<string | null>(() => root.preferences.get(storageKey));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -165,6 +168,15 @@ export function useChat({
     () => models.find((model) => model.key === modelChoice) ?? null,
     [models, modelChoice],
   );
+  // El modelo del perfil se pasa a la sesión al crearla: el contexto ya no lo
+  // fija en la config para que dos perfiles puedan compartir servidor.
+  const workspaceModelRef = useMemo(() => {
+    const raw = workspace.model?.trim();
+    if (!raw) return null;
+    const slash = raw.indexOf("/");
+    if (slash <= 0 || slash === raw.length - 1) return null;
+    return { providerID: raw.slice(0, slash), id: raw.slice(slash + 1) };
+  }, [workspace.model]);
   const modelGroups = useMemo(() => {
     const groups = new Map<string, ModelOption[]>();
     for (const model of models) {
@@ -469,6 +481,7 @@ export function useChat({
         const session = await client.session.create({
           location: { directory: workspace.projectPath },
           title: `Chat · ${workspace.name}`,
+          ...(workspaceModelRef ? { model: workspaceModelRef } : {}),
         });
         if (!alive) return;
         setSessionId(session.id);
@@ -481,7 +494,16 @@ export function useChat({
     return () => {
       alive = false;
     };
-  }, [client, sessionId, storageKey, workspace.name, workspace.projectPath, root, refreshSessions]);
+  }, [
+    client,
+    sessionId,
+    storageKey,
+    workspace.name,
+    workspace.projectPath,
+    workspaceModelRef,
+    root,
+    refreshSessions,
+  ]);
 
   // Catálogo de modelos y agentes del workspace.
   useEffect(() => {

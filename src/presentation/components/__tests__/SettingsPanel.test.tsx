@@ -35,14 +35,14 @@ function setup(
       warnings: [],
     }),
   );
-  const reapplyTemplate = vi.fn(async () => ({
+  const reapplyProfile = vi.fn(async () => ({
     workspace: { ...workspace, mcpNames: ["a", "b"] },
     configPath: "/cfg",
     agentsPath: "/agents",
     warnings: ["reaplicado"],
   }));
   const root = new CompositionRoot({
-    workspaces: { update, reapplyTemplate } as never,
+    workspaces: { update, reapplyProfile } as never,
     library: {
       mcps: async () => [mcpA, mcpB],
       skills: async () => [],
@@ -60,7 +60,7 @@ function setup(
       />
     </AppProvider>,
   );
-  return { update, reapplyTemplate, onUpdated, notifications };
+  return { update, reapplyProfile, onUpdated, notifications };
 }
 
 describe("SettingsPanel — aplicar", () => {
@@ -182,22 +182,22 @@ describe("SettingsPanel — notificaciones", () => {
   });
 });
 
-describe("SettingsPanel — reaplicar template", () => {
+describe("SettingsPanel — reaplicar perfil", () => {
   test("delega en el gateway y notifica el workspace actualizado", async () => {
     const user = userEvent.setup();
     const workspace = makeWorkspace({
       mcpNames: ["a"],
       skills: [],
       model: null,
-      templateId: "plantilla",
-      templateVersion: 1,
+      profileId: "plantilla",
+      profileVersion: 1,
     });
-    const { reapplyTemplate, onUpdated } = setup(workspace, null);
+    const { reapplyProfile, onUpdated } = setup(workspace, null);
 
     await screen.findByRole("checkbox", { name: /^a/ });
-    await user.click(screen.getByRole("button", { name: "Reaplicar template" }));
+    await user.click(screen.getByRole("button", { name: "Reaplicar perfil" }));
 
-    expect(reapplyTemplate).toHaveBeenCalledWith("w1");
+    expect(reapplyProfile).toHaveBeenCalledWith("w1");
     expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({ mcpNames: ["a", "b"] }), [
       "reaplicado",
     ]);

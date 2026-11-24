@@ -25,6 +25,8 @@ import { AsyncSearchableSelect, Select } from "./ui";
 type Props = {
   client: ChatServer;
   workspace: Workspace;
+  /** Ámbito de sesiones (huella del contexto/perfil). */
+  scope?: string;
   onSessionChange?: (sessionId: string | null) => void;
   sessionsOpen?: boolean;
   onCloseSessions?: () => void;
@@ -52,6 +54,7 @@ function effortLabel(id: string) {
 export function Chat({
   client,
   workspace,
+  scope,
   onSessionChange,
   sessionsOpen,
   onCloseSessions,
@@ -120,6 +123,7 @@ export function Chat({
   } = useChat({
     client,
     workspace,
+    scope,
     onSessionChange,
     onWorkspaceActivity,
     openSessionId,

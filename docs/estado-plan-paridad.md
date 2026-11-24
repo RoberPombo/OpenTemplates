@@ -33,7 +33,31 @@ Decisiones que conviene no reabrir sin motivo:
   no N procesos.
 - El preview no inspecciona el DOM: el selector de elemento necesita proxy propio o
   multiwebview con Wayland (`docs/preview-viabilidad.md`).
-- Los permisos se responden en el dock; no se relajan en el template.
+- Los permisos se responden en el dock; no se relajan en el perfil.
+
+## Cambio de modelo en curso
+
+El template deja de asociarse al repo o al workspace y pasa a ser un **perfil por
+sesión**, con un servidor por (raíz, huella de contexto). El diseño y las fases
+están en `docs/modelo-templates-repos.md`. Orden: 1) store de contextos por huella y
+migración desde `workspaces/<id>`, 2) perfil por sesión, 3) proyectos y repos,
+4) worktrees e issues, 5) GC y suspensión. Hasta completar 1 y 2, el editor y los
+overrides siguen colgando de `templateId` en el workspace.
+
+Fase 1 entregada: huella, `contexts/<huella>`, servidores compartidos por huella,
+refcount al parar/borrar y copia de la DB legada al contexto. El modelo por defecto
+todavía entra en la huella hasta que el perfil por sesión lo sustituya.
+
+Fase 2 entregada: el template pasa a llamarse **perfil** en tipos, comandos, UI y
+persistencia (`profiles.json`, `profiles/<id>/`, `profile.lock.json`,
+`profileId`). La migración lee `templates.json`, `templates/` y `template.lock.json`
+como fallback y reescribe el formato nuevo. Además, el modelo deja de entrar en la
+huella: se pasa al crear cada sesión y el contexto lo usa solo como fallback.
+Fase 5 entregada: `start_profile` materializa un perfil distinto sin tocar el
+congelado del workspace; la cabecera del workspace permite cambiar de perfil,
+arranca su contexto y cambia la lista de sesiones. Cada contexto tiene sus claves
+de sesión, modelo y agente, así que dos perfiles no comparten historial. El
+selector solo muestra los perfiles existentes; falta el alta rápida desde ahí.
 
 ## Qué queda
 
@@ -47,7 +71,8 @@ Dentro del producto actual, por orden de valor:
    soporte Wayland; incluye screenshot y consola.
 4. **Archivar sesiones** (S). El listado ya excluye archivadas; falta el gesto.
 5. **Reparar workspaces `missing`** (S). Recrear el worktree desde el estado guardado.
-6. **Overrides de modelo/agente por workspace** (S). Hoy se editan en el template.
+6. **Modelo y agente por sesión** (S). Con el modelo nuevo dejan de ser overrides del
+   workspace: se eligen al abrir cada sesión.
 7. **Editor de atajos** (S). El dominio resuelve conflictos; falta persistir
    combinaciones por usuario.
 8. **Pill de todos** (S). El SDK lo tiene detrás del flag experimental `todo`:

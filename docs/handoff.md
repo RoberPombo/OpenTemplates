@@ -38,12 +38,14 @@ Arquitectura de aislamiento: `docs/arquitectura-workspaces.md`.
 
 ## Invariantes verificados (no romper)
 
-- Un proceso `opencode serve` por workspace:
-  - `XDG_CONFIG_HOME=<ws>/xdg`
-  - `OPENCODE_DB=<ws>/opencode.db`
+- Un proceso `opencode serve` por **huella de contexto** (no por workspace):
+  - `XDG_CONFIG_HOME=<appdata>/contexts/<huella>/xdg`
+  - `OPENCODE_DB=<appdata>/contexts/<huella>/opencode.db`
   - `OPENCODE_DISABLE_PROJECT_CONFIG=1`
   - `OPENCODE_SERVER_PASSWORD` aleatoria y puerto libre.
   - Data dir compartido: `auth.json` compartido, un login para todos.
+  - La huella cubre raíz del proyecto + config renderizada + AGENTS.md combinado.
+    Dos workspaces con la misma huella comparten servidor y DB.
 - CORS: pasar `http://localhost:1420`, `http://tauri.localhost`,
   `https://tauri.localhost`, `tauri://localhost`.
 - CSP: el preview de la app en marcha necesita `frame-src http: https:` (la URL
@@ -59,9 +61,11 @@ Arquitectura de aislamiento: `docs/arquitectura-workspaces.md`.
   Cuidado: hoy ese path es un symlink al AGENTS.md global; **borrar el symlink
   antes de escribir**, o se corrompe el fichero del usuario.
 - MCP runtime: `/api/experimental/mcp/{server}` por location; `remove` es hasta
-  reiniciar. Cada workspace tiene su propio servidor, así que queda confinado.
-- Sesiones: aisladas por `OPENCODE_DB`. Mismo `projectID` si comparten carpeta;
-  la UI debe usar el `workspaceId`, no el `projectID`.
+  reiniciar. Cada contexto tiene su propio servidor, así que queda confinado.
+- Sesiones: aisladas por `OPENCODE_DB` del contexto. Mismo `projectID` si comparten
+  carpeta; la UI debe usar el `workspaceId`, no el `projectID`.
+- Parar un workspace solo para el servidor si ningún otro workspace de la misma
+  huella sigue arrancado.
 - Parada: SIGTERM y esperar; SIGKILL solo como fallback.
 - Comandos Tauri: args en camelCase desde JS.
 
@@ -526,3 +530,69 @@ nuevo. Decisión de viabilidad y coste de las alternativas en
 
 Pendiente relacionado: selector de elemento (requiere proxy propio o
 multiwebview con soporte Wayland), screenshot/consola y captura de una región.
+
+## Estado tras contextos por huella (fase 1)
+
+- `context.rs`: huella SHA-256 (versión 1) sobre raíz del proyecto + config
+  renderizada + AGENTS.md combinado. Store en `<appdata>/contexts/<huella>/` con
+  `context.json` (raíz, workspaces, timestamps) y refcount attach/detach.
+- `config.rs`: `plan()` y `write_plan()` separados; el plan se calcula una vez y
+  sirve tanto para la huella como para materializar.
+- Servidores indexados por huella (no por workspace). `ServerInfo.contextHash`
+  identifica el contexto; `workspace_status` devuelve una entrada por workspace
+  compartido para no cambiar la UI. Parar o borrar desengancha solo ese workspace
+  y mata el proceso cuando el contexto queda vacío.
+- Migración: al primer arranque de un workspace se copian sus `opencode.db*`
+  legados al contexto para conservar las sesiones.
+- `Workspace.contextHash` se persiste; reaplicar o cambiar la selección produce
+  otra huella y las sesiones nuevas van al contexto nuevo.
+- Verificación: `cargo test` en verde (41 tests; nuevos de `context.rs`),
+  `pnpm check` en verde (616 tests).
+- Pendiente de la fase 2: el modelo por defecto sigue entrando en la huella
+  (hace de fallback del servidor); perfiles por sesión y agente; badge de
+  «comparte servidor»; GC de contextos sin uso.
+
+## Estado tras renombrar templates a perfiles (fase 2)
+
+- Rust: `templates.rs` → `profiles.rs`; `ProfileManifest`, `ProfileLock`,
+  `Workspace.profileId/profileVersion`, `AppSettings.defaultProfileId`. Comandos
+  `list_profiles`, `save_profile`, `delete_profile`, `profile_agents_md`,
+  `save_profile_agents_md` y `reapply_profile`.
+- Persistencia: `profiles.json`, `profiles/<id>/profile.json` y
+  `profile.lock.json`. Al arrancar se migra `templates.json` (se reescribe), el
+  directorio `templates/` (renombrado) y las rutas absolutas guardadas en
+  `workspaces.json` y en los locks (`templates/…` → `profiles/…`). Los manifiestos
+  y locks antiguos se leen como fallback.
+- Frontend: tipos y gateway `Profile*`, `profileId`, `defaultProfileId`, pestaña y
+  textos «Perfil/Perfiles». Las claves de preferencias siguen siendo
+  `opentemplates:*`.
+- Los assets de un perfil llevan `source: "profile"`; los locks antiguos conservan
+  `template` como etiqueta hasta reaplicar.
+- El modelo ya no entra en la huella: `fingerprint_without_model` lo quita antes de
+  hashear. `useChat` pasa `workspace.model` a `session.create` (y el multi-run ya lo
+  hacía), así dos perfiles con distinto modelo comparten contexto.
+- `WorkspaceView` muestra «comparte servidor con …» cuando otro workspace arrancado
+  tiene la misma `contextHash`.
+- Verificación: `cargo test` 44 en verde (nuevos de migración de store, rutas y lock),
+  `cargo clippy -D warnings` limpio, `pnpm check` 618 tests en verde.
+
+## Estado tras perfil por sesión (fase 5)
+
+- Rust: comando `start_profile(workspaceId, profileId)` que congela y materializa
+  ese perfil sin tocar el lock por defecto del workspace, arranca su contexto y
+  devuelve `ServerInfo` con `model`/`models` del perfil. `stop_workspace` para todos
+  los contextos del workspace y desconecta cada contexto del `context.json`.
+- Un workspace puede tener varios contextos vivos a la vez (uno por huella). El
+  estado (`workspace_status`) sigue devolviendo una entrada por workspace y
+  contexto; el frontend las agrupa por `contextHash`.
+- Frontend: selector «Perfil del workspace» en la cabecera. Al cambiarlo se llama
+  a `start_profile`, se guarda el `ServerInfo` y `Chat` se remonta con el cliente de
+  ese contexto. Las claves de sesión, modelo, agente y variante incluyen la huella
+  del contexto, así que cada perfil tiene su historial y sus preferencias.
+- `ServerInfo.model`/`models` describen el perfil del contexto; las sesiones lo
+  reciben al crearse. Si dos perfiles comparten huella (solo cambia el modelo), el
+  servidor es el mismo pero cada sesión lleva su modelo.
+- Verificación: `cargo test` 45, `cargo clippy -D warnings` limpio, `pnpm check`
+  619 tests en verde (nuevo de selector de perfil y de modelo al crear sesión).
+- Pendiente: dar de alta perfiles desde el selector, marcar el perfil en la lista
+  de sesiones y GC de contextos sin uso.

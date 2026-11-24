@@ -3196,7 +3196,7 @@ p {
   color: var(--warning-text);
 }
 
-.quick-template {
+.quick-profile {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -3206,7 +3206,7 @@ p {
   background: color-mix(in srgb, var(--text) 2%, transparent);
 }
 
-.quick-template .field {
+.quick-profile .field {
   margin-bottom: 6px;
 }
 
@@ -3284,14 +3284,14 @@ p {
   overflow-wrap: anywhere;
 }
 
-.template-pane {
+.profile-pane {
   display: grid;
   grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
 
-.template-list {
+.profile-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -3299,7 +3299,7 @@ p {
   top: 0;
 }
 
-.template-item {
+.profile-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -3311,38 +3311,38 @@ p {
   text-align: left;
 }
 
-.template-item.active {
+.profile-item.active {
   border-color: var(--accent-dim);
 }
 
-.template-editor {
+.profile-editor {
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-width: 0;
 }
 
-.template-assets {
+.profile-assets {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 16px;
 }
 
-.template-assets section {
+.profile-assets section {
   min-width: 0;
 }
 
-.template-assets .check-list {
+.profile-assets .check-list {
   max-height: 220px;
   overflow-y: auto;
 }
 
 @media (max-width: 720px) {
-  .template-pane {
+  .profile-pane {
     grid-template-columns: 1fr;
   }
 
-  .template-list {
+  .profile-list {
     position: static;
   }
 

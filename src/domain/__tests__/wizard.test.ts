@@ -6,7 +6,7 @@ import {
   defaultWorktreePath,
   pathConflicts,
   principalConflicts,
-  quickTemplateId,
+  quickProfileId,
   slugify,
   workspaceNameError,
 } from "../workspace/wizard";
@@ -114,25 +114,25 @@ describe("canContinue", () => {
   });
 });
 
-describe("quickTemplateId", () => {
+describe("quickProfileId", () => {
   test("nombre vacío → error", () => {
-    expect(quickTemplateId("   ", [])).toEqual({ error: "Ponle un nombre al template." });
+    expect(quickProfileId("   ", [])).toEqual({ error: "Ponle un nombre al perfil." });
   });
 
   test("nombre sin slug válido → error", () => {
-    expect(quickTemplateId("!!!", [])).toEqual({
-      error: "El nombre del template no genera un identificador válido.",
+    expect(quickProfileId("!!!", [])).toEqual({
+      error: "El nombre del perfil no genera un identificador válido.",
     });
   });
 
   test("id existente → error de colisión", () => {
-    expect(quickTemplateId("Mi Template", ["mi-template"])).toEqual({
-      error: 'Ya existe un template con el id "mi-template".',
+    expect(quickProfileId("Mi Profile", ["mi-profile"])).toEqual({
+      error: 'Ya existe un perfil con el id "mi-profile".',
     });
   });
 
   test("nombre válido → id", () => {
-    expect(quickTemplateId("Mi Template", [])).toEqual({ id: "mi-template" });
+    expect(quickProfileId("Mi Profile", [])).toEqual({ id: "mi-profile" });
   });
 });
 

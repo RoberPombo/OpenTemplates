@@ -25,8 +25,8 @@ export type Workspace = {
   mode: WorkspaceMode;
   branch?: string | null;
   worktreePath?: string | null;
-  templateId?: string | null;
-  templateVersion?: number | null;
+  profileId?: string | null;
+  profileVersion?: number | null;
   issue?: IssueRef | null;
   mcpNames: string[];
   disabledMcps: string[];
@@ -37,6 +37,8 @@ export type Workspace = {
   plugins: AssetRef[];
   model?: string | null;
   models: string[];
+  /** Huella del contexto materializado que sirve el workspace. */
+  contextHash?: string | null;
   createdAt: number;
   updatedAt: number;
   missing?: boolean;
@@ -53,7 +55,7 @@ export type Repo = {
   updatedAt: number;
 };
 
-export type TemplateManifest = {
+export type ProfileManifest = {
   id: string;
   name: string;
   description: string;
@@ -104,15 +106,21 @@ export type Library = {
 export type AppSettings = {
   version: number;
   worktreesRoot?: string | null;
-  defaultTemplateId?: string | null;
+  defaultProfileId?: string | null;
 };
 
 export type ServerInfo = {
   workspaceId: string;
+  /** Huella del contexto que sirve el proceso (puede compartirse entre workspaces). */
+  contextHash?: string;
   baseUrl: string;
   password: string;
   port: number;
   pid: number;
+  /** Modelo por defecto del contexto. */
+  model?: string | null;
+  /** Modelos que ofrece el perfil del contexto. */
+  models?: string[];
 };
 
 export type WorktreeStatus = {
@@ -144,7 +152,7 @@ export type ResourceUsage = {
 export type Bootstrap = {
   workspaces: Workspace[];
   repos: Repo[];
-  templates: TemplateManifest[];
+  profiles: ProfileManifest[];
   settings: AppSettings;
   worktreesRoot: string;
   running: ServerInfo[];
@@ -165,7 +173,7 @@ export type CreateWorkspaceInput = {
   name: string;
   repoId?: string | null;
   projectPath?: string | null;
-  templateId?: string | null;
+  profileId?: string | null;
   mode?: WorkspaceMode;
   branch?: string | null;
   base?: string | null;

@@ -17,7 +17,7 @@ import type { GitCommit, GitCommitResult, GitPushResult, GitStatus } from "../do
 import { buildGitStatus } from "../domain/workspace/git";
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
 import type { ResourcesGateway } from "../domain/repositories/ResourcesGateway";
-import type { TemplateGateway } from "../domain/repositories/TemplateGateway";
+import type { ProfileGateway } from "../domain/repositories/ProfileGateway";
 import type { WorkspaceGateway } from "../domain/repositories/WorkspaceGateway";
 import type {
   AppSettings,
@@ -31,7 +31,7 @@ import type {
   ServerInfo,
   SkillInfo,
   SkillRef,
-  TemplateManifest,
+  ProfileManifest,
   WorktreeStatus,
 } from "../types";
 
@@ -71,8 +71,8 @@ export class TauriWorkspaceGateway implements WorkspaceGateway {
     return call(api.setWorkspaceDisabled(input));
   }
 
-  reapplyTemplate(id: string): Promise<ConfigOutcome> {
-    return call(api.reapplyTemplate(id));
+  reapplyProfile(id: string): Promise<ConfigOutcome> {
+    return call(api.reapplyProfile(id));
   }
 
   delete(
@@ -84,6 +84,10 @@ export class TauriWorkspaceGateway implements WorkspaceGateway {
 
   start(id: string): Promise<ServerInfo> {
     return call(api.startWorkspace(id));
+  }
+
+  startProfile(workspaceId: string, profileId: string): Promise<ServerInfo> {
+    return call(api.startProfile(workspaceId, profileId));
   }
 
   stop(id: string): Promise<void> {
@@ -175,25 +179,25 @@ export class TauriPullRequestGateway implements PullRequestGateway {
   }
 }
 
-export class TauriTemplateGateway implements TemplateGateway {
-  list(): Promise<TemplateManifest[]> {
-    return call(api.listTemplates());
+export class TauriProfileGateway implements ProfileGateway {
+  list(): Promise<ProfileManifest[]> {
+    return call(api.listProfiles());
   }
 
-  save(manifest: TemplateManifest): Promise<TemplateManifest> {
-    return call(api.saveTemplate(manifest));
+  save(manifest: ProfileManifest): Promise<ProfileManifest> {
+    return call(api.saveProfile(manifest));
   }
 
   delete(id: string): Promise<void> {
-    return call(api.deleteTemplate(id));
+    return call(api.deleteProfile(id));
   }
 
   agentsMd(id: string): Promise<string> {
-    return call(api.templateAgentsMd(id));
+    return call(api.profileAgentsMd(id));
   }
 
   saveAgentsMd(id: string, content: string): Promise<string> {
-    return call(api.saveTemplateAgentsMd(id, content));
+    return call(api.saveProfileAgentsMd(id, content));
   }
 }
 

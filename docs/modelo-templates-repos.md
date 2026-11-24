@@ -1,43 +1,79 @@
-# Modelo de templates, repositorios y workspaces
+# Modelo de perfiles, proyectos y workspaces
+
+> El código ya usa **perfil** (`profile`) en tipos, comandos y persistencia. Los
+> datos anteriores (`templates.json`, `templates/`, `template.lock.json`,
+> `templateId`) se migran al arrancar y siguen leyéndose como fallback.
 
 ## Idea
 
-Tres piezas globales y una instancia:
+Cuatro piezas declarativas y dos instancias:
 
-- **Template**: paquete reutilizable con AGENTS.md, agentes, skills, MCPs, prompts,
-  hooks y herramientas. Se define una vez y se asigna a cada workspace.
+- **Proyecto**: uno o más repos con una raíz común. Un repo suelto es un proyecto de
+  un solo repo; un multirepo es un proyecto cuya raíz los contiene.
 - **Repositorio**: proyecto git añadido a la app, con su remoto y rama principal.
-- **Workspace**: instancia concreta de trabajo sobre un repositorio, con un template,
-  un nombre y un modo: checkout principal o worktree. Puede nacer de una issue.
-- **Sesiones**: viven dentro del workspace (su propia DB de opencode), de modo que
-  todo el trabajo de ese frente queda localizado.
+- **Perfil** (hoy `template`): paquete de rol. Define agentes (prompt, modelo, tools,
+  permisos), comandos, skills, MCPs y plugins, más las instrucciones base. No
+  pertenece a un repo.
+- **Huella de contexto**: valor derivado del perfil (y del repo donde se aplica) que
+  identifica exactamente lo que opencode carga en un servidor. No se edita.
+- **Workspace**: frente de trabajo sobre un proyecto: carpeta, rama, modo e issue.
+  Ya no lleva un perfil obligatorio.
+- **Sesión**: el trabajador concreto. Elige perfil y agente, y aporta su brief.
 
-## Mapeo a opencode v2
+El repo nunca elige el perfil. El mismo repo puede tener sesiones de backend,
+frontend y métricas con perfiles distintos.
 
-| Template | Mecanismo de opencode |
+## Regla de aislamiento
+
+Un servidor opencode por **huella**. La huella ya incluye la raíz del proyecto, así
+que varias sesiones comparten servidor si su contexto materializado es idéntico.
+
+| Cambia… | ¿Servidor nuevo? |
 |---|---|
-| `AGENTS.md` | Instrucciones: se genera un `AGENTS.md` combinado en el config dir aislado |
-| `agents/` | `agents/*.md` en el config dir (`XDG_CONFIG_HOME`) |
-| `skills/` | Array `skills` + allowlist `permissions` (deny * + allow por ID) |
-| `mcps` | `mcp.servers` en la config generada + endpoints runtime por location |
-| `prompts` | `commands/*.md` (comandos `/nombre`) |
-| `hooks` | Plugins del servidor (`plugins/` y array `plugin`) |
-| `herramientas` | `tools`/`permissions` + tools que aportan MCPs y plugins |
-| Modelo/permisos | `model`, `tools`, `permissions` de la config generada |
+| Prompt, agente, modelo, permisos del agente | No |
+| Skills, MCPs, plugins, AGENTS.md base | Sí (cambia la huella) |
+| Worktree dentro del mismo repo | No: mismo servidor, `location.directory` distinto |
+| Otro repo sin raíz común | Sí |
 
-Hallazgo importante: `OPENCODE_DISABLE_PROJECT_CONFIG=1` también desactiva el
-descubrimiento de los `AGENTS.md` del proyecto (lo dice la doc de instructions).
-Hoy la app pierde las instrucciones del repo. La solución es mantener la config del
-proyecto desactivada (para que no inyecte MCPs/skills) y **generar un AGENTS.md
-combinado** con global + template + repo + issue.
+Casos concretos:
 
-## Anatomía de un template
+- Dos trabajadores iguales → dos sesiones, un servidor.
+- Backend y frontend que solo difieren en cómo trabajan → un servidor, dos agentes.
+- Backend con Postgres y frontend sin él → dos huellas, dos servidores.
+- Varias ramas del mismo repo → un servidor, sesiones con directorios distintos
+  (ya verificado con el multi-run).
+
+No se comparte un superset de MCPs y skills con permisos por agente para evitar el
+servidor extra: el MCP sigue conectado y la tool sigue anunciada al modelo. Es
+justo el ruido que este corte quiere quitar.
+
+## Qué entra en la huella
+
+| Capa | Contenido | ¿En la huella? | Dónde vive |
+|---|---|---|---|
+| Base de contexto | MCPs habilitados y su config, plugins, allowlist de skills (`permissions`), AGENTS.md combinado (global + perfil + repo + issue) | **Sí** | config dir del contexto |
+| Rol | agentes (prompt, modelo, tools, permisos propios, temperatura) y comandos | No | `agents/`, `commands/` del contexto |
+| Brief | Objetivo de la sesión, issue, notas | No | Sesión |
+
+`huella = sha256(json normalizado)` de la capa base **más la raíz del proyecto**
+(el checkout principal, no el worktree), incluido el texto materializado del
+AGENTS.md y del `profile.lock.json`. Así la huella identifica un contexto completo y
+dos repos distintos nunca colisionan. El **modelo no entra** en la huella: se pasa
+en cada `session.create` y el de la config del contexto queda solo como fallback.
+El algoritmo se versiona (`huella-v1`) para poder invalidar todo al cambiar el
+formato.
+
+Corolario: las instrucciones específicas de rol van en el **prompt del agente**,
+nunca en el AGENTS.md base. Si backend y frontend solo difieren en método de
+trabajo, comparten huella y servidor. Si difieren en skills o MCPs, no.
+
+## Anatomía de un perfil
 
 ```
-<appdata>/templates/<template-id>/
-├── template.json
-├── AGENTS.md                  # instrucciones propias del template
-├── agents/<id>.md             # agentes propios
+<appdata>/profiles/<profile-id>/
+├── profile.json
+├── AGENTS.md                  # instrucciones base propias del perfil
+├── agents/<id>.md             # roles: prompt, modelo, tools, permisos
 ├── commands/<id>.md           # prompts propios
 ├── skills/<id>/SKILL.md       # skills propias
 ├── plugins/<id>.ts            # hooks/herramientas propias
@@ -62,122 +98,120 @@ combinado** con global + template + repo + issue.
 ```
 
 La **biblioteca global** son los MCPs, skills, agentes, comandos y plugins que ya
-existen en `~/.config/opencode`. El template selecciona de ahí y puede añadir los
-suyos. No se duplica lo que ya está instalado; los assets propios del template viven
-en su carpeta.
+existen en `~/.config/opencode`. El perfil selecciona de ahí y puede añadir los
+suyos. No se duplica lo instalado; los assets propios viven en su carpeta.
 
-## Materialización por workspace
-
-Al crear el workspace se genera su config aislada:
+## Materialización por huella
 
 ```
-<appdata>/workspaces/<id>/xdg/opencode/
-├── opencode.json        # modelo, mcp.servers, skills, permissions, tools, plugin
-├── AGENTS.md            # combinado: global + template + repo + issue
-├── agents/              # symlinks: globales + template (template gana)
-├── commands/            # symlinks: globales + template (template gana)
-└── plugins/             # symlinks de los plugins seleccionados
+<appdata>/contexts/<huella>/
+├── xdg/opencode/
+│   ├── opencode.json          # modelo por defecto, mcp.servers, skills, permissions, tools, plugin
+│   ├── AGENTS.md              # combinado: global + perfil + repo + issue
+│   ├── agents/                # symlinks: globales + perfil (perfil gana)
+│   ├── commands/              # symlinks: globales + perfil (perfil gana)
+│   └── plugins/               # symlinks de los plugins seleccionados
+├── opencode.db                # sesiones de este contexto
+├── profile.lock.json          # selección congelada que produjo la huella
+└── logs/server.log            # stdout/stderr, sin password
 ```
 
-- `opencode.json` parte de la config global, quita `mcp`, `skills`, `instructions`,
-  `agents`, `commands` y `plugins`, y añade solo lo del template.
-- Las skills se filtran con la allowlist ya verificada.
-- El `AGENTS.md` combinado se regenera al arrancar o al reaplicar (nunca se escribe
-  a través del symlink del AGENTS.md global: hay que borrar el symlink antes).
-- Las instrucciones del repo se escanean (`AGENTS.md` raíz y anidados, sin
-  `node_modules`/`.git`) y se añaden en orden padre → hijo.
+- El contexto se crea una vez; los workspaces y sesiones de la misma huella lo
+  reutilizan.
+- `profile.lock.json` congela la selección: editar un perfil no cambia contextos
+  existentes hasta "Reaplicar".
+- Reaplicar recalcula la huella. Si cambia, se crea otro contexto: las sesiones
+  nuevas van allí y las vivas siguen en el suyo hasta reiniciar.
+- Si dos perfiles del mismo repo comparten huella, comparten config dir, DB y
+  servidor; solo cambian el agente elegido por sesión.
+
+## Repos e instrucciones
+
+- Los AGENTS.md del repo (raíz y anidados, sin `node_modules`/`.git`) se escanean y
+  se combinan en el AGENTS.md base, en orden padre → hijo. Por eso el contenido del
+  repo forma parte de la huella.
 - Si el workspace nace de una issue, se escribe `ISSUE.md` en la carpeta del
-  workspace y se referencia desde el AGENTS.md combinado.
-
-El workspace guarda `templateId`, `templateVersion` y un `template.lock.json` con la
-selección materializada. Editar un template no cambia workspaces existentes; se
-actualizan con una acción explícita "Reaplicar template".
-
-## Repositorios y worktrees
-
-Un repositorio se añade con su ruta canónica (se valida con
-`git rev-parse --show-toplevel`), su remoto y su rama principal
-(`refs/remotes/origin/HEAD`, con fallback a la rama actual).
-
-Modos de workspace:
-
-- **Principal**: `cwd` = checkout principal. Usa la rama actual. Solo se recomienda
-  un workspace activo por checkout; dos procesos sobre la misma carpeta comparten
-  ficheros, watchers y estado git.
-- **Worktree**: se crea con
-  `git -C <repo> worktree add -b <rama> <ruta> <base>`.
-  - Ruta por defecto: `<worktrees-root>/<repo>/<slug>` (configurable).
-  - Rama por defecto: `<slug>`; desde issue: `<numero>-<slug>`.
-  - Base por defecto: `origin/<rama-principal>`; se puede cambiar.
-  - Si la rama ya existe, ofrecer usarla o crear un sufijo.
-  - Al borrar el workspace: parar el servidor, `git worktree remove` (con `--force`
-    si hay cambios, avisando), y **conservar la rama**.
-- **Desde issue**: se consulta con `gh` (GitHub) y se rellenan nombre, número,
-  título, rama y slug. Si no hay `gh` o el remoto no es GitHub, se permite meter
-  número/título a mano. La issue se guarda como `ISSUE.md` y como metadato del
-  workspace.
-
-No se borra nunca el checkout principal. Un workspace cuyo path ya no existe se
-marca como "missing" y se puede reparar o archivar.
+  proyecto y se referencia desde el AGENTS.md combinado.
+- **Multirepo**: si hay raíz común, un solo proyecto y un solo `cwd`; las sesiones
+  seleccionan qué subcarpetas entran en su brief. Si no hay raíz común, un proyecto
+  por repo y servidores separados: un proceso no sirve dos raíces de forma limpia.
+- **Worktrees**: se crean con `git worktree add`; las sesiones usan su carpeta como
+  `location.directory` dentro del mismo servidor. Compartir AGENTS.md y DB es lo
+  deseado para comparar ramas. Si un worktree modifica sus AGENTS.md respecto a la
+  raíz, la huella cambia y ese contexto se separa.
 
 ## Flujo de creación
 
-1. Elegir repositorio (o añadirlo).
-2. Elegir template.
-3. Nombre del workspace.
-4. Modo: principal / worktree / desde issue.
-5. Si worktree: rama, base, ruta, fetch opcional.
-6. Si issue: elegir issue de la lista; se propone nombre y rama.
-7. Crear: materializar config, registrar workspace y, si se quiere, arrancar el
-   servidor.
-8. El workspace aparece agrupado por repo; dentro, sus sesiones.
-
-## Sesiones
-
-Cada workspace tiene su DB y su lista de sesiones. La UI deja crear, cambiar,
-renombrar y archivar sesiones; la sesión activa se recuerda por workspace. Al
-archivar un workspace se conservan sus sesiones; al borrarlo definitivamente se
-puede borrar también su DB.
+1. Añadir repo o proyecto.
+2. Elegir modo: principal, worktree o desde issue.
+3. Nombre, rama y brief.
+4. Elegir perfil y agente (por defecto el de ajustes).
+5. Al abrir la primera sesión, materializar la huella y arrancar su servidor si no
+   existe.
+6. Abrir otra sesión con otro perfil: si su huella coincide, comparte servidor; si
+   no, se levanta uno nuevo sobre la misma raíz.
 
 ## UI
 
-- **Workspaces**: lista agrupada por repo, estado live/parado, sesiones dentro.
-- **Repos**: añadir/eliminar repos, ver remoto, rama principal y workspaces.
-- **Templates**: lista y editor (AGENTS.md, selección de agentes/skills/MCPs/
+- **Proyectos**: repos, raíz, rama principal.
+- **Perfiles**: lista y editor (AGENTS.md base, selección de agentes/skills/MCPs/
   prompts/plugins, modelo y permisos).
-- **Nuevo workspace**: asistente repo → template → nombre → modo → issue.
-- **Ajustes del workspace**: plantilla aplicada, ruta, rama, issue, y opción de
-  reaplicar template; los toggles puntuales pasan a ser overrides del workspace.
+- **Workspaces**: lista agrupada por proyecto, estado live/parado y sesiones dentro.
+- **Nueva sesión / perfil activo**: un selector de perfil en la cabecera del
+  workspace arranca (o reutiliza) el contexto de ese perfil y cambia la lista de
+  sesiones; cada contexto guarda sus propias sesiones, modelo y agente elegidos.
+  Badge «comparte servidor con…» cuando la huella coincide con otro workspace.
+- **Ajustes del workspace**: perfil por defecto, ruta, rama, issue y reaplicar.
 
 ## Persistencia
 
-Separar ficheros para no mezclar:
-
 ```
 <appdata>/repos.json
-<appdata>/templates.json        # manifiestos; assets en templates/<id>/
-<appdata>/workspaces.json       # incluye repoId, templateId, modo, path, rama, issue
+<appdata>/profiles.json        # manifiestos; assets en profiles/<id>/
+<appdata>/workspaces.json      # projectId, repoId, modo, path, rama, issue, defaultProfileId
+<appdata>/contexts/<huella>/   # config materializada, lock, DB y logs
 ```
+
+## Migración desde el modelo actual
+
+1. `templates.json` → `profiles.json`; el manifiesto se mantiene y se le añade
+   `baseAgents`.
+2. `workspace.templateId` → `defaultProfileId`; `template.lock.json` →
+   `profile.lock.json`.
+3. Al arrancar, calcular la huella de cada workspace existente y materializar su
+   contexto una vez. Los workspaces con la misma huella comparten contexto.
+4. Mover un workspace vivo a un contexto compartido exige reiniciar su servidor;
+   no se borra nada hasta que el nuevo arranque correctamente.
 
 ## Fases
 
-1. Store v2: repos, templates y workspaces; migración/limpieza del store actual.
-2. Biblioteca global + CRUD de templates + materialización de config.
-3. Repos: alta, detección de remoto/rama, agrupación.
-4. Worktrees: crear, validar, borrar, conservar rama.
-5. Asistente de nuevo workspace (repo + template + modo + issue).
-6. Sesiones por workspace (lista, crear, cambiar, renombrar).
-7. Issues con `gh` y fallback manual.
-8. AGENTS.md combinado y reaplicar template.
+1. Huella y store de contextos (`contexts/<huella>`), reutilización y reinicio
+   limpio.
+2. Perfiles: CRUD sobre `profiles.json`, renombrado desde templates y modelo fuera
+   de la huella (se elige por sesión).
+3. Proyectos y repos: agrupación y raíz.
+4. Workspaces sin perfil obligatorio.
+5. Sesión con perfil y agente; servidor por huella.
+6. Worktrees e issues.
+7. AGENTS.md combinado y reaplicar perfil.
+8. UI de contextos activos, GC y suspensión.
 
-## Decisiones abiertas
+## Decisiones
 
-1. **Templates híbridos** (selección de biblioteca global + assets propios) frente a
-   bundles autocontenidos. Recomendado: híbrido.
-2. **Worktrees** en app data, junto al repo o configurable. Recomendado: configurable,
-   por defecto app data.
-3. **Issues**: GitHub con `gh` primero, GitLab después, fallback manual siempre.
-4. **Checkout principal**: permitir varios workspaces o avisar y limitar a uno
-   activo. Recomendado: avisar; usar worktrees para paralelo.
-5. **Template vivo o congelado**: recomendado congelar la selección por workspace y
-   reaplicar explícitamente.
+Cerradas:
+
+1. El perfil no se asocia al repo ni al workspace: se elige por **sesión**.
+2. El aislamiento se mide por **huella**: MCPs + skills + plugins + instrucciones.
+   Nada de superset con permisos por agente.
+3. El rol fino (prompt, modelo, tools) es un **agente** dentro de la huella.
+4. Un servidor por huella; los worktrees comparten servidor vía
+   `location.directory`.
+5. Huella congelada por contexto y reaplicación explícita.
+
+Abiertas:
+
+1. Instrucciones de repo por directorio en vez de combinarlas: permitiría compartir
+   contexto entre repos del mismo stack; descubrir AGENTS.md del proyecto está sin
+   verificar con `OPENCODE_DISABLE_PROJECT_CONFIG`.
+2. GC y suspensión de contextos sin sesiones vivas.
+3. GitLab como segundo proveedor de issues.

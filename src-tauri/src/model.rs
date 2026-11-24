@@ -59,10 +59,10 @@ pub struct Workspace {
     pub branch: Option<String>,
     #[serde(default)]
     pub worktree_path: Option<String>,
-    #[serde(default)]
-    pub template_id: Option<String>,
-    #[serde(default)]
-    pub template_version: Option<u32>,
+    #[serde(default, alias = "templateId")]
+    pub profile_id: Option<String>,
+    #[serde(default, alias = "templateVersion")]
+    pub profile_version: Option<u32>,
     #[serde(default)]
     pub issue: Option<IssueRef>,
     #[serde(default)]
@@ -86,6 +86,10 @@ pub struct Workspace {
     /// Modelos que ofrece el selector del chat (congelados del template).
     #[serde(default)]
     pub models: Vec<String>,
+    /// Huella del contexto materializado que usa el workspace. `None` hasta que
+    /// se materializa por primera vez (workspaces migrados desde el modelo anterior).
+    #[serde(default)]
+    pub context_hash: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
     /// Solo en memoria: la carpeta del workspace ya no existe.
@@ -117,7 +121,7 @@ fn default_main_branch() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TemplateManifest {
+pub struct ProfileManifest {
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -157,11 +161,11 @@ fn default_version() -> u32 {
 /// Selección congelada de un template para un workspace concreto.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TemplateLock {
-    #[serde(default)]
-    pub template_id: Option<String>,
-    #[serde(default)]
-    pub template_version: Option<u32>,
+pub struct ProfileLock {
+    #[serde(default, alias = "templateId")]
+    pub profile_id: Option<String>,
+    #[serde(default, alias = "templateVersion")]
+    pub profile_version: Option<u32>,
     #[serde(default)]
     pub frozen_at: u64,
     #[serde(default)]
@@ -195,8 +199,8 @@ pub struct AppSettings {
     /// Raíz configurable de worktrees; `None` = `<appdata>/worktrees`.
     #[serde(default)]
     pub worktrees_root: Option<String>,
-    #[serde(default)]
-    pub default_template_id: Option<String>,
+    #[serde(default, alias = "defaultTemplateId")]
+    pub default_profile_id: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -204,7 +208,7 @@ impl Default for AppSettings {
         Self {
             version: 2,
             worktrees_root: None,
-            default_template_id: None,
+            default_profile_id: None,
         }
     }
 }
@@ -252,10 +256,19 @@ pub struct Library {
 #[serde(rename_all = "camelCase")]
 pub struct ServerInfo {
     pub workspace_id: String,
+    /// Huella del contexto que sirve este proceso.
+    #[serde(default)]
+    pub context_hash: String,
     pub base_url: String,
     pub password: String,
     pub port: u16,
     pub pid: u32,
+    /// Modelo por defecto del contexto; la sesión lo recibe al crearse.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Modelos que ofrece el perfil de este contexto.
+    #[serde(default)]
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -263,7 +276,7 @@ pub struct ServerInfo {
 pub struct Bootstrap {
     pub workspaces: Vec<Workspace>,
     pub repos: Vec<Repo>,
-    pub templates: Vec<TemplateManifest>,
+    pub profiles: Vec<ProfileManifest>,
     pub settings: AppSettings,
     pub worktrees_root: String,
     pub running: Vec<ServerInfo>,
@@ -290,8 +303,8 @@ pub struct CreateWorkspaceInput {
     pub repo_id: Option<String>,
     #[serde(default)]
     pub project_path: Option<String>,
-    #[serde(default)]
-    pub template_id: Option<String>,
+    #[serde(default, alias = "templateId")]
+    pub profile_id: Option<String>,
     /// `principal`, `worktree` o `adhoc`.
     #[serde(default)]
     pub mode: Option<String>,
@@ -409,11 +422,11 @@ pub struct RepoStore {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TemplateStore {
+pub struct ProfileStore {
     #[serde(default)]
     pub version: u32,
-    #[serde(default)]
-    pub templates: Vec<TemplateManifest>,
+    #[serde(default, alias = "templates")]
+    pub profiles: Vec<ProfileManifest>,
 }
 
 /// Líneas de un fichero no rastreado, calculadas por Rust al leerlo.

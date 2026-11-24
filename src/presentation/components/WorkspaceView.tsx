@@ -1,5 +1,5 @@
-import { Profiler, useMemo, useState } from "react";
-import type { ServerInfo, Workspace } from "../../types";
+import { Profiler, useEffect, useMemo, useState } from "react";
+import type { ProfileManifest, ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import { useCommandAction } from "../context/CommandActions";
@@ -13,7 +13,13 @@ import { Button } from "./ui";
 
 type Props = {
   workspace: Workspace;
-  templateName?: string | null;
+  profileName?: string | null;
+  /** Nombres de otros workspaces que comparten el mismo contexto/servidor. */
+  sharedWith?: string[];
+  /** Contextos arrancados del workspace (uno por perfil). */
+  contexts?: ServerInfo[];
+  profiles?: ProfileManifest[];
+  onStartProfile?: (workspaceId: string, profileId: string) => Promise<ServerInfo>;
   server?: ServerInfo;
   starting: boolean;
   onStart: () => void;
@@ -55,8 +61,12 @@ function modeLabel(workspace: Workspace) {
 
 export function WorkspaceView({
   workspace,
-  templateName,
-  server,
+  profileName,
+  sharedWith = [],
+  contexts = [],
+  profiles = [],
+  onStartProfile,
+  server: defaultServer,
   starting,
   onStart,
   onStop,
@@ -67,6 +77,47 @@ export function WorkspaceView({
   repoPath,
 }: Props) {
   const root = useAppContext();
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(
+    () => workspace.profileId ?? profiles[0]?.id ?? null,
+  );
+  const [activeHash, setActiveHash] = useState<string | null>(null);
+  const [startingProfile, setStartingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [extraServers, setExtraServers] = useState<ServerInfo[]>([]);
+  const servers = useMemo(() => {
+    const byHash = new Map<string, ServerInfo>();
+    for (const item of [defaultServer, ...contexts, ...extraServers]) {
+      if (item) byHash.set(item.contextHash ?? `${item.workspaceId}:${item.port}`, item);
+    }
+    return [...byHash.values()];
+  }, [defaultServer, contexts, extraServers]);
+  const activeServer = useMemo(() => {
+    if (activeHash) {
+      const found = servers.find((item) => item.contextHash === activeHash);
+      if (found) return found;
+    }
+    return (
+      servers.find((item) => item.contextHash === workspace.contextHash) ??
+      defaultServer ??
+      servers[0]
+    );
+  }, [activeHash, servers, workspace.contextHash, defaultServer]);
+  // El resto del componente usa este `server` como el contexto activo.
+  const server = activeServer;
+  useEffect(() => {
+    if (activeHash && !servers.some((item) => item.contextHash === activeHash)) {
+      setActiveHash(null);
+      setActiveProfileId(workspace.profileId ?? profiles[0]?.id ?? null);
+    }
+  }, [activeHash, servers, workspace.profileId, profiles]);
+  const chatWorkspace = useMemo(
+    () => ({
+      ...workspace,
+      model: server?.model ?? workspace.model,
+      models: server?.models?.length ? server.models : workspace.models,
+    }),
+    [workspace, server?.model, server?.models],
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(
     () => root.preferences.get(prefKeys.panelOpen) !== "0",
@@ -75,6 +126,25 @@ export function WorkspaceView({
     const saved = root.preferences.get(prefKeys.panelTab(workspace.id));
     return saved === "cambios" || saved === "ficheros" ? saved : "resumen";
   });
+  async function switchProfile(profileId: string) {
+    if (!onStartProfile || startingProfile) return;
+    setActiveProfileId(profileId);
+    setProfileError(null);
+    setStartingProfile(true);
+    try {
+      const started = await onStartProfile(workspace.id, profileId);
+      setExtraServers((prev) => [
+        ...prev.filter((item) => item.contextHash !== started.contextHash),
+        started,
+      ]);
+      setActiveHash(started.contextHash ?? null);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setStartingProfile(false);
+    }
+  }
+
   const [sessionsOpen, setSessionsOpen] = useState(
     () => root.preferences.get(prefKeys.sessionsOpen) === "1",
   );
@@ -152,6 +222,8 @@ export function WorkspaceView({
       return;
     }
     await closeWorkspaceTerminals();
+    setActiveHash(null);
+    setActiveProfileId(workspace.profileId ?? profiles[0]?.id ?? null);
     onStop();
   }
   function requestDelete() {
@@ -242,7 +314,28 @@ export function WorkspaceView({
             </p>
             <p className="muted small-text">
               {modeLabel(workspace)}
-              {templateName ? ` · template ${templateName}` : " · sin template"}
+              {profiles.length > 0 && onStartProfile ? (
+                <span className="profile-switch">
+                  {" · perfil "}
+                  <select
+                    aria-label="Perfil del workspace"
+                    value={activeProfileId ?? ""}
+                    disabled={startingProfile}
+                    onChange={(event) => void switchProfile(event.target.value)}
+                  >
+                    {profiles.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              ) : profileName ? (
+                ` · perfil ${profileName}`
+              ) : (
+                " · sin perfil"
+              )}
+              {sharedWith.length > 0 ? ` · comparte servidor con ${sharedWith.join(", ")}` : ""}
               {workspace.missing ? " · carpeta no encontrada" : ""}
             </p>
           </div>
@@ -324,6 +417,12 @@ export function WorkspaceView({
         </div>
       </header>
 
+      {profileError && (
+        <div className="callout warning workspace-callout">
+          No se pudo abrir el perfil: {profileError}
+        </div>
+      )}
+
       {workspace.missing && !server && (
         <div className="callout warning workspace-callout">
           La carpeta de este workspace ya no existe ({workspace.projectPath}). Si era un worktree,
@@ -335,8 +434,10 @@ export function WorkspaceView({
         <>
           <div className="workspace-body">
             <ProfiledChat
+              key={server.contextHash ?? "default"}
               client={client}
-              workspace={workspace}
+              workspace={chatWorkspace}
+              scope={server.contextHash ?? "default"}
               onSessionChange={setSessionId}
               sessionsOpen={sessionsOpen}
               onCloseSessions={toggleSessions}

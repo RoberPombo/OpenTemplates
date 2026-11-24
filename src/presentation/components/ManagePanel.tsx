@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import { slugify } from "../../domain/workspace/wizard";
-import type { AssetInfo, Library, Repo, TemplateManifest, Workspace } from "../../types";
+import type { AssetInfo, Library, Repo, ProfileManifest, Workspace } from "../../types";
 import type { ModelDetails } from "../../domain/models/details";
 import { ModelInfoCard } from "./ModelInfoCard";
 import { AsyncMultiSearchableSelect, Select } from "./ui";
@@ -10,18 +10,18 @@ import type { SelectEntry, SelectOption } from "./ui";
 
 type Props = {
   repos: Repo[];
-  templates: TemplateManifest[];
+  profiles: ProfileManifest[];
   library: Library;
   workspaces: Workspace[];
   worktreesRoot: string;
-  defaultTemplateId?: string | null;
+  defaultProfileId?: string | null;
   onReposChanged: (repos: Repo[]) => void;
-  onTemplatesChanged: (templates: TemplateManifest[]) => void;
+  onProfilesChanged: (profiles: ProfileManifest[]) => void;
   onWorktreesRootChanged: (root: string) => void;
   onClose: () => void;
 };
 
-type TemplateField = "agents" | "skills" | "mcps" | "commands" | "plugins";
+type ProfileField = "agents" | "skills" | "mcps" | "commands" | "plugins";
 
 function splitModel(model: string): { provider: string; id: string } {
   const slash = model.indexOf("/");
@@ -35,7 +35,7 @@ function modelLabel(model: string): string {
   return model.includes("/") ? `${id} (${provider})` : model;
 }
 
-function emptyTemplate(): TemplateManifest {
+function emptyProfile(): ProfileManifest {
   const now = Date.now();
   return {
     id: "",
@@ -90,27 +90,27 @@ function AssetChecks({
 
 export function ManagePanel({
   repos,
-  templates,
+  profiles,
   library,
   workspaces,
   worktreesRoot,
-  defaultTemplateId,
+  defaultProfileId,
   onReposChanged,
-  onTemplatesChanged,
+  onProfilesChanged,
   onWorktreesRootChanged,
   onClose,
 }: Props) {
   const composition = useAppContext();
-  const [tab, setTab] = useState<"repos" | "templates" | "settings">("repos");
+  const [tab, setTab] = useState<"repos" | "profiles" | "settings">("repos");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
-    templates[0]?.id ?? null,
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    profiles[0]?.id ?? null,
   );
-  const [draft, setDraft] = useState<TemplateManifest>(() => templates[0] ?? emptyTemplate());
+  const [draft, setDraft] = useState<ProfileManifest>(() => profiles[0] ?? emptyProfile());
   const [agentsMd, setAgentsMd] = useState("");
-  const [templateSaved, setTemplateSaved] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
   const [worktreesDraft, setWorktreesDraft] = useState(worktreesRoot);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [catalogModels, setCatalogModels] = useState<ModelDetails[]>([]);
@@ -184,13 +184,13 @@ export function ManagePanel({
   }, [catalogIndex, catalogModels, draft.models, subscriptionFilter]);
 
   useEffect(() => {
-    if (!selectedTemplateId) {
+    if (!selectedProfileId) {
       setAgentsMd("");
       return;
     }
     let alive = true;
-    composition.templates
-      .agentsMd(selectedTemplateId)
+    composition.profiles
+      .agentsMd(selectedProfileId)
       .then((text) => {
         if (alive) setAgentsMd(text);
       })
@@ -200,31 +200,31 @@ export function ManagePanel({
     return () => {
       alive = false;
     };
-  }, [selectedTemplateId, composition]);
+  }, [selectedProfileId, composition]);
 
-  function chooseTemplate(template: TemplateManifest) {
-    setSelectedTemplateId(template.id);
-    setDraft({ ...template });
-    setTemplateSaved(false);
+  function chooseProfile(profile: ProfileManifest) {
+    setSelectedProfileId(profile.id);
+    setDraft({ ...profile });
+    setProfileSaved(false);
     setError(null);
   }
 
-  function newTemplate() {
-    setSelectedTemplateId(null);
-    setDraft(emptyTemplate());
+  function newProfile() {
+    setSelectedProfileId(null);
+    setDraft(emptyProfile());
     setAgentsMd("");
-    setTemplateSaved(false);
+    setProfileSaved(false);
     setError(null);
   }
 
-  function toggle(field: TemplateField, id: string) {
+  function toggle(field: ProfileField, id: string) {
     setDraft((prev) => {
       const current = new Set(prev[field]);
       if (current.has(id)) current.delete(id);
       else current.add(id);
       return { ...prev, [field]: [...current] };
     });
-    setTemplateSaved(false);
+    setProfileSaved(false);
   }
 
   function removeModel(model: string) {
@@ -233,7 +233,7 @@ export function ManagePanel({
       models: prev.models.filter((item) => item !== model),
       model: prev.model === model ? null : prev.model,
     }));
-    setTemplateSaved(false);
+    setProfileSaved(false);
   }
 
   async function reloadRepos() {
@@ -282,10 +282,10 @@ export function ManagePanel({
     }
   }
 
-  async function saveTemplate() {
+  async function saveProfile() {
     const name = draft.name.trim();
     if (!name) {
-      setError("El template necesita un nombre.");
+      setError("El perfil necesita un nombre.");
       return;
     }
     const id = draft.id || slugify(name);
@@ -298,12 +298,12 @@ export function ManagePanel({
       setError(null);
       const models = [...new Set(draft.models.map((model) => model.trim()))].filter(Boolean);
       const model = draft.model && models.includes(draft.model) ? draft.model : null;
-      const saved = await composition.templates.save({ ...draft, id, name, models, model });
-      await composition.templates.saveAgentsMd(saved.id, agentsMd);
-      onTemplatesChanged(await composition.templates.list());
-      setSelectedTemplateId(saved.id);
+      const saved = await composition.profiles.save({ ...draft, id, name, models, model });
+      await composition.profiles.saveAgentsMd(saved.id, agentsMd);
+      onProfilesChanged(await composition.profiles.list());
+      setSelectedProfileId(saved.id);
       setDraft({ ...saved });
-      setTemplateSaved(true);
+      setProfileSaved(true);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -311,11 +311,11 @@ export function ManagePanel({
     }
   }
 
-  async function deleteTemplate() {
+  async function deleteProfile() {
     if (!draft.id) return;
     if (
       !composition.confirm.confirm(
-        `¿Borrar el template «${draft.name}»? Los workspaces existentes conservan su selección congelada.`,
+        `¿Borrar el perfil «${draft.name}»? Los workspaces existentes conservan su selección congelada.`,
       )
     ) {
       return;
@@ -323,12 +323,12 @@ export function ManagePanel({
     try {
       setBusy(true);
       setError(null);
-      await composition.templates.delete(draft.id);
-      const next = await composition.templates.list();
-      onTemplatesChanged(next);
-      setSelectedTemplateId(next[0]?.id ?? null);
-      setDraft(next[0] ?? emptyTemplate());
-      setTemplateSaved(false);
+      await composition.profiles.delete(draft.id);
+      const next = await composition.profiles.list();
+      onProfilesChanged(next);
+      setSelectedProfileId(next[0]?.id ?? null);
+      setDraft(next[0] ?? emptyProfile());
+      setProfileSaved(false);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -343,7 +343,7 @@ export function ManagePanel({
       const saved = await composition.settings.save({
         version: 2,
         worktreesRoot: worktreesDraft.trim() || null,
-        defaultTemplateId: defaultTemplateId ?? null,
+        defaultProfileId: defaultProfileId ?? null,
       });
       const root = saved.worktreesRoot ?? worktreesRoot;
       setWorktreesDraft(root);
@@ -361,7 +361,7 @@ export function ManagePanel({
       <div className="modal manage" onMouseDown={(event) => event.stopPropagation()}>
         <header className="modal-head">
           <div>
-            <h2>Repos y templates</h2>
+            <h2>Repos y perfiles</h2>
             <p className="muted small-text">
               Biblioteca global: {library.agents.length} agentes · {library.skills.length} skills ·{" "}
               {library.mcps.length} MCPs · {library.commands.length} comandos ·{" "}
@@ -377,11 +377,8 @@ export function ManagePanel({
           <button className={tab === "repos" ? "active" : ""} onClick={() => setTab("repos")}>
             Repos
           </button>
-          <button
-            className={tab === "templates" ? "active" : ""}
-            onClick={() => setTab("templates")}
-          >
-            Templates
+          <button className={tab === "profiles" ? "active" : ""} onClick={() => setTab("profiles")}>
+            Perfiles
           </button>
           <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
             Ajustes
@@ -443,34 +440,32 @@ export function ManagePanel({
             </section>
           )}
 
-          {tab === "templates" && (
-            <section className="manage-pane template-pane">
-              <aside className="template-list">
-                <button className="ghost small" onClick={newTemplate}>
-                  + Nuevo template
+          {tab === "profiles" && (
+            <section className="manage-pane profile-pane">
+              <aside className="profile-list">
+                <button className="ghost small" onClick={newProfile}>
+                  + Nuevo perfil
                 </button>
-                {templates.map((template) => (
+                {profiles.map((profile) => (
                   <button
-                    key={template.id}
-                    className={`template-item ${
-                      selectedTemplateId === template.id ? "active" : ""
-                    }`}
-                    onClick={() => chooseTemplate(template)}
+                    key={profile.id}
+                    className={`profile-item ${selectedProfileId === profile.id ? "active" : ""}`}
+                    onClick={() => chooseProfile(profile)}
                   >
-                    <span>{template.name}</span>
+                    <span>{profile.name}</span>
                     <span className="muted small-text">
-                      {template.id} · v{template.version}
+                      {profile.id} · v{profile.version}
                     </span>
                   </button>
                 ))}
-                {templates.length === 0 && (
+                {profiles.length === 0 && (
                   <p className="muted small-text">
-                    Sin templates. Crea uno para agrupar agentes, skills y MCPs.
+                    Sin perfils. Crea uno para agrupar agentes, skills y MCPs.
                   </p>
                 )}
               </aside>
 
-              <div className="template-editor">
+              <div className="profile-editor">
                 <div className="form-grid two">
                   <label className="field">
                     <span>Nombre</span>
@@ -488,7 +483,7 @@ export function ManagePanel({
                       className="text-input"
                       value={draft.id}
                       placeholder="se deriva del nombre"
-                      disabled={selectedTemplateId !== null}
+                      disabled={selectedProfileId !== null}
                       onChange={(event) =>
                         setDraft((prev) => ({ ...prev, id: event.target.value }))
                       }
@@ -537,7 +532,7 @@ export function ManagePanel({
                       onValueChange={setSubscriptionFilter}
                     />
                     <AsyncMultiSearchableSelect
-                      aria-label="Modelos del template"
+                      aria-label="Modelos del perfil"
                       value={draft.models}
                       options={modelOptions}
                       placeholder={
@@ -557,7 +552,7 @@ export function ManagePanel({
                           models,
                           model: prev.model && models.includes(prev.model) ? prev.model : null,
                         }));
-                        setTemplateSaved(false);
+                        setProfileSaved(false);
                       }}
                     />
                   </div>
@@ -611,7 +606,7 @@ export function ManagePanel({
                         ...prev,
                         model: model || null,
                       }));
-                      setTemplateSaved(false);
+                      setProfileSaved(false);
                     }}
                   />
                 </div>
@@ -619,7 +614,7 @@ export function ManagePanel({
                   El modelo por defecto se aplica a los agentes que no traen uno asignado.
                 </p>
 
-                <div className="template-assets">
+                <div className="profile-assets">
                   <section>
                     <div className="section-head">
                       <h3>Agentes</h3>
@@ -710,35 +705,35 @@ export function ManagePanel({
                 </div>
 
                 <label className="field">
-                  <span>AGENTS.md del template</span>
+                  <span>AGENTS.md del perfil</span>
                   <textarea
                     className="text-area"
                     rows={6}
                     value={agentsMd}
-                    placeholder="Instrucciones propias del template…"
+                    placeholder="Instrucciones propias del perfil…"
                     onChange={(event) => {
                       setAgentsMd(event.target.value);
-                      setTemplateSaved(false);
+                      setProfileSaved(false);
                     }}
                   />
                 </label>
-                {templateSaved && (
+                {profileSaved && (
                   <div className="ok-box">
-                    Template guardado. Reaplícalo en los workspaces que quieras actualizar.
+                    Profile guardado. Reaplícalo en los workspaces que quieras actualizar.
                   </div>
                 )}
                 <div className="row">
                   {draft.id && (
                     <button
                       className="ghost danger-text"
-                      onClick={() => void deleteTemplate()}
+                      onClick={() => void deleteProfile()}
                       disabled={busy}
                     >
-                      Borrar template
+                      Borrar perfil
                     </button>
                   )}
-                  <button className="primary" onClick={() => void saveTemplate()} disabled={busy}>
-                    {busy ? "Guardando…" : "Guardar template"}
+                  <button className="primary" onClick={() => void saveProfile()} disabled={busy}>
+                    {busy ? "Guardando…" : "Guardar perfil"}
                   </button>
                 </div>
               </div>

@@ -20,12 +20,13 @@ export interface WorkspaceGateway {
     disabledMcps: string[];
     disabledSkills: string[];
   }): Promise<ConfigOutcome>;
-  reapplyTemplate(id: string): Promise<ConfigOutcome>;
+  reapplyProfile(id: string): Promise<ConfigOutcome>;
   delete(
     id: string,
     options?: { removeWorktree?: boolean; force?: boolean; deleteDb?: boolean },
   ): Promise<void>;
   start(id: string): Promise<ServerInfo>;
+  startProfile(workspaceId: string, profileId: string): Promise<ServerInfo>;
   stop(id: string): Promise<void>;
   status(): Promise<ServerInfo[]>;
   worktreeStatus(id: string): Promise<WorktreeStatus>;

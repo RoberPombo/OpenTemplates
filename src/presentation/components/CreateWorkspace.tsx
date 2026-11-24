@@ -7,7 +7,7 @@ import {
   defaultWorktreePath,
   pathConflicts as findPathConflicts,
   principalConflicts as findPrincipalConflicts,
-  quickTemplateId,
+  quickProfileId,
   slugify,
   workspaceNameError,
 } from "../../domain/workspace/wizard";
@@ -16,24 +16,24 @@ import type {
   Library,
   Repo,
   SkillRef,
-  TemplateManifest,
+  ProfileManifest,
   Workspace,
 } from "../../types";
 import { TextInput } from "./ui";
 
 type Props = {
   repos: Repo[];
-  templates: TemplateManifest[];
+  profiles: ProfileManifest[];
   library: Library;
   workspaces: Workspace[];
   worktreesRoot: string;
   onClose: () => void;
   onRepoAdded: (repo: Repo) => void;
-  onTemplateSaved: (template: TemplateManifest) => void;
+  onProfileSaved: (profile: ProfileManifest) => void;
   onCreated: (workspace: Workspace, warnings: string[], startNow: boolean) => void;
 };
 
-const STEPS = ["Repo", "Template", "Nombre", "Resumen"];
+const STEPS = ["Repo", "Profile", "Nombre", "Resumen"];
 
 function SearchField({
   label,
@@ -85,13 +85,13 @@ function CheckboxRow({
 
 export function CreateWorkspace({
   repos,
-  templates,
+  profiles,
   library,
   workspaces,
   worktreesRoot,
   onClose,
   onRepoAdded,
-  onTemplateSaved,
+  onProfileSaved,
   onCreated,
 }: Props) {
   const root = useAppContext();
@@ -99,7 +99,7 @@ export function CreateWorkspace({
   const [loose, setLoose] = useState(repos.length === 0);
   const [repoId, setRepoId] = useState<string | null>(repos[0]?.id ?? null);
   const [loosePath, setLoosePath] = useState("");
-  const [templateId, setTemplateId] = useState<string | null>(templates[0]?.id ?? null);
+  const [profileId, setProfileId] = useState<string | null>(profiles[0]?.id ?? null);
   const [name, setName] = useState("");
   const [mode, setMode] = useState<"principal" | "worktree">("worktree");
   const [branch, setBranch] = useState("");
@@ -113,12 +113,12 @@ export function CreateWorkspace({
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickName, setQuickName] = useState("");
   const [quickDescription, setQuickDescription] = useState("");
-  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const repo = repos.find((item) => item.id === repoId) ?? null;
-  const template = templates.find((item) => item.id === templateId) ?? null;
+  const profile = profiles.find((item) => item.id === profileId) ?? null;
   const slug = slugify(name);
   const defaultBranch = branchDefault(slug);
   const defaultPath = repo ? defaultWorktreePath(worktreesRoot, repo.name, slug) : "";
@@ -153,21 +153,21 @@ export function CreateWorkspace({
     }
   }
 
-  async function createQuickTemplate() {
-    const result = quickTemplateId(
+  async function createQuickProfile() {
+    const result = quickProfileId(
       quickName,
-      templates.map((item) => item.id),
+      profiles.map((item) => item.id),
     );
     if ("error" in result) {
       setError(result.error);
       return;
     }
     const id = result.id;
-    setSavingTemplate(true);
+    setSavingProfile(true);
     setError(null);
     try {
       const now = Date.now();
-      const saved = await root.templates.save({
+      const saved = await root.profiles.save({
         id,
         name: quickName.trim(),
         description: quickDescription.trim(),
@@ -183,15 +183,15 @@ export function CreateWorkspace({
         createdAt: now,
         updatedAt: now,
       });
-      onTemplateSaved(saved);
-      setTemplateId(saved.id);
+      onProfileSaved(saved);
+      setProfileId(saved.id);
       setQuickOpen(false);
       setQuickName("");
       setQuickDescription("");
     } catch (err) {
       setError(errorText(err));
     } finally {
-      setSavingTemplate(false);
+      setSavingProfile(false);
     }
   }
 
@@ -228,16 +228,16 @@ export function CreateWorkspace({
       name: name.trim(),
       repoId: loose ? null : repoId,
       projectPath: loose ? loosePath : null,
-      // El template también aplica a carpetas sueltas: define agentes, skills y MCPs.
-      templateId,
+      // El perfil también aplica a carpetas sueltas: define agentes, skills y MCPs.
+      profileId,
       mode: loose ? "adhoc" : mode,
       branch: isWorktree ? branch.trim() || null : null,
       base: isWorktree ? base.trim() || null : null,
       worktreePath: isWorktree ? worktreePath.trim() || null : null,
       useExistingBranch: useExisting,
       fetch: fetchRemote,
-      mcpNames: templateId ? [] : [...selectedMcps],
-      skills: templateId ? [] : [...selectedSkills.values()],
+      mcpNames: profileId ? [] : [...selectedMcps],
+      skills: profileId ? [] : [...selectedSkills.values()],
       model: null,
     };
     setSubmitting(true);
@@ -258,7 +258,7 @@ export function CreateWorkspace({
           <div>
             <h2>Nuevo workspace</h2>
             <p className="muted small-text">
-              Repo, template y modo de trabajo. La config queda aislada.
+              Repo, perfil y modo de trabajo. La config queda aislada.
             </p>
           </div>
           <button className="ghost" onClick={onClose}>
@@ -361,18 +361,18 @@ export function CreateWorkspace({
           {step === 1 && (
             <section className="wizard-pane">
               <div className="section-head">
-                <h3>Template</h3>
+                <h3>Perfil</h3>
                 <button className="ghost small" onClick={() => setQuickOpen((value) => !value)}>
-                  {quickOpen ? "Cancelar" : "Crear template"}
+                  {quickOpen ? "Cancelar" : "Crear perfil"}
                 </button>
               </div>
               <p className="muted small-text">
-                El template elige agentes, skills, MCPs, comandos y plugins de la biblioteca global.
+                El perfil elige agentes, skills, MCPs, comandos y plugins de la biblioteca global.
                 Se congela al crear el workspace.
               </p>
 
               {quickOpen && (
-                <div className="quick-template">
+                <div className="quick-profile">
                   <label className="field">
                     <span>Nombre</span>
                     <input
@@ -395,15 +395,15 @@ export function CreateWorkspace({
                     <span className="muted small-text">id: {slugify(quickName) || "—"}</span>
                     <button
                       className="primary"
-                      onClick={() => void createQuickTemplate()}
-                      disabled={savingTemplate}
+                      onClick={() => void createQuickProfile()}
+                      disabled={savingProfile}
                     >
-                      {savingTemplate ? "Guardando…" : "Crear y elegir"}
+                      {savingProfile ? "Guardando…" : "Crear y elegir"}
                     </button>
                   </div>
                   <p className="muted small-text">
                     Se crea con los MCPs y skills que has marcado. Podrás ajustar agentes, comandos
-                    y plugins en «Repos y templates».
+                    y plugins en «Repos y perfiles».
                   </p>
                 </div>
               )}
@@ -411,22 +411,22 @@ export function CreateWorkspace({
               <div className="option-list">
                 <button
                   type="button"
-                  className={`option ${templateId === null ? "on" : ""}`}
-                  onClick={() => setTemplateId(null)}
+                  className={`option ${profileId === null ? "on" : ""}`}
+                  onClick={() => setProfileId(null)}
                 >
                   <span className="option-main">
-                    <span className="option-title">Sin template</span>
+                    <span className="option-title">Sin perfil</span>
                     <span className="option-sub">
                       Elige MCPs y skills ahora; el resto hereda de la config global.
                     </span>
                   </span>
                 </button>
-                {templates.map((item) => (
+                {profiles.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    className={`option ${templateId === item.id ? "on" : ""}`}
-                    onClick={() => setTemplateId(item.id)}
+                    className={`option ${profileId === item.id ? "on" : ""}`}
+                    onClick={() => setProfileId(item.id)}
                   >
                     <span className="option-main">
                       <span className="option-title">
@@ -444,7 +444,7 @@ export function CreateWorkspace({
                 ))}
               </div>
 
-              {templateId === null && (
+              {profileId === null && (
                 <div className="pick-lists">
                   <section>
                     <div className="section-head">
@@ -654,14 +654,14 @@ export function CreateWorkspace({
                   </>
                 )}
                 <div>
-                  <dt>Template</dt>
-                  <dd>{template ? `${template.name} · v${template.version}` : "Sin template"}</dd>
+                  <dt>Profile</dt>
+                  <dd>{profile ? `${profile.name} · v${profile.version}` : "Sin perfil"}</dd>
                 </div>
                 <div>
                   <dt>Selección</dt>
                   <dd>
-                    {template
-                      ? `${template.agents.length} agentes · ${template.skills.length} skills · ${template.mcps.length} MCPs`
+                    {profile
+                      ? `${profile.agents.length} agentes · ${profile.skills.length} skills · ${profile.mcps.length} MCPs`
                       : `${selectedMcps.size} MCPs · ${selectedSkills.size} skills`}
                   </dd>
                 </div>

@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import type React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorkspaceView } from "../WorkspaceView";
@@ -20,7 +21,10 @@ const server: ServerInfo = {
   pid: 42,
 };
 
-function setup() {
+function setup(
+  sharedWith: string[] = [],
+  extra: Partial<React.ComponentProps<typeof WorkspaceView>> = {},
+) {
   const store = new Map<string, string>([
     ["opentemplates:panel", "0"],
     ["opentemplates:session:w1", "s1"],
@@ -58,6 +62,7 @@ function setup() {
     <AppProvider root={root}>
       <WorkspaceView
         workspace={makeWorkspace()}
+        sharedWith={sharedWith}
         server={server}
         starting={false}
         onStart={vi.fn()}
@@ -66,6 +71,7 @@ function setup() {
         onUpdated={vi.fn()}
         worktreesRoot="/wt"
         repoPath={null}
+        {...extra}
       />
     </AppProvider>,
   );
@@ -73,6 +79,59 @@ function setup() {
 }
 
 describe("WorkspaceView — panel de cambios", () => {
+  test("cambiar de perfil arranca su contexto", async () => {
+    const user = userEvent.setup();
+    const onStartProfile = vi.fn(async () => ({
+      ...server,
+      contextHash: "hash-b",
+      port: 4097,
+      baseUrl: "http://127.0.0.1:4097",
+    }));
+    const profiles = [
+      {
+        id: "backend",
+        name: "Backend",
+        description: "",
+        version: 1,
+        agents: [],
+        skills: [],
+        mcps: [],
+        commands: [],
+        plugins: [],
+        models: [],
+        model: null,
+        permissions: [],
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      {
+        id: "frontend",
+        name: "Frontend",
+        description: "",
+        version: 1,
+        agents: [],
+        skills: [],
+        mcps: [],
+        commands: [],
+        plugins: [],
+        models: [],
+        model: null,
+        permissions: [],
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ];
+    setup([], { profiles, onStartProfile });
+    const select = await screen.findByRole("combobox", { name: "Perfil del workspace" });
+    await user.selectOptions(select, "frontend");
+    await waitFor(() => expect(onStartProfile).toHaveBeenCalledWith("w1", "frontend"));
+  });
+
+  test("muestra con qué workspaces comparte servidor", () => {
+    setup(["Backend", "Métricas"]);
+    expect(screen.getByText(/comparte servidor con Backend, Métricas/)).toBeInTheDocument();
+  });
+
   test("el botón Cambios abre el panel en esa pestaña y la recuerda", async () => {
     const user = userEvent.setup();
     const { client, store } = setup();
