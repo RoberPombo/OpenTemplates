@@ -11,6 +11,8 @@ import type { ModelCatalogGateway } from "../domain/repositories/ModelCatalogGat
 import type { RepoGateway } from "../domain/repositories/RepoGateway";
 import type { GitGateway } from "../domain/repositories/GitGateway";
 import type { PullRequestGateway } from "../domain/repositories/PullRequestGateway";
+import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
+import type { PreviewProbe } from "../domain/preview/preview";
 import type { GitCommit, GitCommitResult, GitPushResult, GitStatus } from "../domain/workspace/git";
 import { buildGitStatus } from "../domain/workspace/git";
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
@@ -228,5 +230,16 @@ export class TauriLibraryGateway implements LibraryGateway {
 export class TauriResourcesGateway implements ResourcesGateway {
   usage(pid?: number | null): Promise<ResourceUsage> {
     return call(api.resources(pid));
+  }
+}
+
+/** El sondeo de red no se convierte en error: el resultado ya describe el fallo. */
+export class TauriPreviewGateway implements PreviewGateway {
+  probe(url: string): Promise<PreviewProbe> {
+    return call(api.previewProbe(url));
+  }
+
+  openExternal(url: string): Promise<void> {
+    return call(api.openExternal(url));
   }
 }

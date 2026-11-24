@@ -5,6 +5,7 @@ import { prefKeys } from "../../domain/repositories/Preferences";
 import { useCommandAction } from "../context/CommandActions";
 import { Chat } from "./Chat";
 import { Inspector, type InspectorTab } from "./Inspector";
+import { PreviewDock } from "./PreviewDock";
 import { RaceControls } from "./RaceControls";
 import { SettingsPanel } from "./SettingsPanel";
 import { TerminalDock } from "./TerminalDock";
@@ -80,6 +81,9 @@ export function WorkspaceView({
   const [terminalOpen, setTerminalOpen] = useState(
     () => root.preferences.get(prefKeys.terminalOpen) === "1",
   );
+  const [previewOpen, setPreviewOpen] = useState(
+    () => root.preferences.get(prefKeys.previewOpen) === "1",
+  );
   const [sessionId, setSessionId] = useState<string | null>(() =>
     root.preferences.get(prefKeys.session(workspace.id)),
   );
@@ -95,6 +99,7 @@ export function WorkspaceView({
     () => (server ? root.provideTerminalGateway(server) : null),
     [root, server?.baseUrl, server?.password],
   );
+  const previewGateway = useMemo(() => root.providePreviewGateway(), [root]);
   function togglePanel() {
     setPanelOpen((prev) => {
       const next = !prev;
@@ -114,6 +119,13 @@ export function WorkspaceView({
     setTerminalOpen((prev) => {
       const next = !prev;
       root.preferences.set(prefKeys.terminalOpen, next ? "1" : "0");
+      return next;
+    });
+  }
+  function togglePreview() {
+    setPreviewOpen((prev) => {
+      const next = !prev;
+      root.preferences.set(prefKeys.previewOpen, next ? "1" : "0");
       return next;
     });
   }
@@ -168,6 +180,7 @@ export function WorkspaceView({
   }
   function closeActivePanel() {
     if (terminalOpen) toggleTerminal();
+    else if (previewOpen) togglePreview();
     else if (sessionsOpen) toggleSessions();
     else if (panelOpen) togglePanel();
   }
@@ -198,9 +211,15 @@ export function WorkspaceView({
     "Arranca el workspace para revisar cambios.",
   );
   useCommandAction(
+    "panel.preview",
+    togglePreview,
+    Boolean(server),
+    "Arranca el workspace para ver la app en marcha.",
+  );
+  useCommandAction(
     "panel.close",
     closeActivePanel,
-    Boolean(server && (terminalOpen || sessionsOpen || panelOpen)),
+    Boolean(server && (terminalOpen || previewOpen || sessionsOpen || panelOpen)),
     "No hay ningún panel abierto.",
   );
 
@@ -261,6 +280,13 @@ export function WorkspaceView({
                 onClick={toggleTerminal}
               >
                 Terminal
+              </Button>
+              <Button
+                className={previewOpen ? "active" : ""}
+                title={previewOpen ? "Ocultar la vista previa" : "Ver la app en marcha"}
+                onClick={togglePreview}
+              >
+                Vista
               </Button>
               {client && (
                 <RaceControls
@@ -331,6 +357,16 @@ export function WorkspaceView({
               />
             )}
           </div>
+          {previewOpen && (
+            <PreviewDock
+              gateway={previewGateway}
+              preferences={root.preferences}
+              workspace={workspace}
+              client={client}
+              sessionId={sessionId}
+              onClose={togglePreview}
+            />
+          )}
           {terminalOpen && terminalGateway && (
             <TerminalDock
               gateway={terminalGateway}

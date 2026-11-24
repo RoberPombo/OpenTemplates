@@ -13,6 +13,7 @@ use crate::model::{
     ModelDetail, ModelLimit, PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo,
     SkillRef, TemplateManifest, Workspace, WorkspaceMode, WorktreeStatus,
 };
+use crate::preview::{self, PreviewProbe};
 use crate::server::{self, ServerHandle};
 use crate::state::{AppState, ensure_workspace_dir, expand_tilde};
 use crate::templates;
@@ -1240,6 +1241,18 @@ pub fn read_text_file(path: String) -> Result<String, String> {
         ));
     }
     fs::read_to_string(&path).map_err(|e| format!("No se pudo leer {}: {e}", path.display()))
+}
+
+/// Comprueba la URL del preview desde Rust, sin CORS ni DOM del webview.
+#[tauri::command]
+pub fn preview_probe(url: String) -> PreviewProbe {
+    preview::probe(&url)
+}
+
+/// Abre una URL http(s) en el navegador externo del sistema.
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    preview::open_external(&url)
 }
 
 /// Estado del árbol de trabajo para el panel de commit (salida cruda de git).

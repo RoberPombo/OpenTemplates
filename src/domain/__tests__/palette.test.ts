@@ -19,6 +19,7 @@ const ALL_HANDLERS = [
   "panel.sessions",
   "panel.diff",
   "panel.terminal",
+  "panel.preview",
   "panel.close",
   "race.launch",
 ] as const;
@@ -108,6 +109,7 @@ describe("catálogo de la paleta", () => {
   test("cada acción declara grupo, palabras clave y atajos cuando toca", () => {
     const commands = buildPaletteCommands(context());
     expect(find(commands, "panel.terminal").shortcut).toEqual({ key: "`", mod: true });
+    expect(find(commands, "panel.preview").shortcut).toEqual({ key: "v", mod: true, shift: true });
     expect(find(commands, "session.new").shortcut).toEqual({ key: "n", mod: true });
     expect(find(commands, "session.goal").group).toBe("Sesión");
     expect(find(commands, "race.launch").keywords).toContain("comparar");

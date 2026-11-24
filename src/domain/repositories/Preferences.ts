@@ -23,6 +23,9 @@ export const prefKeys = {
   goal: (workspaceId: string, sessionId: string) =>
     `opentemplates:goal:${workspaceId}:${sessionId}`,
   race: (workspaceId: string) => `opentemplates:race:${workspaceId}`,
+  previewOpen: "opentemplates:preview",
+  previewUrl: (workspaceId: string) => `opentemplates:preview-url:${workspaceId}`,
+  previewDevice: (workspaceId: string) => `opentemplates:preview-device:${workspaceId}`,
   model: (workspaceId: string) => `opentemplates:model:${workspaceId}`,
   agent: (workspaceId: string) => `opentemplates:agent:${workspaceId}`,
   variant: (workspaceId: string) => `opentemplates:variant:${workspaceId}`,

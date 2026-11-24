@@ -171,6 +171,15 @@ const DEFINITIONS: readonly Definition[] = [
     handler: true,
   },
   {
+    id: "panel.preview",
+    label: "Vista previa de la app",
+    description: "Abrir la aplicación en marcha en un dock, con tamaños de dispositivo.",
+    group: "Paneles",
+    keywords: ["vista", "preview", "app", "navegador", "recargar", "dispositivo"],
+    requires: "server",
+    handler: true,
+  },
+  {
     id: "panel.close",
     label: "Cerrar panel o dock activo",
     description: "Cerrar el terminal, las sesiones o el inspector, en ese orden.",

@@ -47,6 +47,7 @@ describe("resolución de atajos", () => {
     );
     expect(resolveShortcut({ key: "`", ctrlKey: true })).toBe("panel.terminal");
     expect(resolveShortcut({ key: "d", ctrlKey: true, shiftKey: true })).toBe("panel.diff");
+    expect(resolveShortcut({ key: "v", ctrlKey: true, shiftKey: true })).toBe("panel.preview");
   });
 
   test("parar el turno usa Ctrl+.", () => {

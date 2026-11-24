@@ -5,7 +5,12 @@ import { WorkspaceView } from "../WorkspaceView";
 import { AppProvider } from "../../context/AppContext";
 import type { CompositionRoot } from "../../../CompositionRoot";
 import type { ServerInfo } from "../../../types";
-import { makeFakeClient, makeTerminalGateway, makeWorkspace } from "../../../tests/fakes";
+import {
+  makeFakeClient,
+  makePreviewGateway,
+  makeTerminalGateway,
+  makeWorkspace,
+} from "../../../tests/fakes";
 
 const server: ServerInfo = {
   workspaceId: "w1",
@@ -30,6 +35,7 @@ function setup() {
     },
   };
   const terminals = makeTerminalGateway();
+  const preview = makePreviewGateway();
   const { client } = makeFakeClient({
     sessionDiff: [
       {
@@ -46,6 +52,7 @@ function setup() {
     resources: { usage: vi.fn(async () => null) },
     provideChatGateway: () => client,
     provideTerminalGateway: () => terminals.gateway,
+    providePreviewGateway: () => preview.gateway,
   } as unknown as CompositionRoot;
   render(
     <AppProvider root={root}>
@@ -62,7 +69,7 @@ function setup() {
       />
     </AppProvider>,
   );
-  return { client, store, terminals };
+  return { client, store, terminals, preview };
 }
 
 describe("WorkspaceView — panel de cambios", () => {
@@ -87,6 +94,25 @@ describe("WorkspaceView — panel de cambios", () => {
     await user.click(screen.getByRole("tab", { name: "Ficheros" }));
     expect(screen.getByRole("tab", { name: "Ficheros" })).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(client.file.list).toHaveBeenCalled());
+  });
+
+  test("el botón Vista abre la vista previa y la cierra sin tocar el servidor", async () => {
+    const user = userEvent.setup();
+    const { preview, store } = setup();
+    expect(screen.queryByRole("region", { name: "Vista previa de la aplicación" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Vista" }));
+    expect(
+      await screen.findByRole("region", { name: "Vista previa de la aplicación" }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(preview.probe).toHaveBeenCalledWith("http://localhost:5173"));
+    expect(store.get("opentemplates:preview")).toBe("1");
+
+    await user.click(screen.getByRole("button", { name: "Vista" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Vista previa de la aplicación" })).toBeNull(),
+    );
+    expect(store.get("opentemplates:preview")).toBe("0");
   });
 
   test("el botón Terminal abre y cierra el dock sin borrar los PTYs", async () => {

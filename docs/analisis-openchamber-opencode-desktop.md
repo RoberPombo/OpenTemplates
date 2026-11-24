@@ -88,9 +88,11 @@ Todo lo marcado como disponible en SDK existe ya en `@opencode/client` 2.3.2
 
 Estado: la fase 1 (#1–#8) está implementada; ver `docs/handoff.md` para el detalle
 y las limitaciones verificadas de cada entrega. De la fase 2 están hechas #9
-(terminal), #10 (carreras multi-run), #11 (objetivos de sesión), #14 (paleta,
-atajos y temas) y #15 (MCP en caliente); #10 deja pendiente la fusión del
-resultado ganador y #14 deja pendiente personalizar los atajos.
+(terminal), #10 (carreras multi-run), #11 (objetivos de sesión), #12 (git y PR),
+#13 (preview de la app en marcha), #14 (paleta, atajos y temas) y #15 (MCP en
+caliente); #10 deja pendiente la fusión del resultado ganador, #14 personalizar
+los atajos y #13 el selector de elemento, que no es viable sin un proxy propio
+(ver `docs/preview-viabilidad.md`).
 
 ### Fase 2 — el diferenciador propio
 
@@ -140,3 +142,24 @@ Cada feature nueva entra por el mismo camino que las existentes: interfaz de gat
 `src/data` (SDK o comando Tauri) y componente en `src/presentation`. Las que son de
 estado (historial, goals, presupuesto) piden store en Rust; las que son de lectura pura
 del API pueden vivir solo en el frontend, como ya hace `OpencodeChatGateway`.
+
+## Cierre del plan de paridad (2026-11-24)
+
+Con #13 entregado, el plan de paridad se cierra en lo que tiene sentido para
+OpenTemplates. Quedan **fuera del plan** y no se abordan en esta entrega:
+
+- **#16 Tareas programadas**: reutilizaría el arranque de workspaces, pero exige
+  un planificador persistente, control de solapes y una UI de calendario. No
+  aporta al flujo central de revisar y trabajar un workspace.
+- **#17 Acceso remoto y móvil**: es otro producto (pairing, relay o tailnet) y
+  rompe el modelo de aislamiento local; si hay demanda, tailnet/SSH antes que un
+  relay propio.
+- **#18 Voz**: el SDK expone `voice.models/session`, pero el valor frente al
+  coste de UI y de permisos de micrófono es bajo.
+- **#19 Walkthrough del diff**: ya existe panel de diff y flujo git/PR; un tour
+  guiado por pasos necesita generación y validación de narraciones, y se pospone.
+- **#20 Catálogo/marketplace de templates**: encaja con la marca, pero requiere
+  backend, curación y gobierno de contenido; no es una feature de cliente.
+
+El resto de huecos de la fase 3 y las limitaciones conocidas de cada entrega
+siguen documentados en `docs/handoff.md`.

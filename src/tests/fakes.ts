@@ -21,6 +21,9 @@ import type {
 import type { SaveSessionFileResult, SessionFiles } from "../domain/repositories/SessionFiles";
 import type { GitGateway } from "../domain/repositories/GitGateway";
 import type { PullRequestGateway } from "../domain/repositories/PullRequestGateway";
+import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
+import type { PreviewProbe } from "../domain/preview/preview";
+import type { Preferences } from "../domain/repositories/Preferences";
 import type { GitCommit, GitFileEntry, GitStatus } from "../domain/workspace/git";
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
 import { toServerEvent } from "../data/opencodePayloads";
@@ -710,6 +713,51 @@ export function makePullRequestGateway(
   );
   const gateway: PullRequestGateway = { status, view, checks, create };
   return { gateway, status, view, checks, create };
+}
+
+/** Preferencias en memoria para componentes que las reciben por props. */
+export function makePreferences(initial: Record<string, string> = {}) {
+  const store = new Map(Object.entries(initial));
+  const preferences: Preferences = {
+    get: (key) => store.get(key) ?? null,
+    set: (key, value) => {
+      store.set(key, value);
+    },
+    remove: (key) => {
+      store.delete(key);
+    },
+  };
+  return { preferences, store };
+}
+
+/** Gateway de preview fake: devuelve sondeos en orden o el que fije el test. */
+export function makePreviewGateway(
+  options: {
+    probes?: PreviewProbe[];
+    probe?: (url: string) => PreviewProbe | Promise<PreviewProbe>;
+    probeError?: unknown;
+    openError?: unknown;
+  } = {},
+) {
+  const queue = [...(options.probes ?? [])];
+  const fallback: PreviewProbe = {
+    ok: true,
+    status: 200,
+    title: "Demo",
+    error: null,
+    frameBlocked: false,
+    verified: true,
+  };
+  const probe = vi.fn(async (url: string) => {
+    if (options.probeError) throw options.probeError;
+    if (options.probe) return options.probe(url);
+    return queue.length > 0 ? (queue.shift() as PreviewProbe) : fallback;
+  });
+  const openExternal = vi.fn(async () => {
+    if (options.openError) throw options.openError;
+  });
+  const gateway: PreviewGateway = { probe, openExternal };
+  return { gateway, probe, openExternal };
 }
 
 /** Confirmación fake que registra el mensaje y responde lo que fije el test. */
