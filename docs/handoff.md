@@ -559,13 +559,14 @@ multiwebview con soporte Wayland), screenshot/consola y captura de una región.
   `list_profiles`, `save_profile`, `delete_profile`, `profile_agents_md`,
   `save_profile_agents_md` y `reapply_profile`.
 - Persistencia: `profiles.json`, `profiles/<id>/profile.json` y
-  `profile.lock.json`. Al arrancar se migra `templates.json` (se reescribe) y el
-  directorio `templates/` (renombrado). Los manifiestos y locks antiguos se leen
-  como fallback.
+  `profile.lock.json`. Al arrancar se migra `templates.json` (se reescribe), el
+  directorio `templates/` (renombrado) y las rutas absolutas guardadas en
+  `workspaces.json` y en los locks (`templates/…` → `profiles/…`). Los manifiestos
+  y locks antiguos se leen como fallback.
 - Frontend: tipos y gateway `Profile*`, `profileId`, `defaultProfileId`, pestaña y
   textos «Perfil/Perfiles». Las claves de preferencias siguen siendo
   `opentemplates:*`.
 - Los assets de un perfil llevan `source: "profile"`; los locks antiguos conservan
   `template` como etiqueta hasta reaplicar.
-- Verificación: `cargo test` 43 en verde (nuevos de migración de store y lock),
+- Verificación: `cargo test` 44 en verde (nuevos de migración de store, rutas y lock),
   `cargo clippy -D warnings` limpio, `pnpm check` 616 tests en verde.
