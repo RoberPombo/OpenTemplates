@@ -1,3 +1,4 @@
+mod artifacts;
 mod bootstrap;
 mod commands;
 mod config;
@@ -74,6 +75,8 @@ pub fn run() {
             commands::save_feature,
             commands::delete_feature,
             commands::provision_feature,
+            commands::feature_artifacts,
+            commands::write_feature_artifact,
             commands::list_profiles,
             commands::save_profile,
             commands::delete_profile,

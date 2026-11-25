@@ -160,6 +160,7 @@ pub fn provision(feature: &Feature) -> Result<ProvisionReport, String> {
             applied: Vec::new(),
         };
         apply_bootstrap(&entries, &mut report);
+        report.warnings.extend(crate::artifacts::ensure(feature));
         return Ok(report);
     }
     if !existing.is_empty() {
@@ -234,6 +235,7 @@ pub fn provision(feature: &Feature) -> Result<ProvisionReport, String> {
         applied: Vec::new(),
     };
     apply_bootstrap(&entries, &mut report);
+    report.warnings.extend(crate::artifacts::ensure(feature));
     Ok(report)
 }
 

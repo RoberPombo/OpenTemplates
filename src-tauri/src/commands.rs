@@ -10,10 +10,10 @@ use crate::git;
 use crate::library;
 use crate::model::{
     AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, Feature,
-    FeatureProvisionOutcome, GhStatus, GitCommitResult, GitCommitSummary, GitPushResult,
-    GitStatusOutput, Library, McpInfo, ModelCost, ModelDetail, ModelLimit, ProfileManifest,
-    PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo, SkillRef, Workspace,
-    WorkspaceMode, WorktreeStatus,
+    FeatureArtifact, FeatureProvisionOutcome, GhStatus, GitCommitResult, GitCommitSummary,
+    GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost, ModelDetail, ModelLimit,
+    ProfileManifest, PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo, SkillRef,
+    Workspace, WorkspaceMode, WorktreeStatus,
 };
 use crate::preview::{self, PreviewProbe};
 use crate::profiles;
@@ -679,14 +679,7 @@ pub fn provision_feature(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<FeatureProvisionOutcome, String> {
-    let feature = state
-        .features
-        .lock()
-        .map_err(|_| "estado bloqueado")?
-        .iter()
-        .find(|item| item.id == id)
-        .cloned()
-        .ok_or_else(|| format!("La feature '{id}' no existe"))?;
+    let feature = feature_of(&state, &id)?;
 
     let (worktrees, warnings, errors, applied) = {
         let report = crate::features::provision(&feature)?;
@@ -721,6 +714,38 @@ pub fn provision_feature(
         applied,
         blocked,
     })
+}
+
+fn feature_of(state: &AppState, id: &str) -> Result<Feature, String> {
+    state
+        .features
+        .lock()
+        .map_err(|_| "estado bloqueado")?
+        .iter()
+        .find(|item| item.id == id)
+        .cloned()
+        .ok_or_else(|| format!("La feature '{id}' no existe"))
+}
+
+/// Artefactos compartidos de la feature (`BRIEF.md`, `DECOMPOSITION.md`…).
+#[tauri::command]
+pub fn feature_artifacts(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<FeatureArtifact>, String> {
+    let feature = feature_of(&state, &id)?;
+    Ok(crate::artifacts::list(&feature))
+}
+
+#[tauri::command]
+pub fn write_feature_artifact(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    content: String,
+) -> Result<FeatureArtifact, String> {
+    let feature = feature_of(&state, &id)?;
+    crate::artifacts::write(&feature, &name, &content)
 }
 
 // ---------------------------------------------------------------------------

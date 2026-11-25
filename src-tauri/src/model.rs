@@ -540,10 +540,16 @@ pub struct FeatureStore {
     pub features: Vec<Feature>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureArtifact {
+    pub name: String,
+    pub content: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProvisionedWorktree {
-    /// `root` o `target`.
+pub struct ProvisionedWorktree {    /// `root` o `target`.
     pub role: String,
     pub repo_path: String,
     pub path: String,
