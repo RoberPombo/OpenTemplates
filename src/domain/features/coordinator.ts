@@ -4,11 +4,56 @@
  * que la sesión no tenga que adivinarlo y para poder previsualizarlo en la UI.
  */
 import type { Feature } from "./model";
+import type { ServerInfo } from "../../types";
+import { DECOMPOSITION_BLOCK } from "./decomposition";
 
 export type FeatureArtifact = {
   name: string;
   content: string;
 };
+
+/** Contexto y servidor efímero del coordinador; no es un workspace. */
+export type FeatureRunnerInfo = {
+  featureId: string;
+  profileId: string | null;
+  directory: string;
+  contextHash: string;
+  server: ServerInfo;
+  warnings: string[];
+};
+
+export type CoordinatorProfile = { id: string; name: string };
+
+/** Identificador de la "sesión" sintética que pinta el chat del coordinador. */
+export function coordinatorWorkspaceId(featureId: string): string {
+  return `feature:${featureId}`;
+}
+
+export function coordinatorScope(): string {
+  return "coordinator";
+}
+
+/**
+ * Perfil del coordinador: el del paso si ya está fijado, luego el que se llama
+ * coordinador, luego el perfil por defecto de la app y, si no hay nada, el
+ * primero. La UI puede cambiarlo antes de lanzar; la sesión usa ese contexto.
+ */
+export function coordinatorProfileId(
+  feature: Feature,
+  profiles: CoordinatorProfile[],
+  defaultProfileId?: string | null,
+): string | null {
+  const coordinate = feature.steps.find((step) => step.type === "coordinate");
+  const exists = (id: string | null | undefined) =>
+    Boolean(id && profiles.some((profile) => profile.id === id));
+  if (exists(coordinate?.profileId)) return coordinate!.profileId!;
+  const named = profiles.find((profile) =>
+    /coordinador|coordinator/i.test(`${profile.id} ${profile.name}`),
+  );
+  if (named) return named.id;
+  if (exists(defaultProfileId)) return defaultProfileId!;
+  return profiles[0]?.id ?? null;
+}
 
 export const BRIEF_FILE = "BRIEF.md";
 export const DECOMPOSITION_FILE = "DECOMPOSITION.md";
@@ -58,15 +103,29 @@ export function coordinatorPrompt(feature: Feature): string | null {
   lines.push(
     "",
     `## Entregable: ${DECOMPOSITION_FILE}`,
+    `Escribe el artefacto en la carpeta de la feature: ${feature.directory}/${DECOMPOSITION_FILE}`,
     "Incluye estas secciones:",
-    "- Targets y scopes confirmados, o petición de añadir uno con feature.request_target.",
+    "- Targets y scopes confirmados, o petición de añadir uno.",
     "- Brief por scope: qué investigar y criterios de aceptación.",
     "- Orden y dependencias entre scopes.",
     "- Riesgos.",
     "- Estrategia de verificación por scope.",
     "",
-    "El flujo de pasos ya está generado: no inventes pasos nuevos.",
-    "Cuando la descomposición esté lista, pide aprobación con feature.propose_steps.",
+    `Además, deja un bloque \`\`\`${DECOMPOSITION_BLOCK} con la propuesta que la app`,
+    "puede validar y ejecutar. Es tu forma de pedir targets y de proponer los",
+    "scopes de los pasos:",
+    "```" + DECOMPOSITION_BLOCK,
+    "{",
+    '  "requestTargets": [{ "name": "...", "repoPath": "...", "baseBranch": "...", "scopes": ["."] }],',
+    '  "proposeSteps": [{ "targetId": "target-...", "scopes": ["front"] }]',
+    "}",
+    "```",
+    "",
+    "`requestTargets` crea el worktree de un repo que faltaba; `proposeSteps` fija",
+    "los scopes de cada target. La app expande recon, plan, implementación y",
+    "verificación, y el usuario aprueba la descomposición en la UI.",
+    "No inventes un grafo de pasos distinto ni llames a herramientas que no existan:",
+    "la app ejecuta `feature.propose_steps` y `feature.request_target` al aprobar.",
   );
   return lines.join("\n");
 }
@@ -94,5 +153,22 @@ export function decompositionTemplate(feature: Feature): string {
   }
 
   lines.push("## Orden y dependencias", "", "## Riesgos", "", "## Verificación", "");
+
+  lines.push(
+    "## Propuesta para la app",
+    "",
+    "```" + DECOMPOSITION_BLOCK,
+    "{",
+    '  "requestTargets": [],',
+    '  "proposeSteps": [',
+  );
+  for (const target of feature.targets) {
+    lines.push(
+      `    { "targetId": "${target.id}", "scopes": ${JSON.stringify(
+        target.scopes.map((scope) => scope.path),
+      )} },`,
+    );
+  }
+  lines.push("  ]", "}", "```", "");
   return lines.join("\n");
 }
