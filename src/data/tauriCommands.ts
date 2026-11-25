@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelDetails } from "../domain/models/details";
 import type { Feature } from "../domain/features/model";
-import type { FeatureArtifact } from "../domain/features/coordinator";
+import type { FeatureArtifact, FeatureRunnerInfo } from "../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../domain/features/provision";
 import type {
   GitCommit,
@@ -46,6 +46,11 @@ export const api = {
   featureArtifacts: (id: string) => invoke<FeatureArtifact[]>("feature_artifacts", { id }),
   writeFeatureArtifact: (id: string, name: string, content: string) =>
     invoke<FeatureArtifact>("write_feature_artifact", { id, name, content }),
+  startFeatureRunner: (id: string, profileId: string | null) =>
+    invoke<FeatureRunnerInfo>("start_feature_runner", { featureId: id, profileId }),
+  featureRunnerStatus: (id: string) =>
+    invoke<FeatureRunnerInfo | null>("feature_runner_status", { featureId: id }),
+  stopFeatureRunner: (id: string) => invoke<void>("stop_feature_runner", { featureId: id }),
 
   listAvailableModels: () => invoke<ModelDetails[]>("list_available_models"),
   listProfiles: () => invoke<ProfileManifest[]>("list_profiles"),

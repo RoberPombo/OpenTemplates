@@ -1,30 +1,61 @@
 /**
- * Panel del coordinador: muestra el encargo que recibirá la sesión y deja
- * editar la descomposición. Sin React en el dominio: las plantillas vienen de
- * `domain/features/coordinator`.
+ * Panel del coordinador: lanza la sesión sobre la raíz de la feature, muestra
+ * su chat y actúa como gate de la descomposición. La validación de la propuesta
+ * es de dominio; aquí solo se recoge la acción del usuario.
  */
 import { useEffect, useState } from "react";
 import type { Feature } from "../../domain/features/model";
+import type { ProfileManifest } from "../../types";
 import {
   BRIEF_FILE,
   DECOMPOSITION_FILE,
+  coordinatorProfileId,
   coordinatorPrompt,
   decompositionTemplate,
   type FeatureArtifact,
+  type FeatureRunnerInfo,
 } from "../../domain/features/coordinator";
+import { CoordinatorChat } from "./CoordinatorChat";
 
 type Props = {
   feature: Feature;
   artifacts: FeatureArtifact[];
+  profiles: ProfileManifest[];
+  defaultProfileId?: string | null;
+  runner: FeatureRunnerInfo | null;
+  coordinatorBusy: boolean;
   onSave: (name: string, content: string) => Promise<unknown>;
+  onReloadArtifacts: () => Promise<unknown>;
+  onLaunch: (profileId: string | null) => Promise<unknown>;
+  onStop: () => Promise<unknown>;
+  onApprove: (content: string) => Promise<unknown>;
 };
 
-export function CoordinatorPanel({ feature, artifacts, onSave }: Props) {
+export function CoordinatorPanel({
+  feature,
+  artifacts,
+  profiles,
+  defaultProfileId,
+  runner,
+  coordinatorBusy,
+  onSave,
+  onReloadArtifacts,
+  onLaunch,
+  onStop,
+  onApprove,
+}: Props) {
   const prompt = coordinatorPrompt(feature);
   const brief = artifacts.find((item) => item.name === BRIEF_FILE);
   const saved = artifacts.find((item) => item.name === DECOMPOSITION_FILE);
+  const coordinate = feature.steps.find((step) => step.type === "coordinate");
+  const sessionId = coordinate?.sessionId ?? null;
   const [draft, setDraft] = useState(saved?.content ?? decompositionTemplate(feature));
+  const [profileId, setProfileId] = useState(() =>
+    coordinatorProfileId(feature, profiles, defaultProfileId),
+  );
+  const [chatOpen, setChatOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +64,10 @@ export function CoordinatorPanel({ feature, artifacts, onSave }: Props) {
     setNotice(null);
     setError(null);
   }, [feature.id, saved?.content]);
+
+  useEffect(() => {
+    setProfileId(coordinatorProfileId(feature, profiles, defaultProfileId));
+  }, [feature, profiles, defaultProfileId]);
 
   async function save() {
     setSaving(true);
@@ -44,6 +79,31 @@ export function CoordinatorPanel({ feature, artifacts, onSave }: Props) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function launch() {
+    setError(null);
+    setNotice(null);
+    try {
+      await onLaunch(profileId);
+      setChatOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function approve() {
+    setApproving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await onApprove(draft);
+      setNotice("Descomposición aprobada y pasos actualizados.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApproving(false);
     }
   }
 
@@ -60,12 +120,78 @@ export function CoordinatorPanel({ feature, artifacts, onSave }: Props) {
     );
   }
 
+  const ready = feature.status !== "draft";
+  const running = Boolean(runner);
+
   return (
     <section className="feature-panel coordinator-panel">
       <div className="section-head">
         <h3>Coordinador</h3>
-        <span className="muted small-text">alcance y plan por scope</span>
+        <span className={`feature-badge ${running ? "status-running" : "muted"}`}>
+          {running ? "servidor vivo" : sessionId ? "sesión guardada" : "sin sesión"}
+        </span>
       </div>
+
+      <div className="coordinator-controls">
+        <label className="field coordinator-profile">
+          <span>Perfil</span>
+          <select
+            className="text-input"
+            value={profileId ?? ""}
+            disabled={Boolean(sessionId) || profiles.length === 0}
+            title={
+              sessionId
+                ? "La sesión conserva el perfil con el que se creó."
+                : "Elige un perfil barato para coordinación."
+            }
+            onChange={(event) => setProfileId(event.target.value || null)}
+          >
+            {profiles.length === 0 && <option value="">Sin perfiles</option>}
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+                {profile.model ? ` · ${profile.model}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="row coordinator-actions">
+          <button
+            className="primary"
+            disabled={coordinatorBusy || !ready || profiles.length === 0}
+            onClick={() => void launch()}
+          >
+            {coordinatorBusy ? "Abriendo…" : sessionId ? "Abrir coordinador" : "Lanzar coordinador"}
+          </button>
+          {running && (
+            <button className="ghost" disabled={coordinatorBusy} onClick={() => void onStop()}>
+              Parar
+            </button>
+          )}
+          {sessionId && running && (
+            <button className="ghost" onClick={() => setChatOpen((open) => !open)}>
+              {chatOpen ? "Ocultar chat" : "Ver chat"}
+            </button>
+          )}
+          <button className="ghost small" onClick={() => void onReloadArtifacts()}>
+            Recargar artefactos
+          </button>
+        </div>
+        {!ready && <span className="muted small-text">Prepara los worktrees antes de lanzar.</span>}
+        {ready && profiles.length === 0 && (
+          <span className="muted small-text">
+            Crea un perfil de coordinador en Repos y perfiles.
+          </span>
+        )}
+        {sessionId && (
+          <span className="muted small-text coordinator-session">Sesión {sessionId}</span>
+        )}
+      </div>
+
+      {chatOpen && runner && sessionId && (
+        <CoordinatorChat feature={feature} runner={runner} sessionId={sessionId} />
+      )}
 
       <details className="coordinator-details">
         <summary>Encargo de la sesión</summary>
@@ -102,8 +228,11 @@ export function CoordinatorPanel({ feature, artifacts, onSave }: Props) {
       </label>
 
       <div className="row coordinator-actions">
-        <button className="primary" disabled={saving} onClick={() => void save()}>
+        <button className="primary" disabled={saving || approving} onClick={() => void save()}>
           {saving ? "Guardando…" : "Guardar descomposición"}
+        </button>
+        <button className="ghost" disabled={saving || approving} onClick={() => void approve()}>
+          {approving ? "Aprobando…" : "Aprobar descomposición"}
         </button>
         {notice && <span className="muted small-text">{notice}</span>}
         {error && <span className="danger-text small-text">{error}</span>}

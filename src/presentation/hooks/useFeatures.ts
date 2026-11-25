@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import type { Feature } from "../../domain/features/model";
-import type { FeatureArtifact } from "../../domain/features/coordinator";
+import type { FeatureArtifact, FeatureRunnerInfo } from "../../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../../domain/features/provision";
 
 export function useFeatures() {
@@ -15,6 +15,8 @@ export function useFeatures() {
   const [artifacts, setArtifacts] = useState<FeatureArtifact[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [coordinator, setCoordinator] = useState<FeatureRunnerInfo | null>(null);
+  const [coordinatorBusy, setCoordinatorBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +39,23 @@ export function useFeatures() {
     () => features.find((feature) => feature.id === selectedId) ?? null,
     [features, selectedId],
   );
+
+  useEffect(() => {
+    setCoordinator(null);
+    if (!selectedId) return;
+    let alive = true;
+    root.features
+      .runnerStatus(selectedId)
+      .then((info) => {
+        if (alive) setCoordinator(info);
+      })
+      .catch(() => {
+        if (alive) setCoordinator(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selectedId, root]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -67,6 +86,10 @@ export function useFeatures() {
     },
     [root],
   );
+
+  const reloadSelectedArtifacts = useCallback(async () => {
+    if (selectedId) await reloadArtifacts(selectedId);
+  }, [selectedId, reloadArtifacts]);
 
   const upsert = useCallback((feature: Feature) => {
     setFeatures((prev) => {
@@ -116,6 +139,74 @@ export function useFeatures() {
     [root, upsert, reloadArtifacts],
   );
 
+  const launchCoordinator = useCallback(
+    async (id: string, profileId: string | null) => {
+      const feature = features.find((item) => item.id === id);
+      if (!feature) throw new Error("La feature no existe.");
+      setCoordinatorBusy(true);
+      setError(null);
+      setNotice(null);
+      try {
+        const result = await root.provideLaunchCoordinator().execute(feature, profileId);
+        upsert(result.feature);
+        setCoordinator(result.runner);
+        setNotice(
+          result.runner.warnings.length > 0
+            ? `Coordinador listo · ${result.runner.warnings.length} aviso(s).`
+            : "Coordinador listo.",
+        );
+        return result;
+      } catch (err: unknown) {
+        setError(errorText(err));
+        throw err;
+      } finally {
+        setCoordinatorBusy(false);
+      }
+    },
+    [root, features, upsert],
+  );
+
+  const stopCoordinator = useCallback(
+    async (id: string) => {
+      setCoordinatorBusy(true);
+      setError(null);
+      try {
+        await root.features.stopRunner(id);
+        setCoordinator(null);
+        setNotice("Coordinador parado. La sesión queda guardada.");
+      } catch (err: unknown) {
+        setError(errorText(err));
+      } finally {
+        setCoordinatorBusy(false);
+      }
+    },
+    [root],
+  );
+
+  const approveDecomposition = useCallback(
+    async (id: string, content: string) => {
+      const feature = features.find((item) => item.id === id);
+      if (!feature) throw new Error("La feature no existe.");
+      setError(null);
+      setNotice(null);
+      try {
+        const result = await root.provideApproveDecomposition().execute(feature, content);
+        upsert(result.feature);
+        await reloadArtifacts(id);
+        setNotice(
+          result.addedTargets > 0
+            ? `Descomposición aprobada · ${result.addedTargets} target(s) nuevos.`
+            : "Descomposición aprobada y pasos refrescados.",
+        );
+        return result;
+      } catch (err: unknown) {
+        setError(errorText(err));
+        throw err;
+      }
+    },
+    [root, features, upsert, reloadArtifacts],
+  );
+
   const saveArtifact = useCallback(
     async (name: string, content: string): Promise<FeatureArtifact> => {
       if (!selectedId) throw new Error("No hay una feature seleccionada.");
@@ -154,8 +245,14 @@ export function useFeatures() {
     artifacts,
     select: setSelectedId,
     clearSelection: () => setSelectedId(null),
+    reloadArtifacts: reloadSelectedArtifacts,
     start,
     provision,
+    launchCoordinator,
+    stopCoordinator,
+    approveDecomposition,
+    coordinator,
+    coordinatorBusy,
     saveArtifact,
     remove,
     busyId,

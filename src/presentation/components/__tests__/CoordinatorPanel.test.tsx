@@ -24,7 +24,21 @@ describe("CoordinatorPanel", () => {
   test("muestra el encargo y guarda la descomposición editada", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn(async () => undefined);
-    render(<CoordinatorPanel feature={draft()} artifacts={[]} onSave={onSave} />);
+    render(
+      <CoordinatorPanel
+        feature={draft()}
+        artifacts={[]}
+        profiles={[]}
+        defaultProfileId={null}
+        runner={null}
+        coordinatorBusy={false}
+        onSave={onSave}
+        onReloadArtifacts={async () => undefined}
+        onLaunch={async () => undefined}
+        onStop={async () => undefined}
+        onApprove={async () => undefined}
+      />,
+    );
 
     expect(screen.getByText(/Eres el coordinador/)).toBeInTheDocument();
     const editor = screen.getByLabelText("Descomposición");
@@ -43,7 +57,19 @@ describe("CoordinatorPanel", () => {
 
   test("en flujo rápido no hay coordinador", () => {
     render(
-      <CoordinatorPanel feature={draft({ kind: "hotfix" })} artifacts={[]} onSave={vi.fn()} />,
+      <CoordinatorPanel
+        feature={draft({ kind: "hotfix" })}
+        artifacts={[]}
+        profiles={[]}
+        defaultProfileId={null}
+        runner={null}
+        coordinatorBusy={false}
+        onSave={vi.fn()}
+        onReloadArtifacts={async () => undefined}
+        onLaunch={async () => undefined}
+        onStop={async () => undefined}
+        onApprove={async () => undefined}
+      />,
     );
     expect(screen.getByText(/Flujo rápido: no hay coordinador/)).toBeInTheDocument();
   });

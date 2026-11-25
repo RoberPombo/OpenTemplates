@@ -4964,3 +4964,33 @@ p {
   align-items: center;
   gap: 10px;
 }
+
+.coordinator-controls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.coordinator-profile {
+  max-width: 420px;
+  margin-bottom: 0;
+}
+
+.coordinator-session {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.coordinator-chat {
+  display: flex;
+  height: 520px;
+  min-height: 360px;
+  margin: 12px 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.coordinator-chat .chat-shell {
+  width: 100%;
+}

@@ -21,7 +21,7 @@ import type { ProfileGateway } from "../domain/repositories/ProfileGateway";
 import type { WorkspaceGateway } from "../domain/repositories/WorkspaceGateway";
 import type { FeatureGateway } from "../domain/repositories/FeatureGateway";
 import type { Feature } from "../domain/features/model";
-import type { FeatureArtifact } from "../domain/features/coordinator";
+import type { FeatureArtifact, FeatureRunnerInfo } from "../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../domain/features/provision";
 import type {
   AppSettings,
@@ -275,5 +275,17 @@ export class TauriFeatureGateway implements FeatureGateway {
 
   writeArtifact(id: string, name: string, content: string): Promise<FeatureArtifact> {
     return call(api.writeFeatureArtifact(id, name, content));
+  }
+
+  startRunner(id: string, profileId: string | null): Promise<FeatureRunnerInfo> {
+    return call(api.startFeatureRunner(id, profileId));
+  }
+
+  runnerStatus(id: string): Promise<FeatureRunnerInfo | null> {
+    return call(api.featureRunnerStatus(id));
+  }
+
+  stopRunner(id: string): Promise<void> {
+    return call(api.stopFeatureRunner(id));
   }
 }

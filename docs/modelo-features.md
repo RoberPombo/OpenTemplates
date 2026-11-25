@@ -269,13 +269,29 @@ de los worktrees para estructura, no código. Salida: `DECOMPOSITION.md` con
 - orden y dependencias entre scopes, riesgos,
 - estrategia de verificación por scope.
 
-No crea sesiones, no hace commit ni push. Pide cosas a la app con dos
-herramientas, y la app valida y ejecuta:
+No crea sesiones, no hace commit ni push. Pide cosas a la app con un **bloque
+estructurado dentro de `DECOMPOSITION.md`**, y la app valida y ejecuta al aprobar:
 
-- `feature.request_target` → crear el worktree de un repo/scope que faltaba antes
-  de los planes.
-- `feature.propose_steps` → generar los steps de cada scope (recon, plan,
-  implementación y verificación); la app muestra el gate de aprobación.
+````md
+```feature-decomposition
+{
+  "requestTargets": [{ "name": "back", "repoPath": "/repos/back", "baseBranch": "develop", "scopes": ["."] }],
+  "proposeSteps": [{ "targetId": "target-front", "scopes": ["src", "docs"] }]
+}
+```
+````
+
+- `requestTargets` es `feature.request_target`: pide un repo que faltaba. La app
+  crea el target con su worktree y rama al aprobar.
+- `proposeSteps` es `feature.propose_steps`: fija los scopes de los targets. La app
+  expande recon, plan, implementación y verificación, y conserva el estado de los
+  pasos que siguen existiendo.
+
+Se eligió artefacto + gate de UI frente a un MCP o una herramienta propia: el
+coordinador ya escribe en `DECOMPOSITION.md`, el bloque es texto versionado y
+revisable, no hay proceso adicional que mantener y la app sigue siendo la única
+que mueve el grafo. La aprobación es explícita; si el bloque no es válido, la UI
+muestra el error y no toca nada.
 
 El coordinador corre en la raíz, así que en multirepo ve front y back y propone un
 plan para cada uno. No habla con las sesiones de plan: les deja el artefacto y el
@@ -283,6 +299,27 @@ step declara qué leer. Si el alcance cambia, se re-ejecuta `coordinate`,
 reescribe `DECOMPOSITION.md` y los planes afectados se marcan obsoletos.
 
 En `fast` no hay coordinador: el brief va directo a la sesión que ejecuta.
+
+### Runner de la feature
+
+El coordinador no necesita un workspace. La app reutiliza el mismo motor de
+contextos/servidores: materializa la huella en `contexts/<huella>/`, usando como
+raíz el checkout principal de la raíz (o la carpeta de la feature si no hay
+metarepo), y arranca un servidor cuyo dueño es la feature. Ese servidor no
+aparece en la lista de workspaces; si comparte huella con un workspace o con
+otra feature, se reutiliza el mismo proceso y se le añade el dueño. Parar el
+coordinador solo para el proceso cuando no queda ningún dueño.
+
+El perfil se elige en la UI y se congela en `features/<id>/.runner/`. Por
+defecto se prioriza el perfil del paso `coordinate`, luego uno cuyo id o nombre
+contenga «coordinador/coordinator», luego el perfil por defecto de la app y, por
+último, el primero. Para que sea barato, el perfil del coordinador debe usar un
+modelo económico; el runner no fuerza un modelo distinto.
+
+La sesión la abre la app (nunca otra sesión): crea el chat en el servidor de la
+feature, guarda `sessionId` en el paso `coordinate` y envía el encargo de
+`coordinatorPrompt(feature)`. Al reabrir, reutiliza esa sesión sin repetir el
+encargo.
 
 ### Contexto y coste
 
@@ -410,6 +447,7 @@ usuario la aprueba.
 <appdata>/features.json          # índice: id, nombre, estado, targets
 <appdata>/features/<id>/feature.json
 <appdata>/features/<id>/*.md     # artefactos compartidos
+<appdata>/features/<id>/.runner/ # lock del perfil del coordinador
 <appdata>/flows.json             # recetas standard/fast
 <appdata>/profiles.json          # roles (ya existe)
 <appdata>/repos.json             # repos y subrepos; incluye bootstrap por repo

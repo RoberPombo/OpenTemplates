@@ -34,6 +34,8 @@ import { DeleteFeature } from "./domain/usecases/DeleteFeature";
 import { ProvisionFeature } from "./domain/usecases/ProvisionFeature";
 import { SaveFeature } from "./domain/usecases/SaveFeature";
 import { StartFeature } from "./domain/usecases/StartFeature";
+import { ApproveDecomposition } from "./domain/usecases/ApproveDecomposition";
+import { LaunchCoordinator } from "./domain/usecases/LaunchCoordinator";
 import type { BootstrapGateway, SettingsGateway } from "./domain/repositories/SettingsGateway";
 import type { ChatGateway, ChatServer } from "./domain/repositories/ChatGateway";
 import type { ConfirmDialog, FolderPicker } from "./domain/repositories/Dialogs";
@@ -147,6 +149,14 @@ export class CompositionRoot {
 
   provideProvisionFeature(): ProvisionFeature {
     return new ProvisionFeature(this.features);
+  }
+
+  provideLaunchCoordinator(): LaunchCoordinator {
+    return new LaunchCoordinator(this.features, (server) => this.provideChatGateway(server));
+  }
+
+  provideApproveDecomposition(): ApproveDecomposition {
+    return new ApproveDecomposition(this.features);
   }
 
   provideApplyWorkspaceSettings(server: ChatGateway | null): ApplyWorkspaceSettings {

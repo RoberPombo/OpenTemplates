@@ -33,11 +33,19 @@ describe("FeatureView", () => {
       <FeatureView
         feature={started()}
         artifacts={[]}
+        profiles={[]}
+        defaultProfileId={null}
+        runner={null}
+        coordinatorBusy={false}
         busy={false}
         notice={null}
         error={null}
         onProvision={() => {}}
         onSaveArtifact={async () => undefined}
+        onReloadArtifacts={async () => undefined}
+        onLaunchCoordinator={async () => undefined}
+        onStopCoordinator={async () => undefined}
+        onApproveDecomposition={async () => undefined}
         onDelete={() => {}}
         onBack={() => {}}
       />,
@@ -59,11 +67,19 @@ describe("FeatureView", () => {
       <FeatureView
         feature={started()}
         artifacts={[]}
+        profiles={[]}
+        defaultProfileId={null}
+        runner={null}
+        coordinatorBusy={false}
         busy={false}
         notice={null}
         error={null}
         onProvision={onProvision}
         onSaveArtifact={async () => undefined}
+        onReloadArtifacts={async () => undefined}
+        onLaunchCoordinator={async () => undefined}
+        onStopCoordinator={async () => undefined}
+        onApproveDecomposition={async () => undefined}
         onDelete={() => {}}
         onBack={() => {}}
       />,
@@ -76,11 +92,19 @@ describe("FeatureView", () => {
       <FeatureView
         feature={started()}
         artifacts={[]}
+        profiles={[]}
+        defaultProfileId={null}
+        runner={null}
+        coordinatorBusy={false}
         busy
         notice={null}
         error={null}
         onProvision={onProvision}
         onSaveArtifact={async () => undefined}
+        onReloadArtifacts={async () => undefined}
+        onLaunchCoordinator={async () => undefined}
+        onStopCoordinator={async () => undefined}
+        onApproveDecomposition={async () => undefined}
         onDelete={() => {}}
         onBack={() => {}}
       />,
@@ -93,11 +117,19 @@ describe("FeatureView", () => {
       <FeatureView
         feature={{ ...started(), status: "blocked" }}
         artifacts={[]}
+        profiles={[]}
+        defaultProfileId={null}
+        runner={null}
+        coordinatorBusy={false}
         busy={false}
         notice={null}
         error="Bootstrap obligatorio «.env»: falta .env en el checkout principal."
         onProvision={() => {}}
         onSaveArtifact={async () => undefined}
+        onReloadArtifacts={async () => undefined}
+        onLaunchCoordinator={async () => undefined}
+        onStopCoordinator={async () => undefined}
+        onApproveDecomposition={async () => undefined}
         onDelete={() => {}}
         onBack={() => {}}
       />,

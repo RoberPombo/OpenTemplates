@@ -339,6 +339,10 @@ function App() {
             key={featuresState.selected.id}
             feature={featuresState.selected}
             artifacts={featuresState.artifacts}
+            profiles={profiles}
+            defaultProfileId={boot.settings.defaultProfileId}
+            runner={featuresState.coordinator}
+            coordinatorBusy={featuresState.coordinatorBusy}
             busy={featuresState.busyId === featuresState.selected.id}
             notice={featuresState.notice}
             error={featuresState.error}
@@ -346,6 +350,14 @@ function App() {
               void featuresState.provision(featuresState.selected!.id).catch(() => undefined)
             }
             onSaveArtifact={featuresState.saveArtifact}
+            onReloadArtifacts={featuresState.reloadArtifacts}
+            onLaunchCoordinator={(profileId) =>
+              featuresState.launchCoordinator(featuresState.selected!.id, profileId)
+            }
+            onStopCoordinator={() => featuresState.stopCoordinator(featuresState.selected!.id)}
+            onApproveDecomposition={(content) =>
+              featuresState.approveDecomposition(featuresState.selected!.id, content)
+            }
             onDelete={() => void featuresState.remove(featuresState.selected!.id)}
             onBack={() => featuresState.clearSelection()}
           />

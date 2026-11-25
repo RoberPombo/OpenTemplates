@@ -35,6 +35,8 @@ type Props = {
   /** Sesión que debe abrirse (p. ej. una corrida de la carrera). */
   openSessionId?: string | null;
   onSessionOpened?: () => void;
+  /** Sesión ya creada por la app (coordinador); evita crear otra al montar. */
+  initialSessionId?: string | null;
 };
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -61,6 +63,7 @@ export function Chat({
   onWorkspaceActivity,
   openSessionId,
   onSessionOpened,
+  initialSessionId,
 }: Props) {
   const {
     sessionId,
@@ -128,6 +131,7 @@ export function Chat({
     onWorkspaceActivity,
     openSessionId,
     onSessionOpened,
+    initialSessionId,
   });
 
   const bottomRef = useRef<HTMLDivElement | null>(null);

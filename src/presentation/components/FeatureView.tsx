@@ -1,18 +1,27 @@
 /** Detalle de una feature: alcance, worktrees y grafo de pasos. */
 import type { Feature, FeatureStatus, StepStatus } from "../../domain/features/model";
 import { featureProgress } from "../../domain/features/model";
-import type { FeatureArtifact } from "../../domain/features/coordinator";
+import type { FeatureArtifact, FeatureRunnerInfo } from "../../domain/features/coordinator";
 import { readySteps, stepLabel } from "../../domain/features/flow";
+import type { ProfileManifest } from "../../types";
 import { CoordinatorPanel } from "./CoordinatorPanel";
 
 type Props = {
   feature: Feature;
   artifacts: FeatureArtifact[];
+  profiles: ProfileManifest[];
+  defaultProfileId?: string | null;
+  runner: FeatureRunnerInfo | null;
+  coordinatorBusy: boolean;
   busy: boolean;
   notice: string | null;
   error: string | null;
   onProvision: () => void;
   onSaveArtifact: (name: string, content: string) => Promise<unknown>;
+  onReloadArtifacts: () => Promise<unknown>;
+  onLaunchCoordinator: (profileId: string | null) => Promise<unknown>;
+  onStopCoordinator: () => Promise<unknown>;
+  onApproveDecomposition: (content: string) => Promise<unknown>;
   onDelete: () => void;
   onBack: () => void;
 };
@@ -46,11 +55,19 @@ const KIND_LABEL: Record<Feature["kind"], string> = {
 export function FeatureView({
   feature,
   artifacts,
+  profiles,
+  defaultProfileId,
+  runner,
+  coordinatorBusy,
   busy,
   notice,
   error,
   onProvision,
   onSaveArtifact,
+  onReloadArtifacts,
+  onLaunchCoordinator,
+  onStopCoordinator,
+  onApproveDecomposition,
   onDelete,
   onBack,
 }: Props) {
@@ -91,7 +108,19 @@ export function FeatureView({
 
       <p className="feature-brief-text">{feature.brief || "Sin objetivo escrito."}</p>
 
-      <CoordinatorPanel feature={feature} artifacts={artifacts} onSave={onSaveArtifact} />
+      <CoordinatorPanel
+        feature={feature}
+        artifacts={artifacts}
+        profiles={profiles}
+        defaultProfileId={defaultProfileId}
+        runner={runner}
+        coordinatorBusy={coordinatorBusy}
+        onSave={onSaveArtifact}
+        onReloadArtifacts={onReloadArtifacts}
+        onLaunch={onLaunchCoordinator}
+        onStop={onStopCoordinator}
+        onApprove={onApproveDecomposition}
+      />
 
       <section className="feature-panel">
         <div className="section-head">

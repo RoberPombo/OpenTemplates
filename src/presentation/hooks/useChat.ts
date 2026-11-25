@@ -94,6 +94,8 @@ type UseChatInput = {
   /** Sesión externa que debe abrirse (corridas de una carrera). */
   openSessionId?: string | null;
   onSessionOpened?: () => void;
+  /** Sesión creada por la app antes de montar el chat (coordinador). */
+  initialSessionId?: string | null;
 };
 
 function errorText(error: unknown): string {
@@ -109,6 +111,7 @@ export function useChat({
   onWorkspaceActivity,
   openSessionId,
   onSessionOpened,
+  initialSessionId,
 }: UseChatInput) {
   const root = useAppContext();
   const storageKey = prefKeys.session(workspace.id, scope);
@@ -116,7 +119,9 @@ export function useChat({
   const agentStorageKey = prefKeys.agent(workspace.id, scope);
   const variantStorageKey = prefKeys.variant(workspace.id, scope);
 
-  const [sessionId, setSessionId] = useState<string | null>(() => root.preferences.get(storageKey));
+  const [sessionId, setSessionId] = useState<string | null>(
+    () => initialSessionId ?? root.preferences.get(storageKey),
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -453,7 +458,7 @@ export function useChat({
   }, [sessionId, loadPendingRequests]);
 
   useEffect(() => {
-    setSessionId(root.preferences.get(storageKey));
+    setSessionId(initialSessionId ?? root.preferences.get(storageKey));
     setMessages([]);
     setCommand(null);
     setSelectedSkills([]);
@@ -463,7 +468,7 @@ export function useChat({
       agentChoice: root.preferences.get(agentStorageKey) ?? "",
       variant: root.preferences.get(variantStorageKey) ?? "",
     });
-  }, [storageKey, modelStorageKey, agentStorageKey, variantStorageKey, root]);
+  }, [storageKey, modelStorageKey, agentStorageKey, variantStorageKey, initialSessionId, root]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -474,7 +479,7 @@ export function useChat({
   }, [sessionId, reload]);
 
   useEffect(() => {
-    if (sessionId) return;
+    if (sessionId || initialSessionId) return;
     let alive = true;
     (async () => {
       try {
@@ -497,6 +502,7 @@ export function useChat({
   }, [
     client,
     sessionId,
+    initialSessionId,
     storageKey,
     workspace.name,
     workspace.projectPath,
