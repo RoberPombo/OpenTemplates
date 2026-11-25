@@ -16,6 +16,8 @@ pub struct ServerHandle {
     pub context_hash: String,
     /// Workspaces que tienen este contexto arrancado.
     pub workspaces: Vec<String>,
+    /// Features que usan este contexto sin ser workspaces (p. ej. coordinador).
+    pub features: Vec<String>,
     pub model: Option<String>,
     pub models: Vec<String>,
 }
@@ -149,6 +151,7 @@ pub async fn spawn(
             child,
             context_hash: context_hash.to_string(),
             workspaces: vec![workspace.id.clone()],
+            features: Vec::new(),
             model: workspace.model.clone(),
             models: workspace.models.clone(),
         },

@@ -3,6 +3,7 @@ mod bootstrap;
 mod commands;
 mod config;
 mod context;
+mod feature_runner;
 mod features;
 mod gh;
 mod git;
@@ -12,6 +13,7 @@ mod preview;
 mod process;
 mod profiles;
 mod resources;
+mod runner;
 mod server;
 mod state;
 mod store;
@@ -77,6 +79,9 @@ pub fn run() {
             commands::provision_feature,
             commands::feature_artifacts,
             commands::write_feature_artifact,
+            feature_runner::start_feature_runner,
+            feature_runner::feature_runner_status,
+            feature_runner::stop_feature_runner,
             commands::list_profiles,
             commands::save_profile,
             commands::delete_profile,

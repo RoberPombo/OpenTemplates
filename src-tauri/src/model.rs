@@ -547,6 +547,22 @@ pub struct FeatureArtifact {
     pub content: String,
 }
 
+/// Servidor y contexto efímero de una feature (coordinador). No es un
+/// workspace: vive en `state.servers` como dueño `Feature`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureRunnerInfo {
+    pub feature_id: String,
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    /// Carpeta de trabajo del coordinador (raíz de la feature).
+    pub directory: String,
+    pub context_hash: String,
+    pub server: ServerInfo,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProvisionedWorktree {    /// `root` o `target`.

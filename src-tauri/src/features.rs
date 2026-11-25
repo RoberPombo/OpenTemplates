@@ -148,11 +148,20 @@ pub fn provision(feature: &Feature) -> Result<ProvisionReport, String> {
 
     let entries = entries_for(feature)?;
 
-    let existing: Vec<&Entry> = entries
+    let existing: Vec<usize> = entries
         .iter()
-        .filter(|entry| entry.path.exists())
+        .enumerate()
+        .filter(|(_, entry)| entry.path.exists())
+        .map(|(index, _)| index)
         .collect();
-    if existing.len() == entries.len() {
+    let missing: Vec<usize> = entries
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| !entry.path.exists())
+        .map(|(index, _)| index)
+        .collect();
+
+    if missing.is_empty() {
         let mut report = ProvisionReport {
             worktrees: entries.iter().map(provisioned).collect(),
             warnings: vec!["Los worktrees ya existían; no se tocó nada.".into()],
@@ -163,19 +172,10 @@ pub fn provision(feature: &Feature) -> Result<ProvisionReport, String> {
         report.warnings.extend(crate::artifacts::ensure(feature));
         return Ok(report);
     }
-    if !existing.is_empty() {
-        let labels = existing
-            .iter()
-            .map(|entry| entry.label.clone())
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(format!(
-            "La feature tiene worktrees a medias ({labels}). Elimina la feature y vuelve a crearla."
-        ));
-    }
 
-    // Valida todos los repos y ramas antes de crear nada.
-    for entry in &entries {
+    // Valida todos los repos y ramas que faltan antes de crear nada.
+    for index in &missing {
+        let entry = &entries[*index];
         git::toplevel(&entry.repo).map_err(|_| {
             format!(
                 "«{}» no es un repo git: {}",
@@ -197,9 +197,9 @@ pub fn provision(feature: &Feature) -> Result<ProvisionReport, String> {
 
     let mut warnings = Vec::new();
     let mut created: Vec<usize> = Vec::new();
-    let mut worktrees = Vec::new();
 
-    for (index, entry) in entries.iter().enumerate() {
+    for index in &missing {
+        let entry = &entries[*index];
         if let Err(err) = git::fetch(&entry.repo) {
             warnings.push(format!(
                 "No se pudo actualizar «{}»: {err}. Se usa la referencia local.",
@@ -208,16 +208,7 @@ pub fn provision(feature: &Feature) -> Result<ProvisionReport, String> {
         }
         let base = resolve_base(&entry.repo, &entry.base);
         match git::worktree_add(&entry.repo, &entry.path, &entry.branch, &base, false) {
-            Ok(()) => {
-                created.push(index);
-                worktrees.push(ProvisionedWorktree {
-                    role: entry.role.to_string(),
-                    repo_path: entry.repo.to_string_lossy().to_string(),
-                    path: entry.path.to_string_lossy().to_string(),
-                    branch: entry.branch.clone(),
-                    base,
-                });
-            }
+            Ok(()) => created.push(*index),
             Err(err) => {
                 rollback(&entries, &created);
                 return Err(format!(
@@ -228,13 +219,29 @@ pub fn provision(feature: &Feature) -> Result<ProvisionReport, String> {
         }
     }
 
+    if !existing.is_empty() {
+        warnings.push(format!(
+            "{} worktree(s) ya existían; se crearon {}.",
+            existing.len(),
+            missing.len()
+        ));
+    }
+
     let mut report = ProvisionReport {
-        worktrees,
+        worktrees: entries.iter().map(provisioned).collect(),
         warnings,
         errors: Vec::new(),
         applied: Vec::new(),
     };
-    apply_bootstrap(&entries, &mut report);
+    // Solo se aplica bootstrap en los worktrees nuevos: no se pisa lo que el
+    // usuario ya tenga en los existentes.
+    for index in &missing {
+        let entry = &entries[*index];
+        let result = bootstrap::apply(&entry.repo, &entry.path, &entry.bootstrap);
+        report.applied.extend(result.applied);
+        report.warnings.extend(result.warnings);
+        report.errors.extend(result.errors);
+    }
     report.warnings.extend(crate::artifacts::ensure(feature));
     Ok(report)
 }
@@ -333,6 +340,42 @@ mod tests {
         let again = provision(&feature).unwrap();
         assert_eq!(again.worktrees.len(), 2);
         assert!(again.warnings[0].contains("ya existían"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn crea_solo_los_worktrees_que_faltan_al_ampliar_el_alcance() {
+        let root = std::env::temp_dir().join(format!("ot-feature-{}", uuid::Uuid::new_v4()));
+        let meta = root.join("meta-main");
+        let sub = root.join("sub-main");
+        let extra = root.join("extra-main");
+        init_repo(&meta);
+        init_repo(&sub);
+        init_repo(&extra);
+        let mut feature = feature(&root, &meta, &sub);
+
+        provision(&feature).unwrap();
+        feature.targets.push(FeatureTarget {
+            id: "target-extra".into(),
+            repo_id: None,
+            name: "Extra".into(),
+            repo_path: extra.to_string_lossy().to_string(),
+            base_branch: "main".into(),
+            branch: "feature/demo".into(),
+            relative_path: "meta/repos/extra".into(),
+            scopes: vec![FeatureScope {
+                id: "scope-root".into(),
+                path: ".".into(),
+            }],
+            bootstrap: Vec::new(),
+        });
+
+        let report = provision(&feature).unwrap();
+        assert_eq!(report.worktrees.len(), 3);
+        assert!(report.warnings.iter().any(|item| item.contains("se crearon 1")));
+        assert!(root.join("feature/meta/repos/extra/.git").exists());
+        assert!(root.join("feature/meta/.git").exists());
 
         let _ = std::fs::remove_dir_all(&root);
     }

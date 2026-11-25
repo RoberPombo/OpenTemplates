@@ -17,7 +17,8 @@ use crate::model::{
 };
 use crate::preview::{self, PreviewProbe};
 use crate::profiles;
-use crate::server::{self, ServerHandle};
+use crate::runner::{self, Owner};
+use crate::server;
 use crate::state::{AppState, ensure_workspace_dir, expand_tilde};
 
 fn now_ms() -> u64 {
@@ -28,30 +29,11 @@ fn now_ms() -> u64 {
 }
 
 fn find_opencode_bin() -> Option<PathBuf> {
-    if let Ok(value) = std::env::var("OPENCODE_BIN") {
-        let path = PathBuf::from(value);
-        if path.is_file() {
-            return Some(path);
-        }
-    }
-    if let Ok(path) = which::which("opencode") {
-        return Some(path);
-    }
-    let fallback = dirs::home_dir()?.join(".local/bin/opencode");
-    fallback.is_file().then_some(fallback)
+    runner::find_opencode_bin()
 }
 
-fn info_of(workspace_id: &str, handle: &mut ServerHandle) -> Option<ServerInfo> {
-    Some(ServerInfo {
-        workspace_id: workspace_id.to_string(),
-        context_hash: handle.context_hash.clone(),
-        base_url: format!("http://127.0.0.1:{}", handle.port),
-        password: handle.password.clone(),
-        port: handle.port,
-        pid: handle.child.id().unwrap_or(0),
-        model: handle.model.clone(),
-        models: handle.models.clone(),
-    })
+fn info_of(workspace_id: &str, handle: &mut server::ServerHandle) -> Option<ServerInfo> {
+    runner::info_for(&Owner::Workspace(workspace_id.to_string()), handle)
 }
 
 fn repo_of(state: &AppState, id: &str) -> Result<Repo, String> {
@@ -92,25 +74,18 @@ fn materialize_workspace(
     workspace: &Workspace,
     workspace_dir: &Path,
 ) -> Result<(String, config::Materialized), String> {
-    let (global, error) = config::read_global_config();
-    let global_dir = config::global_config_dir();
-    let plan = config::plan(workspace, workspace_dir, &global_dir, &global);
     let root = project_root(state, workspace);
-    let hash = context::fingerprint_without_model(&root, &plan.config, &plan.agents_md);
-    let context_dir = context::ensure(&state.data_dir, &hash, &root)?;
-    let mut materialized = config::write_plan(workspace, workspace_dir, &context_dir, &plan)?;
+    let context = runner::materialize(&state.data_dir, workspace, workspace_dir, &root)?;
+    let mut materialized = context.materialized;
     // Los workspaces anteriores guardaban su DB en workspaces/<id>. La primera
     // vez que entran en un contexto se copia para no perder sus sesiones.
     migrate_legacy_db(
         state,
         &workspace.id,
-        &context_dir,
+        &context.dir,
         &mut materialized.warnings,
     );
-    if let Some(error) = error {
-        materialized.warnings.push(error);
-    }
-    Ok((hash, materialized))
+    Ok((context.hash, materialized))
 }
 
 fn migrate_legacy_db(
@@ -1268,48 +1243,6 @@ pub async fn delete_workspace(
     state.save()
 }
 
-/// Arranca (o reutiliza) el servidor de un contexto ya materializado.
-async fn ensure_context_server(
-    state: &AppState,
-    workspace: &Workspace,
-    hash: &str,
-    context_dir: &Path,
-) -> Result<ServerInfo, String> {
-    let id = workspace.id.clone();
-    let mut dead = None;
-    {
-        let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
-        let alive = servers.get_mut(hash).map(server::is_alive).unwrap_or(false);
-        if alive {
-            let handle = servers.get_mut(hash).expect("servidor comprobado");
-            if !handle.workspaces.iter().any(|workspace| workspace == &id) {
-                handle.workspaces.push(id.clone());
-            }
-            return info_of(&id, handle).ok_or("El servidor no tiene PID".into());
-        }
-        if servers.contains_key(hash) {
-            dead = servers.remove(hash);
-        }
-    }
-    if let Some(handle) = dead {
-        server::stop(handle).await;
-    }
-
-    let bin =
-        find_opencode_bin().ok_or("No se encontró el binario de opencode. Define OPENCODE_BIN.")?;
-    let (mut handle, _) = server::spawn(workspace, context_dir, &bin, hash).await?;
-    if !handle.workspaces.iter().any(|workspace| workspace == &id) {
-        handle.workspaces.push(id.clone());
-    }
-    let info = info_of(&id, &mut handle).ok_or("El servidor no tiene PID")?;
-    state
-        .servers
-        .lock()
-        .map_err(|_| "estado bloqueado")?
-        .insert(hash.to_string(), handle);
-    Ok(info)
-}
-
 /// Materializa y arranca un perfil distinto del perfil por defecto del
 /// workspace, sin cambiar la selección congelada de este. La sesión que se cree
 /// contra el servidor devuelto llevará ese perfil (contexto).
@@ -1368,7 +1301,14 @@ pub async fn start_profile(
         eprintln!("[opentemplates] {}", warning);
     }
     context::attach(&state.data_dir, &hash, &root, &workspace_id)?;
-    let mut info = ensure_context_server(&state, &applied, &hash, &context_dir).await?;
+    let mut info = runner::ensure_server(
+        &state,
+        &applied,
+        &hash,
+        &context_dir,
+        Owner::Workspace(workspace_id.clone()),
+    )
+    .await?;
     // Dos perfiles pueden compartir huella y diferir solo en el modelo.
     info.model = applied.model.clone();
     info.models = applied.models.clone();
@@ -1423,7 +1363,14 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
     }
 
     let context_dir = context::context_dir(&state.data_dir, &hash);
-    let info = ensure_context_server(&state, &workspace, &hash, &context_dir).await?;
+    let info = runner::ensure_server(
+        &state,
+        &workspace,
+        &hash,
+        &context_dir,
+        Owner::Workspace(id.clone()),
+    )
+    .await?;
     state.save()?;
     Ok(info)
 }
