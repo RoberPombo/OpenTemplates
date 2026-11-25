@@ -58,6 +58,14 @@ describe("tokens de tema", () => {
       accent: "verde",
     });
     expect(resolveThemeSelection("light", "azul")).toEqual({ theme: "light", accent: "azul" });
+    expect(resolveThemeSelection("pitch", "verde")).toEqual({ theme: "pitch", accent: "verde" });
+  });
+
+  test("Pitch Black mantiene el fondo negro puro", () => {
+    const tokens = themeTokens("pitch", "azul");
+    expect(tokens.bg).toBe("#000000");
+    expect(tokens.bgDeep).toBe("#000000");
+    expect(tokens.text).toBe("#d4d4d4");
   });
 });
 

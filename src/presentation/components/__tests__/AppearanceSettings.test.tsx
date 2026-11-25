@@ -36,6 +36,19 @@ describe("AppearanceSettings", () => {
     expect(screen.getByRole("radio", { name: "Claro" })).toHaveAttribute("aria-checked", "true");
   });
 
+  test("cambia a Pitch Black y aplica sus tokens", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+
+    await user.click(screen.getByRole("radio", { name: "Pitch Black" }));
+
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("pitch"));
+    expect(localStorage.getItem(prefKeys.theme)).toBe("pitch");
+    expect(document.documentElement.style.getPropertyValue("--bg")).toBe(
+      themeTokens("pitch", "verde").bg,
+    );
+  });
+
   test("el acento se puede cambiar de forma independiente y se recuerda", async () => {
     const user = userEvent.setup();
     renderSettings();

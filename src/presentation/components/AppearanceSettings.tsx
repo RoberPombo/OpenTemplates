@@ -19,8 +19,8 @@ export function AppearanceSettings() {
         </span>
       </div>
       <p className="muted small-text">
-        El tema se aplica al momento y se recuerda en esta instalación. Los dos temas comparten los
-        mismos tokens semánticos, así que ningún texto ni borde se queda sin color.
+        El tema se aplica al momento y se recuerda en esta instalación. Todos los temas comparten
+        los mismos tokens semánticos, así que ningún texto ni borde se queda sin color.
       </p>
 
       <div className="theme-options" role="radiogroup" aria-label="Tema">

@@ -2,7 +2,7 @@
  * Tokens semánticos de tema y acentos.
  *
  * La app no guarda colores en CSS: `themeStyle` produce las custom properties
- * que se aplican en el arranque y al cambiar de tema. Ambos temas declaran
+ * que se aplican en el arranque y al cambiar de tema. Todos los temas declaran
  * exactamente el mismo conjunto de tokens, y los acentos solo sobrescriben los
  * tokens de acento, así que ningún `var(--token)` puede quedar sin valor.
  */
@@ -62,7 +62,7 @@ export const THEME_TOKEN_NAMES = [
 export type ThemeTokenName = (typeof THEME_TOKEN_NAMES)[number];
 export type ThemeTokens = Record<ThemeTokenName, string>;
 
-export type ThemeId = "dark" | "light";
+export type ThemeId = "dark" | "light" | "pitch";
 export type AccentId = "verde" | "azul" | "violeta";
 
 export type ThemeSelection = {
@@ -182,6 +182,65 @@ export const THEMES: Record<ThemeId, { label: string; tokens: ThemeTokens }> = {
       overlay: "rgba(20, 28, 38, 0.42)",
     },
   },
+  /**
+   * Pitch Black (Viktor Qvarfordt): fondo negro puro, texto #d4d4d4 y azul de
+   * selección de VS Code. Los grises de superficie son casi negros para
+   * conservar jerarquía sin ensuciar el negro del fondo.
+   */
+  pitch: {
+    label: "Pitch Black",
+    tokens: {
+      bg: "#000000",
+      bgDeep: "#000000",
+      surface: "#050505",
+      surface2: "#0a0a0a",
+      surface3: "#111111",
+      surface4: "#171717",
+      surfaceHover: "#0d0d0d",
+      surfaceActive: "#161616",
+      field: "#060606",
+      sidebarFrom: "#060606",
+      sidebarTo: "#000000",
+      line: "#1f1f1f",
+      lineSoft: "#141414",
+      lineStrong: "#2b2b2b",
+      lineHover: "#3d3d3d",
+      text: "#d4d4d4",
+      textStrong: "#ffffff",
+      textSoft: "#bdbdbd",
+      muted: "#9c9c9c",
+      muted2: "#8a8a8a",
+      faint: "#6b6b6b",
+      accent: "#3794ff",
+      accentStrong: "#6cb2ff",
+      accentDeep: "#1f74d1",
+      accentDim: "#17456e",
+      accentSoft: "#071421",
+      accentBorder: "#1e3a55",
+      accentText: "#9dc7ff",
+      accentTextStrong: "#c3ddff",
+      successTextStrong: "#9ff0c4",
+      onAccent: "#000000",
+      onAccentStrong: "#000000",
+      danger: "#f87171",
+      dangerText: "#ffb1b1",
+      dangerTextStrong: "#ffd3d3",
+      dangerBorder: "#4a2020",
+      warning: "#fecc00",
+      warningText: "#ffdf70",
+      warningTextStrong: "#ffe680",
+      warningSoft: "#171200",
+      warningBorder: "#4a3c0d",
+      warningWarmText: "#ffb98a",
+      info: "#56b6ff",
+      infoText: "#a9c2ff",
+      infoTextStrong: "#8ec5ff",
+      infoBorder: "#1e3a55",
+      track: "#262626",
+      shadowColor: "#000000",
+      overlay: "rgba(0, 0, 0, 0.72)",
+    },
+  },
 };
 
 type AccentOverrides = Partial<ThemeTokens>;
@@ -190,15 +249,33 @@ function accent(
   label: string,
   dark: AccentOverrides,
   light: AccentOverrides,
+  pitch: AccentOverrides,
 ): { label: string; overrides: Record<ThemeId, AccentOverrides> } {
-  return { label, overrides: { dark, light } };
+  return { label, overrides: { dark, light, pitch } };
 }
 
 export const ACCENTS: Record<
   AccentId,
   { label: string; overrides: Record<ThemeId, AccentOverrides> }
 > = {
-  verde: accent("Verde", {}, {}),
+  verde: accent(
+    "Verde",
+    {},
+    {},
+    {
+      accent: "#4ade80",
+      accentStrong: "#86efac",
+      accentDeep: "#22c55e",
+      accentDim: "#14532d",
+      accentSoft: "#06140c",
+      accentBorder: "#1c3b28",
+      accentText: "#a7f3c8",
+      accentTextStrong: "#c9f9dd",
+      successTextStrong: "#c9f9dd",
+      onAccent: "#000000",
+      onAccentStrong: "#000000",
+    },
+  ),
   azul: accent(
     "Azul",
     {
@@ -226,6 +303,19 @@ export const ACCENTS: Record<
       successTextStrong: "#0f3572",
       onAccent: "#ffffff",
       onAccentStrong: "#ffffff",
+    },
+    {
+      accent: "#3794ff",
+      accentStrong: "#6cb2ff",
+      accentDeep: "#1f74d1",
+      accentDim: "#17456e",
+      accentSoft: "#071421",
+      accentBorder: "#1e3a55",
+      accentText: "#9dc7ff",
+      accentTextStrong: "#c3ddff",
+      successTextStrong: "#c3ddff",
+      onAccent: "#000000",
+      onAccentStrong: "#000000",
     },
   ),
   violeta: accent(
@@ -256,14 +346,27 @@ export const ACCENTS: Record<
       onAccent: "#ffffff",
       onAccentStrong: "#ffffff",
     },
+    {
+      accent: "#b18cff",
+      accentStrong: "#cdb4ff",
+      accentDeep: "#8e68e0",
+      accentDim: "#4a3370",
+      accentSoft: "#120c1f",
+      accentBorder: "#33254d",
+      accentText: "#d6c4ff",
+      accentTextStrong: "#e7dcff",
+      successTextStrong: "#e7dcff",
+      onAccent: "#000000",
+      onAccentStrong: "#000000",
+    },
   ),
 };
 
-export const THEME_IDS: readonly ThemeId[] = ["dark", "light"];
+export const THEME_IDS: readonly ThemeId[] = ["dark", "light", "pitch"];
 export const ACCENT_IDS: readonly AccentId[] = ["verde", "azul", "violeta"];
 
 export function isThemeId(value: unknown): value is ThemeId {
-  return value === "dark" || value === "light";
+  return value === "dark" || value === "light" || value === "pitch";
 }
 
 export function isAccentId(value: unknown): value is AccentId {

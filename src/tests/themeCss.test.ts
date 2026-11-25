@@ -23,7 +23,7 @@ describe("CSS y tokens de tema", () => {
     expect(css).not.toMatch(/\brgba?\(/i);
   });
 
-  test("toda custom property usada existe en los dos temas", () => {
+  test("toda custom property usada existe en todos los temas", () => {
     const themeVariables = new Set(THEME_TOKEN_NAMES.map(themeVariable));
     const missing = usedVariables().filter(
       (name) => !themeVariables.has(name) && !RUNTIME_VARIABLES.has(name),
