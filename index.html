@@ -7,8 +7,9 @@
     <script>
       // Preload mínimo: elige `color-scheme` antes de que cargue el bundle.
       try {
+        const saved = localStorage.getItem("opentemplates:theme");
         document.documentElement.dataset.theme =
-          localStorage.getItem("opentemplates:theme") === "light" ? "light" : "dark";
+          saved === "light" || saved === "pitch" ? saved : "dark";
       } catch {
         document.documentElement.dataset.theme = "dark";
       }

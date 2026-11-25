@@ -415,14 +415,15 @@ Implementado (fases 1-4 + wizard básico):
   queda pendiente para no abrir un editor a medias.
 - **Temas**: `styles.css` ya no contiene hex ni `rgba()`: todos los colores son
   custom properties semánticas (`--surface-2`, `--text-soft`, `--accent-border`,
-  `--warning-soft`, etc.) definidas en `domain/theme/themes.ts`. Hay dos temas
-  completos (oscuro actual y claro legible) y tres acentos (verde, azul y
+  `--warning-soft`, etc.) definidas en `domain/theme/themes.ts`. Hay tres temas
+  completos (oscuro actual, claro legible y Pitch Black, el tema de VS Code de
+  Viktor Qvarfordt con fondo negro puro) y tres acentos (verde, azul y
   violeta). `themeStyle` se aplica en `main.tsx` antes de montar React y hay un
   preload mínimo en `index.html` que fija `data-theme`/`color-scheme`; la
   selección se persiste en `prefKeys.theme` y `prefKeys.accent`. La página
-  «Apariencia» de ajustes aplica los cambios al momento y previsualiza ambos
-  temas con los tokens del dominio. Los tests comprueban que los dos temas y
-  todos los acentos declaran el juego completo de tokens, que ningún token queda
+  «Apariencia» de ajustes aplica los cambios al momento y previsualiza todos
+  los temas con los tokens del dominio. Los tests comprueban que los tres temas
+  y todos los acentos declaran el juego completo de tokens, que ningún token queda
   sin usar, que toda `var(--…)` de la hoja existe, que no hay colores fijos y
   que texto principal, secundario, acentos y estados superan el contraste WCAG
   AA. Verificación visual: `pnpm tauri dev` arranca sin errores y las vistas de
