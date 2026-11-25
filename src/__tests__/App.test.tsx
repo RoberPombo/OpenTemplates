@@ -17,6 +17,8 @@ const apiMock = vi.hoisted(() => ({
   saveFeature: vi.fn(),
   deleteFeature: vi.fn(),
   provisionFeature: vi.fn(),
+  featureArtifacts: vi.fn(),
+  writeFeatureArtifact: vi.fn(),
 }));
 
 vi.mock("../data/tauriCommands", () => ({ api: apiMock }));
@@ -153,6 +155,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   apiMock.bootstrap.mockResolvedValue(bootstrap);
   apiMock.listFeatures.mockResolvedValue([]);
+  apiMock.featureArtifacts.mockResolvedValue([]);
   apiMock.listLibrary.mockResolvedValue({
     agents: [],
     commands: [],

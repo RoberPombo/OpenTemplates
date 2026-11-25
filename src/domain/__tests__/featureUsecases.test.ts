@@ -37,6 +37,11 @@ function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
       applied: [],
       blocked: false,
     })),
+    artifacts: vi.fn(async () => []),
+    writeArtifact: vi.fn(async (_id: string, name: string, content: string) => ({
+      name,
+      content,
+    })),
     ...overrides,
   };
 }

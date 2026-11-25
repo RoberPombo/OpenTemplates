@@ -32,10 +32,12 @@ describe("FeatureView", () => {
     render(
       <FeatureView
         feature={started()}
+        artifacts={[]}
         busy={false}
         notice={null}
         error={null}
         onProvision={() => {}}
+        onSaveArtifact={async () => undefined}
         onDelete={() => {}}
         onBack={() => {}}
       />,
@@ -56,10 +58,12 @@ describe("FeatureView", () => {
     const { rerender } = render(
       <FeatureView
         feature={started()}
+        artifacts={[]}
         busy={false}
         notice={null}
         error={null}
         onProvision={onProvision}
+        onSaveArtifact={async () => undefined}
         onDelete={() => {}}
         onBack={() => {}}
       />,
@@ -71,10 +75,12 @@ describe("FeatureView", () => {
     rerender(
       <FeatureView
         feature={started()}
+        artifacts={[]}
         busy
         notice={null}
         error={null}
         onProvision={onProvision}
+        onSaveArtifact={async () => undefined}
         onDelete={() => {}}
         onBack={() => {}}
       />,
@@ -86,10 +92,12 @@ describe("FeatureView", () => {
     render(
       <FeatureView
         feature={{ ...started(), status: "blocked" }}
+        artifacts={[]}
         busy={false}
         notice={null}
         error="Bootstrap obligatorio «.env»: falta .env en el checkout principal."
         onProvision={() => {}}
+        onSaveArtifact={async () => undefined}
         onDelete={() => {}}
         onBack={() => {}}
       />,

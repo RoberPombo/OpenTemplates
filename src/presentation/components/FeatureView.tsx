@@ -1,14 +1,18 @@
 /** Detalle de una feature: alcance, worktrees y grafo de pasos. */
 import type { Feature, FeatureStatus, StepStatus } from "../../domain/features/model";
 import { featureProgress } from "../../domain/features/model";
+import type { FeatureArtifact } from "../../domain/features/coordinator";
 import { readySteps, stepLabel } from "../../domain/features/flow";
+import { CoordinatorPanel } from "./CoordinatorPanel";
 
 type Props = {
   feature: Feature;
+  artifacts: FeatureArtifact[];
   busy: boolean;
   notice: string | null;
   error: string | null;
   onProvision: () => void;
+  onSaveArtifact: (name: string, content: string) => Promise<unknown>;
   onDelete: () => void;
   onBack: () => void;
 };
@@ -41,10 +45,12 @@ const KIND_LABEL: Record<Feature["kind"], string> = {
 
 export function FeatureView({
   feature,
+  artifacts,
   busy,
   notice,
   error,
   onProvision,
+  onSaveArtifact,
   onDelete,
   onBack,
 }: Props) {
@@ -84,6 +90,8 @@ export function FeatureView({
       {error && <div className="inline-error feature-error">{error}</div>}
 
       <p className="feature-brief-text">{feature.brief || "Sin objetivo escrito."}</p>
+
+      <CoordinatorPanel feature={feature} artifacts={artifacts} onSave={onSaveArtifact} />
 
       <section className="feature-panel">
         <div className="section-head">

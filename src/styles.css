@@ -4923,3 +4923,44 @@ p {
 .feature-pick {
   margin-top: 4px;
 }
+
+.coordinator-details {
+  margin: 10px 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.coordinator-details summary {
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.coordinator-prompt {
+  max-height: 280px;
+  margin: 10px 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--bg-deep);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.coordinator-editor {
+  margin-top: 12px;
+}
+
+.coordinator-editor .text-input {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.coordinator-actions {
+  align-items: center;
+  gap: 10px;
+}

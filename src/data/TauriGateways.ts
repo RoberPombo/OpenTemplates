@@ -21,6 +21,7 @@ import type { ProfileGateway } from "../domain/repositories/ProfileGateway";
 import type { WorkspaceGateway } from "../domain/repositories/WorkspaceGateway";
 import type { FeatureGateway } from "../domain/repositories/FeatureGateway";
 import type { Feature } from "../domain/features/model";
+import type { FeatureArtifact } from "../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../domain/features/provision";
 import type {
   AppSettings,
@@ -266,5 +267,13 @@ export class TauriFeatureGateway implements FeatureGateway {
 
   provision(id: string): Promise<FeatureProvisionOutcome> {
     return call(api.provisionFeature(id));
+  }
+
+  artifacts(id: string): Promise<FeatureArtifact[]> {
+    return call(api.featureArtifacts(id));
+  }
+
+  writeArtifact(id: string, name: string, content: string): Promise<FeatureArtifact> {
+    return call(api.writeFeatureArtifact(id, name, content));
   }
 }

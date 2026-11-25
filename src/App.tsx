@@ -338,12 +338,14 @@ function App() {
           <FeatureView
             key={featuresState.selected.id}
             feature={featuresState.selected}
+            artifacts={featuresState.artifacts}
             busy={featuresState.busyId === featuresState.selected.id}
             notice={featuresState.notice}
             error={featuresState.error}
             onProvision={() =>
               void featuresState.provision(featuresState.selected!.id).catch(() => undefined)
             }
+            onSaveArtifact={featuresState.saveArtifact}
             onDelete={() => void featuresState.remove(featuresState.selected!.id)}
             onBack={() => featuresState.clearSelection()}
           />
