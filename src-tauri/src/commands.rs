@@ -1173,7 +1173,7 @@ pub async fn delete_workspace(
             let mut empty = false;
             if let Some(handle) = servers.get_mut(&key) {
                 handle.workspaces.retain(|workspace| workspace != &id);
-                empty = handle.workspaces.is_empty();
+                empty = handle.is_empty();
             }
             if empty && let Some(handle) = servers.remove(&key) {
                 stopped.push(handle);
@@ -1210,9 +1210,10 @@ pub async fn delete_workspace(
                 }
             }
         }
-        // La DB del contexto es compartida: solo se borra si ningún otro
-        // workspace la usa.
+        // La DB del contexto es compartida: solo se borra si no queda ningún
+        // workspace ni feature enganchado a ese contexto.
         if let Some(hash) = workspace.context_hash.as_deref() {
+            let context_dir = context::context_dir(&state.data_dir, hash);
             let shared = state
                 .workspaces
                 .lock()
@@ -1221,9 +1222,11 @@ pub async fn delete_workspace(
                         .iter()
                         .any(|other| other.id != id && other.context_hash.as_deref() == Some(hash))
                 })
-                .unwrap_or(true);
+                .unwrap_or(true)
+                || context::read_meta(&context_dir)
+                    .map(|meta| !meta.workspaces.is_empty())
+                    .unwrap_or(false);
             if !shared {
-                let context_dir = context::context_dir(&state.data_dir, hash);
                 if let Ok(entries) = fs::read_dir(&context_dir) {
                     for entry in entries.flatten() {
                         let name = entry.file_name().to_string_lossy().to_string();
@@ -1351,7 +1354,7 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
             let mut empty = false;
             if let Some(handle) = servers.get_mut(&key) {
                 handle.workspaces.retain(|workspace| workspace != &id);
-                empty = handle.workspaces.is_empty();
+                empty = handle.is_empty();
             }
             if empty && let Some(handle) = servers.remove(&key) {
                 stale.push(handle);
@@ -1391,7 +1394,7 @@ pub async fn stop_workspace(state: State<'_, AppState>, id: String) -> Result<()
             let mut empty = false;
             if let Some(handle) = servers.get_mut(&key) {
                 handle.workspaces.retain(|workspace| workspace != &id);
-                empty = handle.workspaces.is_empty();
+                empty = handle.is_empty();
             }
             if empty && let Some(handle) = servers.remove(&key) {
                 stopped.push(handle);

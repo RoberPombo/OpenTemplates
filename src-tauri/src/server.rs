@@ -22,6 +22,13 @@ pub struct ServerHandle {
     pub models: Vec<String>,
 }
 
+impl ServerHandle {
+    /// Sin dueños: el proceso se puede parar.
+    pub fn is_empty(&self) -> bool {
+        self.workspaces.is_empty() && self.features.is_empty()
+    }
+}
+
 fn write_log(path: &Path, line: &str) {
     use std::io::Write;
     let clean = if line.to_lowercase().contains("password") {
