@@ -70,8 +70,27 @@ pub fn find_opencode_bin() -> Option<PathBuf> {
     if let Ok(path) = which::which("opencode") {
         return Some(path);
     }
-    let fallback = dirs::home_dir()?.join(".local/bin/opencode");
-    fallback.is_file().then_some(fallback)
+    // El instalador oficial de opencode deja el binario en ~/.opencode/bin.
+    let home = dirs::home_dir()?;
+    let names: &[&str] = if cfg!(windows) {
+        &["opencode.exe", "opencode"]
+    } else {
+        &["opencode"]
+    };
+    for dir in [".opencode/bin", ".local/bin"] {
+        for name in names {
+            let path = home.join(dir).join(name);
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+pub fn bin_error() -> String {
+    "No se encontró el binario de opencode. Instálalo en el PATH o en ~/.opencode/bin, o define OPENCODE_BIN."
+        .into()
 }
 
 /// Materializa la config de un `Workspace` en su contexto y devuelve la huella.
@@ -135,8 +154,7 @@ pub async fn ensure_server(
         server::stop(handle).await;
     }
 
-    let bin = find_opencode_bin()
-        .ok_or("No se encontró el binario de opencode. Define OPENCODE_BIN.")?;
+    let bin = find_opencode_bin().ok_or_else(bin_error)?;
     let (mut handle, _) = server::spawn(workspace, context_dir, &bin, hash).await?;
     owner.attach(&mut handle);
     let info = info_for(&owner, &mut handle).ok_or("El servidor no tiene PID")?;

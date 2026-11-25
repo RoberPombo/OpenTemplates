@@ -251,9 +251,7 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
         running,
         data_dir: state.data_dir.to_string_lossy().to_string(),
         opencode_bin: bin.as_ref().map(|p| p.to_string_lossy().to_string()),
-        error: bin
-            .is_none()
-            .then(|| "No se encontró el binario de opencode. Define OPENCODE_BIN.".to_string()),
+        error: bin.is_none().then(runner::bin_error),
         notices,
     }
 }
@@ -368,8 +366,7 @@ fn model_detail(key: &str, registry: &serde_json::Value) -> ModelDetail {
 #[tauri::command]
 pub async fn list_available_models() -> Result<Vec<ModelDetail>, String> {
     tauri::async_runtime::spawn_blocking(|| {
-        let bin = find_opencode_bin()
-            .ok_or_else(|| "No se encontró el binario de opencode".to_string())?;
+        let bin = find_opencode_bin().ok_or_else(runner::bin_error)?;
         let output = std::process::Command::new(bin)
             .arg("models")
             .env_remove("OPENCODE_CONFIG")
