@@ -1,7 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { folderName } from "./domain/shared";
+import { errorText, folderName } from "./domain/shared";
 import { useWorkspaces } from "./presentation/hooks/useWorkspaces";
+import { useFeatures } from "./presentation/hooks/useFeatures";
 import { CreateWorkspace } from "./presentation/components/CreateWorkspace";
+import { FeatureDialog } from "./presentation/components/FeatureDialog";
+import { FeatureView } from "./presentation/components/FeatureView";
 import { ManagePanel } from "./presentation/components/ManagePanel";
 import { UpdateDialog } from "./presentation/components/UpdateDialog";
 import { WorkspaceView } from "./presentation/components/WorkspaceView";
@@ -51,7 +54,9 @@ function App() {
     setProfiles,
     setWorktreesRoot,
   } = useWorkspaces();
+  const featuresState = useFeatures();
   const [creating, setCreating] = useState(false);
+  const [creatingFeature, setCreatingFeature] = useState(false);
   const [managing, setManaging] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { entries, run: runRegisteredAction } = useCommandActions();
@@ -195,10 +200,13 @@ function App() {
     return (
       <button
         key={workspace.id}
-        className={`workspace-item ${selectedId === workspace.id ? "active" : ""} ${
-          workspace.missing ? "missing" : ""
-        }`}
-        onClick={() => select(workspace.id)}
+        className={`workspace-item ${
+          featuresState.selected ? "" : selectedId === workspace.id ? "active" : ""
+        } ${workspace.missing ? "missing" : ""}`}
+        onClick={() => {
+          featuresState.clearSelection();
+          select(workspace.id);
+        }}
       >
         <span className={`dot ${isRunning ? "live" : ""}`} />
         <span className="workspace-meta">
@@ -251,6 +259,38 @@ function App() {
           )}
         </nav>
 
+        <section className="feature-side">
+          <div className="group-head">
+            <span>Features</span>
+            <span className="group-count">{featuresState.features.length}</span>
+          </div>
+          <button className="new-feature" onClick={() => setCreatingFeature(true)}>
+            <span>+</span> Nueva feature
+          </button>
+          {featuresState.features.map((feature) => (
+            <button
+              key={feature.id}
+              className={`workspace-item ${
+                featuresState.selectedId === feature.id ? "active" : ""
+              }`}
+              onClick={() => featuresState.select(feature.id)}
+            >
+              <span className={`dot status-${feature.status}`} />
+              <span className="workspace-meta">
+                <span className="workspace-name">{feature.name}</span>
+                <span className="workspace-project">
+                  {feature.kind} ·{" "}
+                  {feature.targets.length === 1 ? "1 repo" : `${feature.targets.length} repos`}
+                  {feature.status === "blocked" ? " · bloqueada" : ""}
+                </span>
+              </span>
+            </button>
+          ))}
+          {featuresState.features.length === 0 && (
+            <p className="muted sidebar-empty">Sin features. Crea una para empezar.</p>
+          )}
+        </section>
+
         <div className="sidebar-foot">
           <Button
             variant="ghost"
@@ -285,7 +325,29 @@ function App() {
           </div>
         )}
 
-        {selected ? (
+        {featuresState.error && !featuresState.selected && (
+          <div className="notice">
+            <span className="danger-text">{featuresState.error}</span>
+            <button className="notice-close" onClick={() => featuresState.setError(null)}>
+              ×
+            </button>
+          </div>
+        )}
+
+        {featuresState.selected ? (
+          <FeatureView
+            key={featuresState.selected.id}
+            feature={featuresState.selected}
+            busy={featuresState.busyId === featuresState.selected.id}
+            notice={featuresState.notice}
+            error={featuresState.error}
+            onProvision={() =>
+              void featuresState.provision(featuresState.selected!.id).catch(() => undefined)
+            }
+            onDelete={() => void featuresState.remove(featuresState.selected!.id)}
+            onBack={() => featuresState.clearSelection()}
+          />
+        ) : selected ? (
           <WorkspaceView
             key={selected.id}
             workspace={selected}
@@ -333,6 +395,18 @@ function App() {
           onCreated={(workspace, warnings, startNow) => {
             created(workspace, warnings, startNow);
             setCreating(false);
+          }}
+        />
+      )}
+
+      {creatingFeature && (
+        <FeatureDialog
+          repos={repos}
+          dataDir={boot.dataDir}
+          onClose={() => setCreatingFeature(false)}
+          onCreated={(draft) => {
+            setCreatingFeature(false);
+            void featuresState.start(draft).catch((err) => featuresState.setError(errorText(err)));
           }}
         />
       )}

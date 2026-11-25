@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::model::{AppSettings, ProfileManifest, Repo, Workspace};
+use crate::model::{AppSettings, Feature, ProfileManifest, Repo, Workspace};
 use crate::server::ServerHandle;
 use crate::store;
 
@@ -11,6 +11,7 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub workspaces: Mutex<Vec<Workspace>>,
     pub repos: Mutex<Vec<Repo>>,
+    pub features: Mutex<Vec<Feature>>,
     pub profiles: Mutex<Vec<ProfileManifest>>,
     pub settings: Mutex<AppSettings>,
     pub servers: Mutex<HashMap<String, ServerHandle>>,
@@ -21,6 +22,8 @@ impl AppState {
     pub fn load(data_dir: PathBuf) -> Self {
         let (workspaces, mut notices) = store::load_workspaces(&data_dir);
         let repos = store::load_repos(&data_dir);
+        let (features, feature_notices) = store::load_features(&data_dir);
+        notices.extend(feature_notices);
         let (profiles, profile_notices) = store::load_profiles(&data_dir);
         notices.extend(profile_notices);
         let settings = store::load_settings(&data_dir);
@@ -28,6 +31,7 @@ impl AppState {
             data_dir,
             workspaces: Mutex::new(workspaces),
             repos: Mutex::new(repos),
+            features: Mutex::new(features),
             profiles: Mutex::new(profiles),
             settings: Mutex::new(settings),
             servers: Mutex::new(HashMap::new()),
@@ -62,6 +66,11 @@ impl AppState {
             .map_err(|_| "estado bloqueado")?
             .clone();
         let repos = self.repos.lock().map_err(|_| "estado bloqueado")?.clone();
+        let features = self
+            .features
+            .lock()
+            .map_err(|_| "estado bloqueado")?
+            .clone();
         let profiles = self
             .profiles
             .lock()
@@ -75,6 +84,7 @@ impl AppState {
 
         store::save_workspaces(&self.data_dir, &workspaces)?;
         store::save_repos(&self.data_dir, &repos)?;
+        store::save_features(&self.data_dir, &features)?;
         store::save_profiles(&self.data_dir, &profiles)?;
         store::save_settings(&self.data_dir, &settings)?;
         Ok(())

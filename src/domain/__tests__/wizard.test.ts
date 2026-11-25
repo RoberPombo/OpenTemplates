@@ -19,8 +19,9 @@ describe("slugify", () => {
     expect(slugify("A/B_C")).toBe("a-b-c");
   });
 
-  test("unicode no ascii se elimina", () => {
-    expect(slugify("Canción")).toBe("canci-n");
+  test("los acentos se normalizan y el resto de unicode se elimina", () => {
+    expect(slugify("Canción")).toBe("cancion");
+    expect(slugify("Árbol raro ✓")).toBe("arbol-raro");
   });
 
   test("vacío o solo símbolos → vacío", () => {

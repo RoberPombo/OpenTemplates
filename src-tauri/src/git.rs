@@ -188,6 +188,11 @@ pub fn worktree_prune(repo: &Path) {
     let _ = run(repo, &["worktree", "prune"]);
 }
 
+/// Borra una rama local (solo para deshacer una creación a medias).
+pub fn delete_branch(repo: &Path, branch: &str) -> Result<(), String> {
+    run(repo, &["branch", "-D", branch]).map(|_| ())
+}
+
 pub fn is_dirty(worktree: &Path) -> bool {
     if !worktree.exists() {
         return false;

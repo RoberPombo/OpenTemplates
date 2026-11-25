@@ -19,6 +19,9 @@ import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/work
 import type { ResourcesGateway } from "../domain/repositories/ResourcesGateway";
 import type { ProfileGateway } from "../domain/repositories/ProfileGateway";
 import type { WorkspaceGateway } from "../domain/repositories/WorkspaceGateway";
+import type { FeatureGateway } from "../domain/repositories/FeatureGateway";
+import type { Feature } from "../domain/features/model";
+import type { FeatureProvisionOutcome } from "../domain/features/provision";
 import type {
   AppSettings,
   Bootstrap,
@@ -245,5 +248,23 @@ export class TauriPreviewGateway implements PreviewGateway {
 
   openExternal(url: string): Promise<void> {
     return call(api.openExternal(url));
+  }
+}
+
+export class TauriFeatureGateway implements FeatureGateway {
+  list(): Promise<Feature[]> {
+    return call(api.listFeatures());
+  }
+
+  save(feature: Feature): Promise<Feature> {
+    return call(api.saveFeature(feature));
+  }
+
+  remove(id: string): Promise<void> {
+    return call(api.deleteFeature(id));
+  }
+
+  provision(id: string): Promise<FeatureProvisionOutcome> {
+    return call(api.provisionFeature(id));
   }
 }

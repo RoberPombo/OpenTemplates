@@ -9,10 +9,11 @@ use crate::context;
 use crate::git;
 use crate::library;
 use crate::model::{
-    AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, GhStatus,
-    GitCommitResult, GitCommitSummary, GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost,
-    ModelDetail, ModelLimit, ProfileManifest, PullRequestCheck, PullRequestInfo, Repo, ServerInfo,
-    SkillInfo, SkillRef, Workspace, WorkspaceMode, WorktreeStatus,
+    AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, Feature,
+    FeatureProvisionOutcome, GhStatus, GitCommitResult, GitCommitSummary, GitPushResult,
+    GitStatusOutput, Library, McpInfo, ModelCost, ModelDetail, ModelLimit, ProfileManifest,
+    PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo, SkillRef, Workspace,
+    WorkspaceMode, WorktreeStatus,
 };
 use crate::preview::{self, PreviewProbe};
 use crate::profiles;
@@ -80,6 +81,7 @@ fn repo_from_path(path: &Path) -> Result<Repo, String> {
         provider: git::provider(remote.as_deref()),
         remote,
         main_branch: git::main_branch(&toplevel),
+        bootstrap: Vec::new(),
         created_at: now,
         updated_at: now,
     })
@@ -622,6 +624,103 @@ pub fn save_profile_agents_md(
 ) -> Result<String, String> {
     profiles::write_agents_md(&state.profiles_root(), &id, &content)?;
     Ok(content)
+}
+
+// ---------------------------------------------------------------------------
+// Features
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn list_features(state: State<'_, AppState>) -> Vec<Feature> {
+    state
+        .features
+        .lock()
+        .map(|items| items.clone())
+        .unwrap_or_default()
+}
+
+/// Upsert de una feature. El dominio (tipos, flujo y pasos) vive en el frontend;
+/// aquí solo se valida lo mínimo y se persiste.
+#[tauri::command]
+pub fn save_feature(state: State<'_, AppState>, feature: Feature) -> Result<Feature, String> {
+    if feature.id.trim().is_empty() {
+        return Err("La feature necesita un identificador".into());
+    }
+    if feature.name.trim().is_empty() {
+        return Err("Ponle un nombre a la feature".into());
+    }
+    {
+        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
+        match features.iter_mut().find(|item| item.id == feature.id) {
+            Some(existing) => *existing = feature.clone(),
+            None => features.push(feature.clone()),
+        }
+    }
+    state.save()?;
+    Ok(feature)
+}
+
+#[tauri::command]
+pub fn delete_feature(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    {
+        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
+        let before = features.len();
+        features.retain(|item| item.id != id);
+        if features.len() == before {
+            return Err(format!("La feature '{id}' no existe"));
+        }
+    }
+    state.save()
+}
+
+/// Crea los worktrees de la feature (metarepo y subrepos). Idempotente.
+#[tauri::command]
+pub fn provision_feature(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<FeatureProvisionOutcome, String> {
+    let feature = state
+        .features
+        .lock()
+        .map_err(|_| "estado bloqueado")?
+        .iter()
+        .find(|item| item.id == id)
+        .cloned()
+        .ok_or_else(|| format!("La feature '{id}' no existe"))?;
+
+    let (worktrees, warnings, errors, applied) = {
+        let report = crate::features::provision(&feature)?;
+        (
+            report.worktrees,
+            report.warnings,
+            report.errors,
+            report.applied,
+        )
+    };
+    let blocked = !errors.is_empty();
+    let mut feature = feature;
+    if blocked {
+        feature.status = "blocked".into();
+    } else if feature.status == "blocked" {
+        feature.status = "confirmed".into();
+    }
+    feature.updated_at = now_ms();
+    {
+        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
+        match features.iter_mut().find(|item| item.id == feature.id) {
+            Some(existing) => *existing = feature.clone(),
+            None => features.push(feature.clone()),
+        }
+    }
+    state.save()?;
+    Ok(FeatureProvisionOutcome {
+        feature,
+        worktrees,
+        warnings,
+        errors,
+        applied,
+        blocked,
+    })
 }
 
 // ---------------------------------------------------------------------------

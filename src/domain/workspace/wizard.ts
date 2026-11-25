@@ -3,13 +3,9 @@
  * conflictos de checkout principal y validación por paso.
  */
 import type { Workspace } from "../../types";
+import { slugify } from "../shared/paths";
 
-export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+export { slugify };
 
 export function defaultBranch(slug: string): string {
   return slug || "rama";

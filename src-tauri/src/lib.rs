@@ -1,6 +1,8 @@
+mod bootstrap;
 mod commands;
 mod config;
 mod context;
+mod features;
 mod gh;
 mod git;
 mod library;
@@ -68,6 +70,10 @@ pub fn run() {
             commands::add_repo,
             commands::refresh_repo,
             commands::remove_repo,
+            commands::list_features,
+            commands::save_feature,
+            commands::delete_feature,
+            commands::provision_feature,
             commands::list_profiles,
             commands::save_profile,
             commands::delete_profile,

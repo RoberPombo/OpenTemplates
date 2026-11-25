@@ -13,6 +13,10 @@ const apiMock = vi.hoisted(() => ({
   stopWorkspace: vi.fn(),
   worktreeStatus: vi.fn(),
   deleteWorkspace: vi.fn(),
+  listFeatures: vi.fn(),
+  saveFeature: vi.fn(),
+  deleteFeature: vi.fn(),
+  provisionFeature: vi.fn(),
 }));
 
 vi.mock("../data/tauriCommands", () => ({ api: apiMock }));
@@ -148,6 +152,7 @@ beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
   apiMock.bootstrap.mockResolvedValue(bootstrap);
+  apiMock.listFeatures.mockResolvedValue([]);
   apiMock.listLibrary.mockResolvedValue({
     agents: [],
     commands: [],
