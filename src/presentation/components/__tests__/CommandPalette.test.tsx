@@ -124,6 +124,9 @@ describe("CommandPalette", () => {
       />,
     );
     expect(screen.getByRole("listbox", { name: "Acciones" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Paleta de comandos", description: /↑↓ navegar/ }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Buscar una acción" })).toHaveFocus();
 
     unmount();

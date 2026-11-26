@@ -245,6 +245,16 @@ describe("App — ciclo de vida", () => {
     await user.click(screen.getByText("start"));
     expect(await screen.findByText("puerto ocupado")).toBeInTheDocument();
   });
+
+  test("los avisos se anuncian y su cierre tiene nombre accesible", async () => {
+    const user = userEvent.setup();
+    apiMock.bootstrap.mockResolvedValue({ ...bootstrap, notices: ["Falta un MCP"] });
+    renderApp();
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Falta un MCP");
+    await user.click(screen.getByRole("button", { name: "Cerrar aviso" }));
+    expect(screen.queryByText("Falta un MCP")).toBeNull();
+  });
 });
 
 describe("App — borrado con política", () => {

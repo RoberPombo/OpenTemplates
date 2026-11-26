@@ -344,18 +344,28 @@ function App() {
 
       <main className="main">
         {notice && (
-          <div className="notice">
+          <output className="notice">
             <span>{notice}</span>
-            <button className="notice-close" onClick={() => setNotice(null)}>
+            <button
+              type="button"
+              className="notice-close"
+              aria-label="Cerrar aviso"
+              onClick={() => setNotice(null)}
+            >
               ×
             </button>
-          </div>
+          </output>
         )}
 
         {featuresState.error && !featuresState.selected && (
-          <div className="notice">
+          <div className="notice" role="alert">
             <span className="danger-text">{featuresState.error}</span>
-            <button className="notice-close" onClick={() => featuresState.setError(null)}>
+            <button
+              type="button"
+              className="notice-close"
+              aria-label="Cerrar error"
+              onClick={() => featuresState.setError(null)}
+            >
               ×
             </button>
           </div>
