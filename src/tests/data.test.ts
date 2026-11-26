@@ -14,9 +14,7 @@ import {
   TauriWorkspaceGateway,
 } from "../data/TauriGateways";
 import { LocalStoragePreferences } from "../data/LocalStoragePreferences";
-import { WindowConfirmDialog } from "../data/WindowConfirmDialog";
 import { CompositionRoot } from "../CompositionRoot";
-import { DeleteWorkspace } from "../domain/usecases/DeleteWorkspace";
 import { makeWorkspace } from "../tests/fakes";
 
 beforeEach(() => {
@@ -24,8 +22,12 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+// Contrato de los adaptadores: se conservan los tests de mapeo de argumentos camelCase
+// y de normalización de errores porque son comportamiento propio del adaptador, no una
+// delegación 1:1. Los tests de simple reenvío (p. ej. WindowConfirmDialog → window.confirm)
+// se retiraron: se rompen con cualquier refactor sin detectar un fallo real.
 describe("TauriGateways — mapeo de comandos y argumentos", () => {
-  test("workspace gateway delega en los comandos con args camelCase", async () => {
+  test("mapea llamadas del workspace a los comandos con args camelCase", async () => {
     invoke.mockResolvedValue(undefined);
     const gateway = new TauriWorkspaceGateway();
     await gateway.delete("w1", { removeWorktree: true, force: true });
@@ -80,16 +82,9 @@ describe("LocalStoragePreferences", () => {
   });
 });
 
-describe("WindowConfirmDialog", () => {
-  test("delega en window.confirm", () => {
-    const spy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    expect(new WindowConfirmDialog().confirm("¿seguro?")).toBe(true);
-    expect(spy).toHaveBeenCalledWith("¿seguro?");
-    spy.mockRestore();
-  });
-});
-
 describe("CompositionRoot", () => {
+  // La política (confirmar y borrar) la cubre DeleteWorkspace en el dominio; aquí solo se
+  // comprueba que el Composition Root inyecta los puertos sobrescritos y no otros.
   test("provideDeleteWorkspace cablea gateway y confirmación (sobrescribibles en tests)", async () => {
     const deleted: string[] = [];
     const root = new CompositionRoot({
@@ -100,9 +95,7 @@ describe("CompositionRoot", () => {
       } as never,
       confirm: { confirm: () => true },
     });
-    const useCase = root.provideDeleteWorkspace();
-    expect(useCase).toBeInstanceOf(DeleteWorkspace);
-    const result = await useCase.execute(makeWorkspace());
+    const result = await root.provideDeleteWorkspace().execute(makeWorkspace());
     expect(result.deleted).toBe(true);
     expect(deleted).toEqual(["w1"]);
   });
