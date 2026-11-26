@@ -1,5 +1,6 @@
 /** Alta de una feature: nombre, tipo, objetivo, metarepo opcional y repos. */
 import { useMemo, useState } from "react";
+import { toggleSetValue } from "../../domain/shared";
 import {
   createFeatureDraft,
   flowForKind,
@@ -59,12 +60,7 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
   const flow = flowForKind(kind);
 
   function toggleTarget(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelected((prev) => toggleSetValue(prev, id));
     setError(null);
   }
 

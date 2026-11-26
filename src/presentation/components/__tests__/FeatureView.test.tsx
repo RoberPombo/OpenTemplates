@@ -2,31 +2,12 @@ import { describe, expect, test, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureView } from "../FeatureView";
-import type { CreateFeatureInput, Feature } from "../../../domain/features/model";
-import { createFeatureDraft } from "../../../domain/features/model";
-import { startFeature } from "../../../domain/features/flow";
+import type { Feature } from "../../../domain/features/model";
+import { makeFeature, makeStartedFeature } from "../../../tests/fixtures";
 
-function makeFeature(overrides: Partial<CreateFeatureInput> = {}): Feature {
-  const result = createFeatureDraft({
-    id: "feat-1",
-    name: "Checkout con Stripe",
-    kind: "feature",
-    brief: "Cobrar con Stripe en el checkout",
-    directory: "/data/features/feat-1",
-    targets: [{ repoId: "web", name: "Web", repoPath: "/repos/web" }],
-    now: 1,
-    ...overrides,
-  });
-  if ("error" in result) throw new Error(result.error);
-  return result.feature;
+function started(overrides: Parameters<typeof makeFeature>[0] = {}): Feature {
+  return makeStartedFeature(overrides);
 }
-
-function started(overrides: Partial<CreateFeatureInput> = {}): Feature {
-  const result = startFeature(makeFeature(overrides), 2);
-  if ("error" in result) throw new Error(result.error);
-  return result.feature;
-}
-
 describe("FeatureView", () => {
   test("muestra alcance, pasos y el siguiente paso listo", () => {
     render(

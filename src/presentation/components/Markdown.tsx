@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { safeExternalUrl } from "../../domain/shared";
 
 type Block =
   | { kind: "paragraph"; text: string }
@@ -167,10 +168,16 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
     } else {
       const link = token.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/);
       if (link) {
+        const href = safeExternalUrl(link[2]);
         nodes.push(
-          <a key={key} href={link[2]} target="_blank" rel="noreferrer noopener">
-            {renderInline(link[1], key)}
-          </a>,
+          href ? (
+            <a key={key} href={href} target="_blank" rel="noreferrer noopener">
+              {renderInline(link[1], key)}
+            </a>
+          ) : (
+            // Un esquema ejecutable se pinta como texto: nunca como enlace.
+            <span key={key}>{renderInline(link[1], key)}</span>
+          ),
         );
       } else {
         nodes.push(token);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { CreateFeatureInput, Feature, Result } from "../features/model";
+import type { Feature, Result } from "../features/model";
 import {
   branchName,
   branchPrefix,
@@ -14,28 +14,14 @@ import {
   transitionStep,
 } from "../features/model";
 import { expandSteps, readySteps, startFeature, stepLabel } from "../features/flow";
-
-function draft(overrides: Partial<CreateFeatureInput> = {}): Feature {
-  const result = createFeatureDraft({
-    id: "feat-1",
-    name: "Checkout con Stripe",
-    kind: "feature",
-    brief: "Añadir el checkout con Stripe",
-    directory: "/data/features/feat-1",
-    targets: [{ repoId: "repo-a", name: "Web", repoPath: "/repos/web" }],
-    now: 1000,
-    ...overrides,
-  });
-  if ("error" in result) throw new Error(result.error);
-  return result.feature;
-}
+import { makeFeature } from "../../tests/fixtures";
 
 function expectFeature<T>(result: Result<T>): T {
   if ("error" in result) throw new Error(result.error);
   return result.feature;
 }
 
-function start(feature: Feature = draft(), now = 2000): Feature {
+function start(feature: Feature = makeFeature(), now = 2000): Feature {
   return expectFeature(startFeature(feature, now));
 }
 
@@ -45,7 +31,7 @@ function move(feature: Feature, stepId: string, to: Parameters<typeof transition
 
 describe("createFeatureDraft", () => {
   test("crea un borrador con rama, base y scope por defecto", () => {
-    const feature = draft();
+    const feature = makeFeature();
 
     expect(feature.status).toBe("draft");
     expect(feature.flow).toBe("standard");
@@ -98,7 +84,7 @@ describe("createFeatureDraft", () => {
   });
 
   test("monta un multirepo con raíz y rutas de subrepo", () => {
-    const feature = draft({
+    const feature = makeFeature({
       root: { repoId: "main", name: "Main", repoPath: "/repos/main" },
       targets: [
         { repoId: "front", name: "Front", repoPath: "/repos/front", scopes: ["apps/web"] },
@@ -117,7 +103,7 @@ describe("createFeatureDraft", () => {
   });
 
   test("un monorepo es un target con varios scopes", () => {
-    const feature = draft({
+    const feature = makeFeature({
       targets: [{ repoId: "b", name: "B", repoPath: "/repos/b", scopes: ["front", "back"] }],
     });
 
@@ -130,7 +116,7 @@ describe("createFeatureDraft", () => {
     expect(scopeId("front")).toBe("scope-front");
     expect(scopeId("front", ["scope-front"])).toBe("scope-front-2");
 
-    const feature = draft({
+    const feature = makeFeature({
       targets: [{ repoId: null, name: "A", repoPath: "/a", scopes: ["front", "front"] }],
     });
     expect(feature.targets[0].scopes.map((scope) => scope.id)).toEqual([
@@ -142,7 +128,7 @@ describe("createFeatureDraft", () => {
 
 describe("bootstrap", () => {
   test("normaliza las entradas de target y metarepo", () => {
-    const feature = draft({
+    const feature = makeFeature({
       root: {
         repoId: "main",
         name: "Main",
@@ -241,7 +227,7 @@ describe("startFeature", () => {
 
   test("con dos scopes duplica recon, plan, implementación y verificación", () => {
     const feature = start(
-      draft({
+      makeFeature({
         targets: [{ repoId: null, name: "B", repoPath: "/b", scopes: ["front", "back"] }],
       }),
     );
@@ -253,7 +239,7 @@ describe("startFeature", () => {
   });
 
   test("un hotfix va por fast: implementar, verificar e integrar", () => {
-    const feature = start(draft({ kind: "hotfix" }));
+    const feature = start(makeFeature({ kind: "hotfix" }));
 
     expect(feature.flow).toBe("fast");
     expect(feature.steps.map((step) => step.type)).toEqual(["implement", "verify", "integrate"]);
@@ -261,7 +247,7 @@ describe("startFeature", () => {
   });
 
   test("no confirma sin brief", () => {
-    expect(confirmFeature(draft({ brief: "  " }), 2)).toEqual({
+    expect(confirmFeature(makeFeature({ brief: "  " }), 2)).toEqual({
       error: "Describe la feature antes de confirmarla.",
     });
   });
@@ -281,7 +267,7 @@ describe("readySteps", () => {
   });
 
   test("en fast la implementación está lista desde el principio", () => {
-    const feature = start(draft({ kind: "chore" }));
+    const feature = start(makeFeature({ kind: "chore" }));
     expect(readySteps(feature).map((step) => step.type)).toEqual(["implement"]);
   });
 
@@ -326,7 +312,7 @@ describe("readySteps", () => {
 
 describe("expandSteps y etiquetas", () => {
   test("es determinista y no toca el estado del paso", () => {
-    const feature = draft();
+    const feature = makeFeature();
     const first = expandSteps(feature);
     const second = expandSteps(feature);
     expect(first).toEqual(second);
@@ -335,7 +321,7 @@ describe("expandSteps y etiquetas", () => {
 
   test("la etiqueta incluye target y scope", () => {
     const feature = start(
-      draft({
+      makeFeature({
         targets: [{ repoId: null, name: "B", repoPath: "/b", scopes: ["front"] }],
       }),
     );

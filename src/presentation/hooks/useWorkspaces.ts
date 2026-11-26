@@ -126,15 +126,25 @@ export function useWorkspaces() {
   }, [refresh]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    let alive = true;
+    const tick = () => {
+      // Con la ventana oculta no hace falta sondear: al volver, visibilitychange
+      // lanza un ciclo inmediato.
+      if (document.visibilityState === "hidden") return;
       void root.workspaces
         .status()
         .then((items) => {
-          setContexts(items);
+          if (alive) setContexts(items);
         })
         .catch(() => undefined);
-    }, 5000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(tick, 5000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, [root]);
 
   const select = useCallback(

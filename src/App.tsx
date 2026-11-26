@@ -5,12 +5,13 @@ import { useFeatures } from "./presentation/hooks/useFeatures";
 import { CreateWorkspace } from "./presentation/components/CreateWorkspace";
 import { FeatureDialog } from "./presentation/components/FeatureDialog";
 import { FeatureView } from "./presentation/components/FeatureView";
-import { SettingsDialog, type SettingsSectionId } from "./presentation/components/SettingsDialog";
+import type { SettingsSectionId } from "./presentation/components/SettingsDialog";
 import { UpdateDialog } from "./presentation/components/UpdateDialog";
 import { WorkspaceView } from "./presentation/components/WorkspaceView";
 import { CommandPalette } from "./presentation/components/CommandPalette";
 import { useCommandActions } from "./presentation/context/CommandActions";
 import { buildPaletteCommands } from "./domain/palette/catalog";
+import { cycleWorkspaceIndex } from "./domain/workspace/navigation";
 import { formatShortcut, resolveShortcut, shortcutFor } from "./domain/palette/keybindings";
 import { Button } from "./presentation/components/ui";
 import { useUpdater } from "./presentation/hooks/useUpdater";
@@ -21,6 +22,11 @@ import "./styles.css";
 
 const PALETTE_SHORTCUT = shortcutFor("palette.open");
 
+const SettingsDialog = lazy(() =>
+  import("./presentation/components/SettingsDialog").then((module) => ({
+    default: module.SettingsDialog,
+  })),
+);
 const PerformanceCapture = import.meta.env.DEV
   ? lazy(() => import("./presentation/components/PerformanceCapture"))
   : null;
@@ -114,8 +120,8 @@ function App() {
         if (workspaces.length < 2) return false;
         const current = workspaces.findIndex((workspace) => workspace.id === selectedId);
         const delta = id === "workspace.next" ? 1 : -1;
-        const from = current < 0 ? (delta === 1 ? -1 : 0) : current;
-        const index = (from + delta + workspaces.length) % workspaces.length;
+        const index = cycleWorkspaceIndex(current, workspaces.length, delta);
+        if (index < 0) return false;
         select(workspaces[index].id);
         return true;
       }
@@ -445,22 +451,24 @@ function App() {
       )}
 
       {settings && (
-        <SettingsDialog
-          workspace={selected}
-          client={settings.client !== undefined ? settings.client : settingsClient}
-          onWorkspaceUpdated={updated}
-          repos={repos}
-          profiles={profiles}
-          library={library}
-          workspaces={workspaces}
-          worktreesRoot={worktreesRoot}
-          defaultProfileId={boot.settings.defaultProfileId}
-          onReposChanged={setRepos}
-          onProfilesChanged={setProfiles}
-          onWorktreesRootChanged={setWorktreesRoot}
-          initialSection={settings.section}
-          onClose={() => setSettings(null)}
-        />
+        <Suspense fallback={null}>
+          <SettingsDialog
+            workspace={selected}
+            client={settings.client !== undefined ? settings.client : settingsClient}
+            onWorkspaceUpdated={updated}
+            repos={repos}
+            profiles={profiles}
+            library={library}
+            workspaces={workspaces}
+            worktreesRoot={worktreesRoot}
+            defaultProfileId={boot.settings.defaultProfileId}
+            onReposChanged={setRepos}
+            onProfilesChanged={setProfiles}
+            onWorktreesRootChanged={setWorktreesRoot}
+            initialSection={settings.section}
+            onClose={() => setSettings(null)}
+          />
+        </Suspense>
       )}
       {updater.update && (
         <UpdateDialog

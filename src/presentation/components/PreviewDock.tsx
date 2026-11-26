@@ -1,3 +1,4 @@
+/* oxlint-disable react/iframe-missing-sandbox — el preview corre en otro origen (localhost), no en el de la app */
 /**
  * Dock de vista previa de la app en marcha del workspace.
  *
@@ -196,10 +197,17 @@ export function PreviewDock({
           )}
           <div className="preview-frame-scroll">
             <div className="preview-frame" style={{ width: size.width }}>
+              {/* El preview corre en otro origen (localhost), no en el de la app:
+                  allow-same-origin le da su propio origen para storage/cookies,
+                  no acceso al contexto de Tauri. */}
               <iframe
                 key={preview.frameKey}
                 src={preview.url}
                 title="Aplicación en marcha"
+                // El preview es contenido de confianza del usuario, pero se
+                // aísla igualmente: scripts y formularios sí, sin acceso al
+                // contexto de la app ni a ventanas emergentes arbitrarias.
+                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
                 onLoad={preview.onFrameLoad}
               />
               {preview.frameLoading && (

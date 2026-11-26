@@ -1,24 +1,18 @@
 import { describe, expect, test } from "vitest";
-import type { CreateFeatureInput, Feature } from "../features/model";
-import { createFeatureDraft } from "../features/model";
+import type { Feature } from "../features/model";
 import { coordinatorPrompt, decompositionTemplate } from "../features/coordinator";
+import { makeFeature } from "../../tests/fixtures";
 
-function draft(overrides: Partial<CreateFeatureInput> = {}): Feature {
-  const result = createFeatureDraft({
-    id: "feat-1",
+function draft(overrides: Parameters<typeof makeFeature>[0] = {}): Feature {
+  return makeFeature({
     name: "Checkout con Stripe",
-    kind: "feature",
     brief: "Cobrar con Stripe en el checkout",
-    directory: "/data/features/feat-1",
     root: { repoId: "main", name: "Main", repoPath: "/repos/main" },
     targets: [{ repoId: "front", name: "Front", repoPath: "/repos/front", scopes: ["front"] }],
     now: 1,
     ...overrides,
   });
-  if ("error" in result) throw new Error(result.error);
-  return result.feature;
 }
-
 describe("coordinatorPrompt", () => {
   test("en flujo rápido no hay coordinador", () => {
     expect(coordinatorPrompt(draft({ kind: "hotfix" }))).toBeNull();

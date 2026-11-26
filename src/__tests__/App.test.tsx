@@ -342,7 +342,7 @@ describe("App — creación y gestión", () => {
     renderApp();
     await screen.findByText("Primero");
     await user.click(screen.getByText("Ajustes"));
-    expect(screen.getByText("close-manage")).toBeInTheDocument();
+    expect(await screen.findByText("close-manage")).toBeInTheDocument();
     await user.click(screen.getByText("close-manage"));
     expect(screen.queryByText("close-manage")).toBeNull();
   });

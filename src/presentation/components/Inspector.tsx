@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
-import { errorText } from "../../domain/shared";
-import { notificationsEnabled } from "../../domain/chat/notifications";
+import { useBudgetAlerts } from "../hooks/useBudgetAlerts";
+import { errorText, formatBytes, formatPercent } from "../../domain/shared";
 import {
   mcpAction,
   mcpStateLabel,
@@ -10,13 +10,10 @@ import {
 } from "../../domain/chat/mcp";
 import {
   activityBars,
-  budgetAlertMessage,
-  budgetDay,
   budgetLevel,
   budgetRatio,
   cacheRatio as computeCacheRatio,
   contextRatio as computeContextRatio,
-  crossedBudgetThresholds,
   formatActivityDay,
   formatCost,
   formatCount,
@@ -65,16 +62,6 @@ function safe<T>(call: () => Promise<T>): Promise<T> {
   } catch (error) {
     return Promise.reject(error);
   }
-}
-
-function percent(value: number) {
-  return `${value.toFixed(1)}%`;
-}
-
-function bytes(value: number) {
-  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
-  if (value >= 1024 ** 2) return `${Math.round(value / 1024 ** 2)} MB`;
-  return `${Math.round(value / 1024)} KB`;
 }
 
 function resetText(at: number) {
@@ -260,7 +247,7 @@ export function Inspector({
   useEffect(() => {
     let alive = true;
     const tick = () => {
-      if (!alive || tab !== "resumen") return;
+      if (!alive || tab !== "resumen" || document.visibilityState === "hidden") return;
       void refresh();
       void refreshSession();
       void refreshStats();
@@ -273,33 +260,14 @@ export function Inspector({
     };
   }, [refresh, refreshSession, refreshStats, tab]);
 
-  // Un aviso nativo por umbral y día: la marca vive en preferencias para que
-  // no se repita aunque el inspector se vuelva a montar o la app se reinicie.
-  useEffect(() => {
-    if (!stats || monthlyBudget === null) return;
-    const thresholds = crossedBudgetThresholds(stats.cost, monthlyBudget);
-    if (thresholds.length === 0) return;
-    if (!notificationsEnabled(root.preferences.get(prefKeys.notifications))) return;
-    if (typeof document !== "undefined" && document.hasFocus()) return;
-    const day = budgetDay(Date.now(), timeZone);
-    const pending = thresholds.filter(
-      (threshold) => root.preferences.get(prefKeys.budgetAlert(workspace.id, threshold)) !== day,
-    );
-    // Si el coste salta varios umbrales a la vez, se avisa solo del mayor y se
-    // marcan todos: un único aviso por evaluación y umbral, sin repetir ese día.
-    const threshold = pending[pending.length - 1];
-    if (threshold === undefined) return;
-    for (const reached of pending) {
-      root.preferences.set(prefKeys.budgetAlert(workspace.id, reached), day);
-    }
-    const message = budgetAlertMessage({
-      workspaceName: workspace.name,
-      threshold,
-      cost: stats.cost,
-      budget: monthlyBudget,
-    });
-    void root.notifications.notify({ ...message, workspaceId: workspace.id });
-  }, [monthlyBudget, root, stats, timeZone, workspace.id, workspace.name]);
+  useBudgetAlerts({
+    root,
+    workspaceId: workspace.id,
+    workspaceName: workspace.name,
+    cost: stats?.cost ?? null,
+    budget: monthlyBudget,
+    timeZone,
+  });
 
   const modelEntry = session?.model
     ? (models.find(
@@ -534,13 +502,13 @@ export function Inspector({
                 <div className="inspector-line">
                   <span>Contexto</span>
                   <span className="inspector-value">
-                    {contextRatio === null ? "—" : percent(contextRatio * 100)}
+                    {contextRatio === null ? "—" : formatPercent(contextRatio * 100)}
                   </span>
                 </div>
                 <Bar ratio={contextRatio} />
                 <Line
                   label="Acierto de caché"
-                  value={cacheRatio === null ? "—" : percent(cacheRatio * 100)}
+                  value={cacheRatio === null ? "—" : formatPercent(cacheRatio * 100)}
                 />
                 <Line
                   label="Tokens"
@@ -733,7 +701,7 @@ export function Inspector({
                   <div className="inspector-line">
                     <span>5 h</span>
                     <span className="inspector-value">
-                      {percent(usage.go.rolling.percent)}{" "}
+                      {formatPercent(usage.go.rolling.percent)}{" "}
                       <span className="inspector-muted">
                         {resetText(usage.go.rolling.resetsAt)}
                       </span>
@@ -747,7 +715,7 @@ export function Inspector({
                   <div className="inspector-line">
                     <span>Semanal</span>
                     <span className="inspector-value">
-                      {percent(usage.go.weekly.percent)}{" "}
+                      {formatPercent(usage.go.weekly.percent)}{" "}
                       <span className="inspector-muted">{resetText(usage.go.weekly.resetsAt)}</span>
                     </span>
                   </div>
@@ -759,7 +727,7 @@ export function Inspector({
                   <div className="inspector-line">
                     <span>Mensual</span>
                     <span className="inspector-value">
-                      {percent(usage.go.monthly.percent)}{" "}
+                      {formatPercent(usage.go.monthly.percent)}{" "}
                       <span className="inspector-muted">
                         {resetText(usage.go.monthly.resetsAt)}
                       </span>
@@ -827,9 +795,9 @@ export function Inspector({
               {resources?.app && (
                 <Line
                   label="App"
-                  value={`${bytes(resources.app.memoryBytes)} · ${
+                  value={`${formatBytes(resources.app.memoryBytes)} · ${
                     system.memoryTotalBytes > 0
-                      ? percent((resources.app.memoryBytes / system.memoryTotalBytes) * 100)
+                      ? formatPercent((resources.app.memoryBytes / system.memoryTotalBytes) * 100)
                       : "—"
                   }`}
                 />
@@ -837,19 +805,19 @@ export function Inspector({
               {resources?.workspace && (
                 <Line
                   label="opencode"
-                  value={`${bytes(resources.workspace.memoryBytes)} · ${percent(
+                  value={`${formatBytes(resources.workspace.memoryBytes)} · ${formatPercent(
                     resources.workspace.cpuPercent,
                   )} CPU`}
                 />
               )}
               <div className="inspector-line">
                 <span>CPU</span>
-                <span className="inspector-value">{percent(system.cpuPercent)}</span>
+                <span className="inspector-value">{formatPercent(system.cpuPercent)}</span>
               </div>
               <Bar ratio={system.cpuPercent / 100} />
               <Line
                 label="Memoria"
-                value={`${bytes(system.memoryUsedBytes)} / ${bytes(system.memoryTotalBytes)}`}
+                value={`${formatBytes(system.memoryUsedBytes)} / ${formatBytes(system.memoryTotalBytes)}`}
               />
               <Bar
                 ratio={

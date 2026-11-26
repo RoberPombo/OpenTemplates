@@ -10,7 +10,7 @@ import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import type { Workspace } from "../../types";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
-import { errorText as baseErrorText } from "../../domain/shared";
+import { errorTextOr } from "../../domain/shared";
 import {
   resolveCommandInvocation,
   selectWorkspaceSkills,
@@ -51,6 +51,7 @@ import {
 } from "../../domain/chat/permissions";
 import {
   effectiveVariant as supportedVariant,
+  parseModelRef,
   selectWorkspaceModels,
   toAgentOptions,
   toModelOptions,
@@ -98,11 +99,6 @@ type UseChatInput = {
   /** Sesión creada por la app antes de montar el chat (coordinador). */
   initialSessionId?: string | null;
 };
-
-function errorText(error: unknown): string {
-  if (!error) return "Error desconocido";
-  return baseErrorText(error);
-}
 
 /** El catálogo puede tardar en calentar; reintentos antes de darlo por vacío. */
 const CATALOG_RETRIES = 8;
@@ -181,13 +177,7 @@ export function useChat({
   );
   // El modelo del perfil se pasa a la sesión al crearla: el contexto ya no lo
   // fija en la config para que dos perfiles puedan compartir servidor.
-  const workspaceModelRef = useMemo(() => {
-    const raw = workspace.model?.trim();
-    if (!raw) return null;
-    const slash = raw.indexOf("/");
-    if (slash <= 0 || slash === raw.length - 1) return null;
-    return { providerID: raw.slice(0, slash), id: raw.slice(slash + 1) };
-  }, [workspace.model]);
+  const workspaceModelRef = useMemo(() => parseModelRef(workspace.model), [workspace.model]);
   const modelGroups = useMemo(() => {
     const groups = new Map<string, ModelOption[]>();
     for (const model of models) {
@@ -256,7 +246,7 @@ export function useChat({
       setSessionId(null);
       setMessages([]);
       setLoadedSession(null);
-      dispatch({ kind: "error", error: errorText(err) });
+      dispatch({ kind: "error", error: errorTextOr(err) });
     }
   }, [client, sessionId, storageKey, root]);
 
@@ -269,7 +259,7 @@ export function useChat({
       setSessions(sortSessionsByRecent(toSessionSummaries(response.data)));
       setSessionsError(null);
     } catch (err) {
-      setSessionsError(errorText(err));
+      setSessionsError(errorTextOr(err));
     }
   }, [client, workspace.projectPath]);
 
@@ -336,7 +326,7 @@ export function useChat({
         await client.session.update({ sessionID: id, title: next });
         await refreshSessions();
       } catch (err) {
-        setSessionsError(errorText(err));
+        setSessionsError(errorTextOr(err));
       }
     },
     [client, refreshSessions],
@@ -354,7 +344,7 @@ export function useChat({
         }
         await refreshSessions();
       } catch (err) {
-        setSessionsError(errorText(err));
+        setSessionsError(errorTextOr(err));
       }
     },
     [client, sessionId, storageKey, root, refreshSessions],
@@ -381,7 +371,7 @@ export function useChat({
           setSessionsNotice(`Sesión exportada en ${result.path}`);
         }
       } catch (err) {
-        setSessionsError(errorText(err));
+        setSessionsError(errorTextOr(err));
       }
     },
     [client, root],
@@ -411,7 +401,7 @@ export function useChat({
         setSessionsError(importErrorMessage(err, payload.info.id));
       }
     } catch (err) {
-      setSessionsError(errorText(err));
+      setSessionsError(errorTextOr(err));
     }
   }, [client, root, refreshSessions, selectSession, workspace.name, workspace.projectPath]);
 
@@ -429,7 +419,7 @@ export function useChat({
         selectSession(created.id);
         setSessionsNotice(before ? "Sesión duplicada hasta ese mensaje." : "Sesión duplicada.");
       } catch (err) {
-        setSessionsError(errorText(err));
+        setSessionsError(errorTextOr(err));
       }
     },
     [busy, client, refreshSessions, selectSession],
@@ -448,7 +438,7 @@ export function useChat({
       } catch (err) {
         setPermissions([]);
         setForms([]);
-        setRequestError(errorText(err));
+        setRequestError(errorTextOr(err));
       }
     },
     [client],
@@ -459,6 +449,9 @@ export function useChat({
     setForms([]);
     setRequestError(null);
     setRequestBusy(null);
+    // Los ids avisados son de la sesión anterior: al cambiarla se liberan para
+    // que el mapa no crezca sin límite durante una sesión larga.
+    notifiedRequests.current.clear();
     if (!sessionId) return;
     void loadPendingRequests(sessionId);
   }, [sessionId, loadPendingRequests]);
@@ -499,7 +492,7 @@ export function useChat({
         root.preferences.set(storageKey, session.id);
         void refreshSessions();
       } catch (err) {
-        if (alive) dispatch({ kind: "error", error: errorText(err) });
+        if (alive) dispatch({ kind: "error", error: errorTextOr(err) });
       }
     })();
     return () => {
@@ -567,7 +560,7 @@ export function useChat({
       } catch (err) {
         if (alive) {
           setCatalogLoading(false);
-          dispatch({ kind: "error", error: errorText(err) });
+          dispatch({ kind: "error", error: errorTextOr(err) });
         }
       }
     })();
@@ -672,7 +665,7 @@ export function useChat({
 
   useEffect(() => {
     if (!sessionId) return;
-    applySelection(sessionId).catch((err) => dispatch({ kind: "error", error: errorText(err) }));
+    applySelection(sessionId).catch((err) => dispatch({ kind: "error", error: errorTextOr(err) }));
   }, [applySelection, sessionId]);
   const commitGoal = useCallback(
     (next: Goal | null) => {
@@ -755,7 +748,7 @@ export function useChat({
         }
       } catch (err) {
         if (generation === goalGenerationRef.current) {
-          setGoalError(errorText(err));
+          setGoalError(errorTextOr(err));
           const latest = goalRef.current ?? current;
           commitGoal(pauseGoal(latest, Date.now()));
           notifyGoal(latest, "no-decision");
@@ -809,7 +802,7 @@ export function useChat({
         await client.session.prompt({ sessionID: sessionId, text: goalContinuation(goal) });
         if (generation === goalGenerationRef.current) dispatch({ kind: "executionStarted" });
       } catch (err) {
-        setGoalError(errorText(err));
+        setGoalError(errorTextOr(err));
         commitGoal(pauseGoal(goal, Date.now()));
       }
     })();
@@ -943,7 +936,7 @@ export function useChat({
         }
       } catch (err) {
         if (alive && !abort.signal.aborted) {
-          dispatch({ kind: "error", error: errorText(err) });
+          dispatch({ kind: "error", error: errorTextOr(err) });
         }
       }
     })();
@@ -1024,7 +1017,7 @@ export function useChat({
       try {
         await applySelection(id);
       } catch (err) {
-        dispatch({ kind: "error", error: errorText(err) });
+        dispatch({ kind: "error", error: errorTextOr(err) });
       }
       if (invocation) {
         await client.session.command({
@@ -1041,7 +1034,7 @@ export function useChat({
         });
       }
     } catch (err) {
-      dispatch({ kind: "error", error: errorText(err) });
+      dispatch({ kind: "error", error: errorTextOr(err) });
       dispatch({ kind: "busy", busy: false });
     } finally {
       setSending(false);
@@ -1058,7 +1051,7 @@ export function useChat({
     try {
       await client.session.interrupt({ sessionID: sessionId });
     } catch (err) {
-      dispatch({ kind: "error", error: errorText(err) });
+      dispatch({ kind: "error", error: errorTextOr(err) });
     } finally {
       dispatch({ kind: "executionStopped" });
     }
@@ -1084,7 +1077,7 @@ export function useChat({
         setPermissions((prev) => removePermissionRequest(prev, request.id));
         setRequestError(null);
       } catch (err) {
-        setRequestError(errorText(err));
+        setRequestError(errorTextOr(err));
         void loadPendingRequests(request.sessionID);
       } finally {
         setRequestBusy(null);
@@ -1105,7 +1098,7 @@ export function useChat({
         setForms((prev) => removeAgentForm(prev, form.id));
         setRequestError(null);
       } catch (err) {
-        setRequestError(errorText(err));
+        setRequestError(errorTextOr(err));
         void loadPendingRequests(form.sessionID);
       } finally {
         setRequestBusy(null);
@@ -1122,7 +1115,7 @@ export function useChat({
         setForms((prev) => removeAgentForm(prev, form.id));
         setRequestError(null);
       } catch (err) {
-        setRequestError(errorText(err));
+        setRequestError(errorTextOr(err));
         void loadPendingRequests(form.sessionID);
       } finally {
         setRequestBusy(null);

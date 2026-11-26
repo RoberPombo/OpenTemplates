@@ -7,6 +7,7 @@
  * local del formulario y llamadas a los callbacks del hook.
  */
 import { useState } from "react";
+import { safeExternalUrl } from "../../domain/shared";
 import {
   defaultFormAnswer,
   formFieldLabel,
@@ -301,12 +302,18 @@ function FormFieldControl({
           })}
         </div>
       )}
-      {field.type === "external" && (
-        <a className="request-link" href={field.url} target="_blank" rel="noreferrer">
-          Abrir enlace
-        </a>
-      )}
+      {field.type === "external" && <ExternalLink url={field.url} />}
     </div>
+  );
+}
+/** Enlace externo del agente: solo http(s)/mailto; si no, texto sin href. */
+function ExternalLink({ url }: { url: string }) {
+  const href = safeExternalUrl(url);
+  if (!href) return <span className="request-link">Enlace no válido</span>;
+  return (
+    <a className="request-link" href={href} target="_blank" rel="noreferrer">
+      Abrir enlace
+    </a>
   );
 }
 

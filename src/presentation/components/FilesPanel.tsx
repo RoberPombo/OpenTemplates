@@ -4,7 +4,7 @@
  * dependencia de resaltado: el visor es texto plano a propósito.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { errorText } from "../../domain/shared";
+import { errorText, formatBytes, toggleSetValue } from "../../domain/shared";
 import {
   fileDisplayName,
   sortFileEntries,
@@ -18,11 +18,6 @@ type Props = {
   workspace: Workspace;
 };
 const ROOT = "";
-function bytesLabel(bytes: number) {
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
-}
 export function FilesPanel({ client, workspace }: Props) {
   const location = useMemo(() => ({ directory: workspace.projectPath }), [workspace.projectPath]);
   const [directories, setDirectories] = useState<Record<string, FileTreeEntry[]>>({});
@@ -70,12 +65,7 @@ export function FilesPanel({ client, workspace }: Props) {
     [client, location],
   );
   function toggleDirectory(path: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
+    setExpanded((prev) => toggleSetValue(prev, path));
     if (!directories[path]) void loadDirectory(path);
   }
   async function readFile(path: string) {
@@ -176,7 +166,7 @@ export function FilesPanel({ client, workspace }: Props) {
             </span>
             {content && (
               <span className="inspector-muted">
-                {content.kind === "binary" ? "binario" : "texto"} · {bytesLabel(content.bytes)}
+                {content.kind === "binary" ? "binario" : "texto"} · {formatBytes(content.bytes)}
               </span>
             )}
             <button
@@ -195,14 +185,14 @@ export function FilesPanel({ client, workspace }: Props) {
           {reading && <p className="inspector-empty">Leyendo…</p>}
           {!reading && content?.kind === "binary" && (
             <p className="inspector-empty">
-              Archivo binario ({bytesLabel(content.bytes)}); no se muestra su contenido.
+              Archivo binario ({formatBytes(content.bytes)}); no se muestra su contenido.
             </p>
           )}
           {!reading && content?.kind === "text" && (
             <>
               {content.truncated && (
                 <p className="callout info small-text">
-                  Vista parcial: el fichero sigue después de {bytesLabel(content.bytes)}.
+                  Vista parcial: el fichero sigue después de {formatBytes(content.bytes)}.
                 </p>
               )}
               <pre className="file-content">{content.text}</pre>

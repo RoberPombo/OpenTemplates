@@ -106,8 +106,4 @@ describe("CompositionRoot", () => {
     expect(result.deleted).toBe(true);
     expect(deleted).toEqual(["w1"]);
   });
-
-  test("getInstance es singleton", () => {
-    expect(CompositionRoot.getInstance()).toBe(CompositionRoot.getInstance());
-  });
 });

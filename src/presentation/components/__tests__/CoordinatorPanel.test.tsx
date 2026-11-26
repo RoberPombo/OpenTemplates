@@ -2,24 +2,18 @@ import { describe, expect, test, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CoordinatorPanel } from "../CoordinatorPanel";
-import type { CreateFeatureInput, Feature } from "../../../domain/features/model";
-import { createFeatureDraft } from "../../../domain/features/model";
+import type { Feature } from "../../../domain/features/model";
+import { makeFeature } from "../../../tests/fixtures";
 
-function draft(overrides: Partial<CreateFeatureInput> = {}): Feature {
-  const result = createFeatureDraft({
-    id: "feat-1",
+function draft(overrides: Parameters<typeof makeFeature>[0] = {}): Feature {
+  return makeFeature({
     name: "Checkout con Stripe",
-    kind: "feature",
     brief: "Cobrar con Stripe",
-    directory: "/data/features/feat-1",
     targets: [{ repoId: "web", name: "Web", repoPath: "/repos/web", scopes: ["front"] }],
     now: 1,
     ...overrides,
   });
-  if ("error" in result) throw new Error(result.error);
-  return result.feature;
 }
-
 describe("CoordinatorPanel", () => {
   test("muestra el encargo y guarda la descomposición editada", async () => {
     const user = userEvent.setup();

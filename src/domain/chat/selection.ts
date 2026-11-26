@@ -42,6 +42,19 @@ export type CatalogAgent = {
 export function modelKey(model: { providerID: string; id: string }): string {
   return `${model.providerID}/${model.id}`;
 }
+/**
+ * `providerID/modelID` → referencia. Devuelve `null` si falta el separador o
+ * alguna de las dos partes; es la misma regla para perfil, feature y sesión.
+ */
+export function parseModelRef(
+  raw: string | null | undefined,
+): { providerID: string; id: string } | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const slash = value.indexOf("/");
+  if (slash <= 0 || slash === value.length - 1) return null;
+  return { providerID: value.slice(0, slash), id: value.slice(slash + 1) };
+}
 
 export function toModelOptions(list: CatalogModel[]): ModelOption[] {
   return list

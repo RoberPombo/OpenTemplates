@@ -18,6 +18,18 @@ export function formatRelativeTime(timestamp: number, now: number = Date.now()):
   return `${day}/${month}/${date.getFullYear()}`;
 }
 
+/** Tamaño legible con una decimal: "512 B", "1.5 KB", "2.0 MB", "1.2 GB". */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${Math.round(bytes)} B`;
+}
+/** Porcentaje con una decimal: "75.0%"; vacío si el valor no es finito. */
+export function formatPercent(value: number): string {
+  return Number.isFinite(value) ? `${value.toFixed(1)}%` : "";
+}
 /** Duración en ms legible: "1.5s", "2m 5s"; vacío si no es positiva o finita. */
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return "";

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
+import { parseModelRef } from "../../domain/chat/selection";
 import { slugify } from "../../domain/workspace/wizard";
 import type { AssetInfo, Library, ProfileManifest, Repo, Workspace } from "../../types";
 import type { ModelDetails } from "../../domain/models/details";
@@ -11,10 +12,8 @@ import type { SelectEntry, SelectOption } from "./ui";
 type ProfileField = "agents" | "skills" | "mcps" | "commands" | "plugins";
 
 function splitModel(model: string): { provider: string; id: string } {
-  const slash = model.indexOf("/");
-  return slash > 0
-    ? { provider: model.slice(0, slash), id: model.slice(slash + 1) }
-    : { provider: "otros", id: model };
+  const ref = parseModelRef(model);
+  return ref ? { provider: ref.providerID, id: ref.id } : { provider: "otros", id: model };
 }
 
 function modelLabel(model: string): string {

@@ -1,5 +1,5 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- El textarea del composer es un combobox con aria-activedescendant.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { Workspace } from "../../types";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
@@ -10,7 +10,7 @@ import {
   stripSlashTrigger,
   type ChatMenuItem,
 } from "../../domain/chat/commands";
-import type { ToolActivity } from "../../domain/chat/messages";
+import type { ChatMessage, ToolActivity } from "../../domain/chat/messages";
 import { useChat } from "../hooks/useChat";
 import { useCommandAction } from "../context/CommandActions";
 import { Markdown } from "./Markdown";
@@ -315,40 +315,16 @@ export function Chat({
           )}
 
           {messages.map((message) => (
-            <article key={message.id} className={`msg ${message.role}`}>
-              {message.role === "user" ? (
-                <div className="user-bubble">
-                  <Markdown text={message.text} />
-                </div>
-              ) : (
-                <>
-                  {message.tools.length > 0 && <Activity tools={message.tools} />}
-                  {message.reasoning && (
-                    <details className="reasoning">
-                      <summary>Razonamiento</summary>
-                      <Markdown text={message.reasoning} />
-                    </details>
-                  )}
-                  {message.text && <Markdown text={message.text} />}
-                  <MessageMeta
-                    model={modelName(message.model)}
-                    agent={agentName(message.agent)}
-                    duration={formatDuration((message.completed ?? 0) - message.created)}
-                  />
-                </>
-              )}
-              <button
-                type="button"
-                className="msg-fork"
-                title="Bifurca la sesión con el historial anterior a este mensaje"
-                disabled={busy || !sessionId}
-                onClick={() => {
-                  if (sessionId) void forkSession(sessionId, message.id);
-                }}
-              >
-                Continuar desde aquí
-              </button>
-            </article>
+            <MessageRow
+              key={message.id}
+              message={message}
+              model={modelName(message.model)}
+              agent={agentName(message.agent)}
+              canFork={!busy && Boolean(sessionId)}
+              onFork={(id) => {
+                if (sessionId) void forkSession(sessionId, id);
+              }}
+            />
           ))}
 
           {streaming.map((part) => (
@@ -615,6 +591,55 @@ export function Chat({
     </div>
   );
 }
+
+const MessageRow = memo(function MessageRow({
+  message,
+  model,
+  agent,
+  canFork,
+  onFork,
+}: {
+  message: ChatMessage;
+  model: string;
+  agent: string;
+  canFork: boolean;
+  onFork: (id: string) => void;
+}) {
+  return (
+    <article className={`msg ${message.role}`}>
+      {message.role === "user" ? (
+        <div className="user-bubble">
+          <Markdown text={message.text} />
+        </div>
+      ) : (
+        <>
+          {message.tools.length > 0 && <Activity tools={message.tools} />}
+          {message.reasoning && (
+            <details className="reasoning">
+              <summary>Razonamiento</summary>
+              <Markdown text={message.reasoning} />
+            </details>
+          )}
+          {message.text && <Markdown text={message.text} />}
+          <MessageMeta
+            model={model}
+            agent={agent}
+            duration={formatDuration((message.completed ?? 0) - message.created)}
+          />
+        </>
+      )}
+      <button
+        type="button"
+        className="msg-fork"
+        title="Bifurca la sesión con el historial anterior a este mensaje"
+        disabled={!canFork}
+        onClick={() => onFork(message.id)}
+      >
+        Continuar desde aquí
+      </button>
+    </article>
+  );
+});
 
 function Activity({ tools }: { tools: ToolActivity[] }) {
   const count = tools.length;
