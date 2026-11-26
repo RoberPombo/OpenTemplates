@@ -11,6 +11,11 @@ use crate::model::{Feature, FeatureArtifact};
 const FIXED: [&str; 3] = ["BRIEF.md", "DECOMPOSITION.md", "NOTES.md"];
 const PREFIXES: [&str; 3] = ["RECON-", "PLAN-", "VERIFY-"];
 
+/// Tope por artefacto escrito por el backend. Son notas de coordinación, no
+/// adjuntos: 1 MiB deja margen de sobra y evita que un webview comprometido
+/// llene el disco con una sola llamada.
+const MAX_ARTIFACT_BYTES: usize = 1024 * 1024;
+
 fn allowed(name: &str) -> bool {
     if !name.ends_with(".md") || name.contains('/') || name.contains('\\') || name.contains("..") {
         return false;
@@ -28,9 +33,15 @@ fn path_for(feature: &Feature, name: &str) -> Result<PathBuf, String> {
 }
 
 fn write_file(feature: &Feature, name: &str, content: &str) -> Result<FeatureArtifact, String> {
+    let path = path_for(feature, name)?;
+    if content.len() > MAX_ARTIFACT_BYTES {
+        return Err(format!(
+            "El artefacto '{name}' ocupa {} bytes y supera el tope de {MAX_ARTIFACT_BYTES} bytes (1 MiB).",
+            content.len()
+        ));
+    }
     let dir = Path::new(&feature.directory);
     fs::create_dir_all(dir).map_err(|e| format!("No se pudo crear {}: {e}", dir.display()))?;
-    let path = path_for(feature, name)?;
     fs::write(&path, content)
         .map_err(|e| format!("No se pudo escribir {}: {e}", path.display()))?;
     Ok(FeatureArtifact {
@@ -167,6 +178,29 @@ mod tests {
         for name in ["../fuera.md", "sub/BRIEF.md", "AGENTS.md", "PLAN.md"] {
             assert!(write(&feature, name, "x").is_err(), "aceptó {name}");
         }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rechaza_artefactos_por_encima_del_tope() {
+        let dir = temp_dir();
+        let feature = feature(&dir);
+
+        let too_big = "a".repeat(MAX_ARTIFACT_BYTES + 1);
+        let error = write(&feature, "NOTES.md", &too_big).unwrap_err();
+        assert!(error.contains("tope"), "{error}");
+        assert!(
+            !dir.join("NOTES.md").exists(),
+            "no debe escribir si supera el tope"
+        );
+
+        let exact = "a".repeat(MAX_ARTIFACT_BYTES);
+        assert!(write(&feature, "NOTES.md", &exact).is_ok());
+        assert_eq!(
+            fs::metadata(dir.join("NOTES.md")).unwrap().len() as usize,
+            MAX_ARTIFACT_BYTES
+        );
+
         let _ = fs::remove_dir_all(&dir);
     }
 }
