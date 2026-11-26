@@ -18,7 +18,7 @@
  * Falla (exit 1) si el JS inicial supera el presupuesto. También imprime el
  * coste de cada chunk diferido para que las regresiones se vean en el log.
  */
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -49,9 +49,9 @@ async function readManifest() {
 }
 
 async function sizeOf(file) {
-  const absolute = path.join(DIST, file);
-  const [info, contents] = await Promise.all([stat(absolute), readFile(absolute)]);
-  return { bytes: info.size, gzip: gzipSync(contents).length };
+  // Read once: stat + read would be a TOCTOU race (and CodeQL flags it).
+  const contents = await readFile(path.join(DIST, file));
+  return { bytes: contents.length, gzip: gzipSync(contents).length };
 }
 
 const kb = (bytes) => bytes / 1000;
