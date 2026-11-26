@@ -1,6 +1,6 @@
 /**
  * Puerto del servidor opencode de un workspace: superficie estructural que
- * consumen Chat, Inspector y SettingsPanel. El adaptador en `data/` envuelve
+ * consumen Chat, Inspector y SettingsDialog. El adaptador en `data/` envuelve
  * el cliente HTTP real; aquí no hay tipos del SDK.
  *
  * `ChatGateway` modela el transporte crudo y deja los payloads en `unknown` a

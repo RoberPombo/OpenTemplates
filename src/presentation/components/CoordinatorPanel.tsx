@@ -181,7 +181,7 @@ export function CoordinatorPanel({
         {!ready && <span className="muted small-text">Prepara los worktrees antes de lanzar.</span>}
         {ready && profiles.length === 0 && (
           <span className="muted small-text">
-            Crea un perfil de coordinador en Repos y perfiles.
+            Crea un perfil de coordinador en Ajustes → Perfiles.
           </span>
         )}
         {sessionId && (

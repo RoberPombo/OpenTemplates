@@ -2,12 +2,12 @@ import { Profiler, useEffect, useMemo, useState } from "react";
 import type { ProfileManifest, ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
+import type { ChatGateway } from "../../domain/repositories/ChatGateway";
 import { useCommandAction } from "../context/CommandActions";
 import { Chat } from "./Chat";
 import { Inspector, type InspectorTab } from "./Inspector";
 import { PreviewDock } from "./PreviewDock";
 import { RaceControls } from "./RaceControls";
-import { SettingsPanel } from "./SettingsPanel";
 import { TerminalDock } from "./TerminalDock";
 import { Button } from "./ui";
 
@@ -26,6 +26,8 @@ type Props = {
   onStop: () => void;
   onDelete: () => void;
   onUpdated: (workspace: Workspace, warnings: string[]) => void;
+  /** Abre el diálogo de ajustes de la app con el cliente del contexto activo. */
+  onOpenSettings?: (client: ChatGateway | null) => void;
   /** El workspace terminó un turno sin foco: se marca en el sidebar. */
   onWorkspaceActivity?: (workspaceId: string) => void;
   worktreesRoot: string;
@@ -72,6 +74,7 @@ export function WorkspaceView({
   onStop,
   onDelete,
   onUpdated,
+  onOpenSettings,
   onWorkspaceActivity,
   worktreesRoot,
   repoPath,
@@ -118,7 +121,6 @@ export function WorkspaceView({
     }),
     [workspace, server?.model, server?.models],
   );
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(
     () => root.preferences.get(prefKeys.panelOpen) !== "0",
   );
@@ -257,7 +259,7 @@ export function WorkspaceView({
     else if (panelOpen) togglePanel();
   }
 
-  useCommandAction("workspace.settings", () => setSettingsOpen(true));
+  useCommandAction("workspace.settings", () => onOpenSettings?.(client));
   useCommandAction(
     "panel.toggle",
     togglePanel,
@@ -396,7 +398,7 @@ export function WorkspaceView({
                   onLiveChange={setLiveRace}
                 />
               )}
-              <Button onClick={() => setSettingsOpen(true)}>Ajustes</Button>
+              <Button onClick={() => onOpenSettings?.(client)}>Ajustes</Button>
               <Button className="danger-text" onClick={() => void stopWorkspace()}>
                 Parar
               </Button>
@@ -510,19 +512,10 @@ export function WorkspaceView({
               <Button variant="primary" onClick={onStart} disabled={starting || workspace.missing}>
                 {starting ? "Arrancando…" : "Arrancar workspace"}
               </Button>
-              <Button onClick={() => setSettingsOpen(true)}>Configurar</Button>
+              <Button onClick={() => onOpenSettings?.(client)}>Configurar</Button>
             </div>
           </div>
         </div>
-      )}
-
-      {settingsOpen && (
-        <SettingsPanel
-          workspace={workspace}
-          client={client}
-          onUpdated={onUpdated}
-          onClose={() => setSettingsOpen(false)}
-        />
       )}
     </section>
   );

@@ -231,7 +231,7 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
             </div>
             {repos.length === 0 && (
               <p className="muted">
-                No hay repositorios. Añádelos en «Repos y perfiles» antes de crear una feature.
+                No hay repositorios. Añádelos en Ajustes → Repositorios antes de crear una feature.
               </p>
             )}
             {repos.map((repo) => {
