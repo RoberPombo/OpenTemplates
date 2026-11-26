@@ -77,6 +77,25 @@ async function chooseModels(user: ReturnType<typeof userEvent.setup>, names: Reg
 }
 
 describe("RaceDialog", () => {
+  test("expone las etiquetas de los campos y Escape cierra sin lanzar", async () => {
+    const user = userEvent.setup();
+    const { onClose, onLaunch } = setup();
+
+    expect(screen.getByRole("dialog", { name: "Nueva carrera" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Encargo")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("combobox", { name: "Modelos de la carrera" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("combobox", { name: "Agente de la carrera" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Un worktree por corrida" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalled();
+    expect(onLaunch).not.toHaveBeenCalled();
+  });
+
   test("exige encargo y al menos dos modelos antes de lanzar", async () => {
     const user = userEvent.setup();
     const { onLaunch } = setup();

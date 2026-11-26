@@ -4,6 +4,7 @@
  * cuando el catálogo trae precios.
  */
 import { useMemo, useState } from "react";
+import { useDialogDismiss } from "../hooks/useDialogDismiss";
 import type { AgentOption, ModelOption } from "../../domain/chat/selection";
 import type { SelectOptionGroup } from "./ui/Select";
 import { estimateRaceCost, MAX_RACE_RUNS, MIN_RACE_RUNS } from "../../domain/race/races";
@@ -40,6 +41,7 @@ export function RaceDialog({
   onLaunch,
   onClose,
 }: Props) {
+  const dismiss = useDialogDismiss(onClose);
   const [prompt, setPrompt] = useState("");
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [agent, setAgent] = useState("");
@@ -131,7 +133,13 @@ export function RaceDialog({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <dialog open className="modal race-dialog" aria-labelledby="race-dialog-title">
+      <dialog
+        open
+        className="modal race-dialog"
+        aria-modal="true"
+        aria-labelledby="race-dialog-title"
+        onKeyDown={dismiss}
+      >
         <header className="modal-head">
           <div>
             <h2 id="race-dialog-title">Nueva carrera</h2>
@@ -160,12 +168,11 @@ export function RaceDialog({
           </label>
 
           <div className="field">
-            <span id="race-models-label">
+            <span>
               Modelos ({MIN_RACE_RUNS}–{MAX_RACE_RUNS})
             </span>
             <AsyncMultiSearchableSelect
               aria-label="Modelos de la carrera"
-              aria-labelledby="race-models-label"
               value={selectedKeys}
               options={modelGroups}
               placeholder={
@@ -182,10 +189,9 @@ export function RaceDialog({
           </div>
 
           <div className="field">
-            <span id="race-agent-label">Agente</span>
+            <span>Agente</span>
             <Select
               aria-label="Agente de la carrera"
-              aria-labelledby="race-agent-label"
               value={agent}
               options={agentOptions}
               placeholder="El del workspace"

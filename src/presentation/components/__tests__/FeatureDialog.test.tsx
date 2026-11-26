@@ -41,6 +41,26 @@ describe("FeatureDialog", () => {
     expect(feature.targets[0].branch).toBe("feature/checkout-con-stripe");
   });
 
+  test("expone las etiquetas de todos los campos y Escape cierra", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<FeatureDialog repos={[repo]} dataDir="/data" onClose={onClose} onCreated={vi.fn()} />);
+
+    expect(screen.getByRole("dialog", { name: "Nueva feature" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Nombre")).toHaveFocus();
+    await user.tab();
+    expect(screen.getByLabelText("Tipo")).toHaveFocus();
+    expect(screen.getByLabelText("Tipo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Metarepo (opcional)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Objetivo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Base del metarepo")).toBeInTheDocument();
+    expect(screen.getByLabelText("Base de los repos")).toBeInTheDocument();
+    expect(screen.getByLabelText("Scopes")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalled();
+  });
+
   test("un hotfix usa el flujo rápido y exige repos", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();
