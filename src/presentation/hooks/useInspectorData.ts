@@ -6,7 +6,7 @@
  * el resto se sigue pintando con lo último que hubiera. La vista conserva los
  * derivados de presentación y el render; aquí solo se orquestan los puertos.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompositionRoot } from "../../CompositionRoot";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import { prefKeys } from "../../domain/repositories/Preferences";
@@ -51,6 +51,21 @@ function safe<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Cadencia de sondeo con la ventana en primer plano y actividad reciente. */
+export const INSPECTOR_POLL_FAST_MS = 5_000;
+/** Cadencia cuando el inspector lleva más de `INSPECTOR_POLL_FAST_WINDOW_MS` abierto. */
+export const INSPECTOR_POLL_SLOW_MS = 15_000;
+/** Ventana tras el último evento o refresco manual en la que se mantiene el sondeo rápido. */
+export const INSPECTOR_POLL_FAST_WINDOW_MS = 2 * 60_000;
+
+/**
+ * El sondeo solo corre con la pestaña visible y la ventana enfocada. `hasFocus`
+ * cubre el caso de una app tapada por otra con la pestaña aún "visible".
+ */
+function canPoll(): boolean {
+  return document.visibilityState !== "hidden" && document.hasFocus();
+}
+
 export function useInspectorData({
   client,
   root,
@@ -71,6 +86,10 @@ export function useInspectorData({
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(() =>
     parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))),
   );
+  /** Inicio de la ventana de sondeo rápido; el efecto lo fija y lo reinician eventos y refresco manual. */
+  const pollStartedAt = useRef(0);
+  /** Rearma el temporizador desde fuera del efecto de sondeo (eventos MCP, refresco manual). */
+  const restartPolling = useRef<() => void>(() => {});
 
   const location = useMemo(() => ({ directory: workspace.projectPath }), [workspace.projectPath]);
   const timeZone = useMemo(() => {
@@ -100,7 +119,7 @@ export function useInspectorData({
     };
   }, [client, location]);
 
-  const refresh = useCallback(async () => {
+  const loadSnapshot = useCallback(async () => {
     const [vcs, vcsInfo, limits, mcpList, resourcesNow] = await Promise.allSettled([
       safe(() => client.vcs.status({ location })),
       safe(() => client.vcs.get({ location })),
@@ -140,6 +159,15 @@ export function useInspectorData({
     setResources(resourcesNow.status === "fulfilled" ? resourcesNow.value : null);
   }, [client, location, server.pid, root]);
 
+  /**
+   * Refresco manual de la vista: relee la instantánea y vuelve a la cadencia
+   * rápida, porque la interacción indica que el usuario está mirando.
+   */
+  const refresh = useCallback(async () => {
+    restartPolling.current();
+    await loadSnapshot();
+  }, [loadSnapshot]);
+
   const refreshMcp = useCallback(async () => {
     try {
       const result = await client.mcp.list({ location });
@@ -150,7 +178,7 @@ export function useInspectorData({
   }, [client, location]);
 
   // `mcp.status.changed` avisa cuando un servidor se conecta, falla o cierra:
-  // se relee el estado sin esperar al sondeo de 5 s.
+  // se relee el estado sin esperar al sondeo y se rearma el backoff.
   useEffect(() => {
     const abort = new AbortController();
     (async () => {
@@ -158,6 +186,7 @@ export function useInspectorData({
         for await (const event of client.event.subscribe({ signal: abort.signal })) {
           if (event.type !== "mcp.status.changed") continue;
           await refreshMcp();
+          restartPolling.current();
         }
       } catch {
         // El cierre de la suscripción no es un error de la vista.
@@ -198,21 +227,81 @@ export function useInspectorData({
     }
   }, [client, root, timeZone, usageRange, workspace.id]);
 
+  // Sondeo adaptativo: primer ciclo inmediato y luego 5 s durante la ventana
+  // reciente, 15 s cuando el inspector lleva un rato abierto. Solo corre con la
+  // ventana enfocada y la pestaña visible; al recuperar el foco se refresca una
+  // vez y se rearma el temporizador.
   useEffect(() => {
+    if (!active) return;
     let alive = true;
-    const tick = () => {
-      if (!alive || !active || document.visibilityState === "hidden") return;
-      void refresh();
+    let timer: number | null = null;
+
+    const stopTimer = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const schedule = () => {
+      stopTimer();
+      if (!alive || !canPoll()) return;
+      const fast = Date.now() - pollStartedAt.current < INSPECTOR_POLL_FAST_WINDOW_MS;
+      timer = window.setTimeout(poll, fast ? INSPECTOR_POLL_FAST_MS : INSPECTOR_POLL_SLOW_MS);
+    };
+
+    const poll = () => {
+      if (!alive) return;
+      timer = null;
+      // Sin foco no hay peticiones periódicas: los listeners reanudan al volver.
+      if (!canPoll()) return;
+      void loadSnapshot();
       void refreshSession();
       void refreshStats();
+      schedule();
     };
-    tick();
-    const timer = window.setInterval(tick, 5000);
+
+    // Vuelta a primer plano: un refresco inmediato y el intervalo desde ahora.
+    const resume = () => {
+      if (!alive || timer !== null || !canPoll()) return;
+      void loadSnapshot();
+      void refreshSession();
+      void refreshStats();
+      schedule();
+    };
+
+    const onFocusChanged = () => {
+      if (!alive) return;
+      if (canPoll()) resume();
+      else stopTimer();
+    };
+
+    // El primer ciclo no espera al intervalo ni al foco.
+    pollStartedAt.current = Date.now();
+    void loadSnapshot();
+    void refreshSession();
+    void refreshStats();
+    if (canPoll()) schedule();
+
+    restartPolling.current = () => {
+      pollStartedAt.current = Date.now();
+      if (canPoll()) schedule();
+      else stopTimer();
+    };
+
+    document.addEventListener("visibilitychange", onFocusChanged);
+    window.addEventListener("focus", onFocusChanged);
+    window.addEventListener("blur", onFocusChanged);
+
     return () => {
       alive = false;
-      window.clearInterval(timer);
+      stopTimer();
+      restartPolling.current = () => {};
+      document.removeEventListener("visibilitychange", onFocusChanged);
+      window.removeEventListener("focus", onFocusChanged);
+      window.removeEventListener("blur", onFocusChanged);
     };
-  }, [active, refresh, refreshSession, refreshStats]);
+  }, [active, loadSnapshot, refreshSession, refreshStats]);
 
   return {
     project,
