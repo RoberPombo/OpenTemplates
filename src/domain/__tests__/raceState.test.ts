@@ -1,38 +1,30 @@
 import { describe, expect, test } from "vitest";
 import type { RawSessionMessage } from "../chat/messages";
-import type { ModelDetails } from "../models/details";
 import {
   applyRaceEvent,
   canChooseWinner,
   chooseWinner,
   createRace,
   discardRun,
-  estimateRaceCost,
-  estimateRunCost,
   expectedRunDirectory,
   failRun,
   finishRun,
   markCleaned,
-  parseRace,
   prepareRun,
   projectIdFor,
   raceIsLive,
   raceStatus,
   raceTotals,
-  recoverRace,
   runDuration,
   runsNeedingCleanup,
-  runStatusLabel,
   runSummaryFromMessages,
-  serializeRace,
   setRunDetails,
   startRun,
   waitRun,
-  winnerConfirmText,
   worktreeRunName,
   type CreateRaceInput,
   type Race,
-} from "../race/races";
+} from "../race/state";
 
 const MODELS = [
   { key: "anthropic/claude", providerID: "anthropic", id: "claude", name: "Claude" },
@@ -143,7 +135,6 @@ describe("máquina de estados de una corrida", () => {
       endedAt: 4000,
     });
     expect(runDuration(race.runs[0])).toBe(2000);
-    expect(runStatusLabel(race.runs[0])).toBe("terminada");
     expect(canChooseWinner(race.runs[0])).toBe(true);
   });
 
@@ -298,81 +289,9 @@ describe("elección de ganadora y limpieza", () => {
       total: 2,
     });
   });
-
-  test("el mensaje de confirmación nombra perdedoras y worktrees", () => {
-    const race = finishedRace();
-    const message = winnerConfirmText(race, race.runs[0]);
-    expect(message).toContain("Claude");
-    expect(message).toContain("1 corridas");
-    expect(message).toContain("worktree");
-    expect(message).toContain("rama base");
-  });
 });
 
-describe("persistencia y recuperación", () => {
-  test("serializa y vuelve a leer la carrera", () => {
-    const race = chooseWinner(
-      finishRun(withSession(makeRace()), "race-1-run-1", { cost: 1 }, 3000),
-      "race-1-run-1",
-      4000,
-    );
-    const parsed = parseRace(serializeRace(race));
-    expect(parsed).toMatchObject({
-      id: race.id,
-      prompt: race.prompt,
-      winnerRunId: "race-1-run-1",
-      status: "settled",
-    });
-    expect(parsed?.runs[0].status).toBe("winner");
-    expect(parsed?.runs[0].sessionId).toBe("ses-1");
-  });
-
-  test("un JSON inválido o con otra versión se descarta", () => {
-    expect(parseRace(null)).toBeNull();
-    expect(parseRace("nope")).toBeNull();
-    expect(parseRace(JSON.stringify({ version: 99, race: {} }))).toBeNull();
-    expect(parseRace(JSON.stringify({ version: 1, race: { id: "x" } }))).toBeNull();
-  });
-
-  test("al reabrir la app, las corridas vivas quedan fallidas", () => {
-    const race = withSession(makeRace());
-    const recovered = recoverRace(race, "boot-b", 9000);
-    expect(recovered.runs[0].status).toBe("failed");
-    expect(recovered.runs[0].error).toBe("La app se cerró durante la carrera.");
-    expect(recovered.status).toBe("finished");
-    expect(recoverRace(race, "boot-a", 9000)).toBe(race);
-  });
-});
-
-describe("estimación de coste", () => {
-  const details = (input: number, output: number): ModelDetails => ({
-    key: "anthropic/claude",
-    providerID: "anthropic",
-    id: "claude",
-    name: "Claude",
-    inputModalities: [],
-    outputModalities: [],
-    cost: { input, output },
-  });
-
-  test("suma prompt y tokens de salida con los precios por millón", () => {
-    // 40 caracteres → 10 tokens + 2000 de margen; 1200 de salida.
-    const cost = estimateRunCost(details(3, 15), "x".repeat(40));
-    expect(cost).toBeCloseTo((2010 * 3 + 1200 * 15) / 1_000_000, 8);
-  });
-
-  test("sin precios devuelve null; el total exige todos", () => {
-    expect(estimateRunCost({ ...details(0, 0), cost: undefined }, "hola")).toBeNull();
-    expect(estimateRunCost(details(3, 15), "")).toBeGreaterThan(0);
-    const partial = estimateRaceCost([details(3, 15), undefined], "hola");
-    expect(partial.perRun[1]).toBeNull();
-    expect(partial.total).toBeNull();
-    const total = estimateRaceCost([details(1, 2), details(2, 4)], "hola");
-    expect(total.total).toBeGreaterThan(0);
-  });
-});
-
-describe("utilidades de presentación", () => {
+describe("utilidades de contexto y resumen", () => {
   test("resuelve el proyecto por ruta canónica o por prefijo", () => {
     const projects = [
       { id: "p1", canonical: "/repo" },
