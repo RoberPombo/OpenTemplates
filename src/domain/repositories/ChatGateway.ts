@@ -64,6 +64,20 @@ export type WorktreeCreateInput = {
 export type ChatGatewayEvent = { type: string; data?: unknown };
 
 /**
+ * Cursores de página de `message.list`. El de `next` apunta al último mensaje
+ * entregado y pide los posteriores; el servidor lo genera con el orden usado.
+ */
+export type MessagePageCursor = {
+  previous?: string | null;
+  next?: string | null;
+};
+
+export type MessagePage = {
+  data: unknown[];
+  cursor?: MessagePageCursor;
+};
+
+/**
  * Evento ya estrechado por el adaptador para la presentación. Los eventos de
  * permisos y formularios traen su payload mapeado; el resto conserva `data`
  * opaco para el reducer de streaming.
@@ -130,7 +144,9 @@ export interface ChatGateway {
       sessionID: string;
       limit?: number;
       order?: "asc" | "desc";
-    }): Promise<{ data: unknown[] }>;
+      /** No se combina con `order`; el cursor ya codifica el orden. */
+      cursor?: string;
+    }): Promise<MessagePage>;
   };
   project: {
     list(): Promise<{ data: unknown[] }>;
@@ -240,7 +256,9 @@ export interface ChatServer extends ChatGateway {
       sessionID: string;
       limit?: number;
       order?: "asc" | "desc";
-    }): Promise<{ data: RawSessionMessage[] }>;
+      /** No se combina con `order`; el cursor ya codifica el orden. */
+      cursor?: string;
+    }): Promise<{ data: RawSessionMessage[]; cursor?: MessagePageCursor }>;
   };
   project: {
     list(): Promise<{ data: ProjectRef[] }>;

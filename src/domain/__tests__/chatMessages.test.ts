@@ -1,6 +1,12 @@
 // @vitest-environment node
 import { describe, expect, test } from "vitest";
-import { toChatMessages, toToolActivity, toolDetail, type RawMessage } from "../chat/messages";
+import {
+  mergeChatMessages,
+  toChatMessages,
+  toToolActivity,
+  toolDetail,
+  type RawMessage,
+} from "../chat/messages";
 
 describe("toolDetail", () => {
   test("prioridad: command > description > filePath > path > pattern > query > url", () => {
@@ -157,5 +163,40 @@ describe("toChatMessages", () => {
     expect(mapped.agent).toBeUndefined();
     expect(mapped.model).toBeUndefined();
     expect(mapped.completed).toBeUndefined();
+  });
+});
+
+describe("mergeChatMessages", () => {
+  const message = (id: string, created: number, text = id) => ({
+    id,
+    role: "user" as const,
+    text,
+    reasoning: "",
+    tools: [],
+    created,
+  });
+
+  test("añade los nuevos al final conservando el orden por created", () => {
+    const current = [message("u1", 100), message("a1", 200)];
+    const merged = mergeChatMessages(current, [message("u2", 300)]);
+    expect(merged.map((item) => item.id)).toEqual(["u1", "a1", "u2"]);
+  });
+
+  test("conserva las referencias de los mensajes ya presentes", () => {
+    const current = [message("u1", 100)];
+    const merged = mergeChatMessages(current, [message("u2", 200)]);
+    expect(merged[0]).toBe(current[0]);
+  });
+
+  test("sustituye por id si el servidor reenvía un mensaje actualizado", () => {
+    const current = [message("a1", 200, "parcial")];
+    const merged = mergeChatMessages(current, [message("a1", 200, "final")]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.text).toBe("final");
+  });
+
+  test("sin mensajes nuevos devuelve el mismo array", () => {
+    const current = [message("u1", 100)];
+    expect(mergeChatMessages(current, [])).toBe(current);
   });
 });

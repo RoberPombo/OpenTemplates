@@ -98,6 +98,62 @@ describe("useChatSessions", () => {
     expect(onSessionOpened).toHaveBeenCalled();
   });
 
+  test("al cerrar un turno pide solo lo nuevo con el cursor y lo fusiona", async () => {
+    const { client, result } = setup({
+      storedSession: "previa",
+      client: { messages: rawMessages, messageCursor: { next: "cursor-1" } },
+    });
+    await waitFor(() => expect(result.current.loadedSession).toBe("previa"));
+
+    client.message.list.mockClear();
+    client.message.list.mockResolvedValueOnce({
+      data: [
+        {
+          type: "assistant",
+          id: "a2",
+          content: [{ type: "text", text: "final" }],
+          time: { created: 3 },
+        },
+      ],
+      cursor: { next: "cursor-2" },
+    });
+
+    await act(async () => {
+      await result.current.reloadIncremental();
+    });
+
+    expect(client.message.list).toHaveBeenCalledWith({
+      sessionID: "previa",
+      cursor: "cursor-1",
+      limit: 50,
+    });
+    expect(result.current.messages.map((message) => message.text)).toEqual([
+      "hola",
+      "respuesta",
+      "final",
+    ]);
+  });
+
+  test("sin cursor cae a la recarga completa", async () => {
+    const { client, result } = setup({
+      storedSession: "previa",
+      client: { messages: rawMessages },
+    });
+    await waitFor(() => expect(result.current.loadedSession).toBe("previa"));
+
+    client.message.list.mockClear();
+    await act(async () => {
+      await result.current.reloadIncremental();
+    });
+
+    expect(client.message.list).toHaveBeenCalledWith({
+      sessionID: "previa",
+      limit: 200,
+      order: "asc",
+    });
+    expect(result.current.messages).toHaveLength(2);
+  });
+
   test("borrar la sesión activa limpia el historial y la preferencia", async () => {
     const { client, result, store, key, onSessionReset } = setup({
       storedSession: "previa",

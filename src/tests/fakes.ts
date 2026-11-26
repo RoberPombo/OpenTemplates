@@ -117,6 +117,8 @@ export type FakeClientOptions = {
   messages?: unknown[];
   /** Mensajes por sesión; tiene prioridad sobre `messages`. */
   messagesBySession?: Record<string, unknown[]>;
+  /** Cursor que devuelve `message.list`; permite probar la carga incremental. */
+  messageCursor?: { previous?: string | null; next?: string | null };
   models?: unknown[];
   agents?: unknown[];
   commands?: unknown[];
@@ -312,6 +314,7 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       list: vi.fn(async (input?: { sessionID?: string }) => ({
         data:
           (input?.sessionID ? options.messagesBySession?.[input.sessionID] : undefined) ?? messages,
+        ...(options.messageCursor ? { cursor: options.messageCursor } : {}),
       })),
     },
     project: {

@@ -90,6 +90,23 @@ export function toToolActivity(part: RawPart, index: number): ToolActivity {
   };
 }
 
+function byCreated(a: ChatMessage, b: ChatMessage): number {
+  return a.created - b.created;
+}
+
+/**
+ * Fusiona una página incremental con el historial visible. Sustituye por id
+ * (el servidor puede reenviar un mensaje actualizado) y conserva las
+ * referencias de los mensajes ya presentes para que las filas memoizadas no se
+ * vuelvan a renderizar.
+ */
+export function mergeChatMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  if (incoming.length === 0) return current;
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort(byCreated);
+}
+
 export function toChatMessages(raw: RawMessage[]): ChatMessage[] {
   const messages: ChatMessage[] = [];
   for (const item of raw) {
@@ -135,5 +152,5 @@ export function toChatMessages(raw: RawMessage[]): ChatMessage[] {
       completed: item.time?.completed,
     });
   }
-  return messages.sort((a, b) => a.created - b.created);
+  return messages.sort(byCreated);
 }

@@ -12,13 +12,24 @@ import type { ChatServer } from "../../domain/repositories/ChatGateway";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import type { Workspace } from "../../types";
 import { errorTextOr } from "../../domain/shared";
-import { toChatMessages, type ChatMessage } from "../../domain/chat/messages";
+import {
+  mergeChatMessages,
+  toChatMessages,
+  type ChatMessage,
+  type RawSessionMessage,
+} from "../../domain/chat/messages";
 import { parseModelRef } from "../../domain/chat/selection";
 import {
   sortSessionsByRecent,
   toSessionSummaries,
   type SessionSummary,
 } from "../../domain/chat/sessions";
+
+/**
+ * Tamaño de página para pedir solo lo nuevo. El cursor no admite `order`, así
+ * que la paginación continúa con `cursor.next` mientras la página venga llena.
+ */
+const INCREMENTAL_PAGE = 50;
 
 export type UseChatSessionsInput = {
   client: ChatServer;
@@ -62,6 +73,8 @@ export function useChatSessions({
   /** Sesión cuyos mensajes ya están cargados (puerta de reanudación del objetivo). */
   const [loadedSession, setLoadedSession] = useState<string | null>(null);
   const sessionsRef = useRef<SessionSummary[]>([]);
+  /** Cursor para pedir los mensajes posteriores al último cargado. */
+  const messageCursorRef = useRef<{ sessionId: string; cursor: string } | null>(null);
   // El modelo del perfil se pasa al crear la sesión; no se fija en la config.
   const workspaceModelRef = useMemo(() => parseModelRef(workspace.model), [workspace.model]);
 
@@ -77,9 +90,15 @@ export function useChatSessions({
         limit: 200,
         order: "asc",
       });
+      // El cursor solo se conserva si la respuesta trae ancla; sin ella, el
+      // siguiente cierre de turno cae a la recarga completa.
+      messageCursorRef.current = response.cursor?.next
+        ? { sessionId, cursor: response.cursor.next }
+        : null;
       setMessages(toChatMessages(response.data));
       setLoadedSession(sessionId);
     } catch (err) {
+      messageCursorRef.current = null;
       root.preferences.remove(storageKey);
       setSessionId(null);
       setMessages([]);
@@ -87,6 +106,49 @@ export function useChatSessions({
       onError(errorTextOr(err));
     }
   }, [client, sessionId, storageKey, root, onError]);
+
+  /**
+   * Al cerrar un turno pide solo los mensajes posteriores al último conocido y
+   * los fusiona con el historial visible. Sin cursor (historial vacío o
+   * adaptador que no lo expone) cae a la recarga completa.
+   */
+  const reloadIncremental = useCallback(async () => {
+    if (!sessionId) return;
+    const anchor = messageCursorRef.current;
+    if (!anchor || anchor.sessionId !== sessionId) {
+      await reload();
+      return;
+    }
+    try {
+      let cursor = anchor.cursor;
+      const fetched: RawSessionMessage[] = [];
+      let advanced = false;
+      for (;;) {
+        const response = await client.message.list({
+          sessionID: sessionId,
+          cursor,
+          limit: INCREMENTAL_PAGE,
+        });
+        // La sesión pudo cambiar mientras la petición estaba en vuelo.
+        if (messageCursorRef.current?.sessionId !== sessionId) return;
+        fetched.push(...response.data);
+        const next = response.cursor?.next;
+        if (next) {
+          cursor = next;
+          advanced = true;
+        }
+        if (response.data.length < INCREMENTAL_PAGE || !next) break;
+      }
+      const additions = toChatMessages(fetched);
+      if (additions.length > 0) {
+        setMessages((current) => mergeChatMessages(current, additions));
+      }
+      messageCursorRef.current = advanced ? { sessionId, cursor } : anchor;
+      setLoadedSession(sessionId);
+    } catch (err) {
+      onError(errorTextOr(err));
+    }
+  }, [client, sessionId, reload, onError]);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -114,6 +176,7 @@ export function useChatSessions({
       if (id === sessionId) return;
       setSessionsNotice(null);
       root.preferences.set(storageKey, id);
+      messageCursorRef.current = null;
       setSessionId(id);
       setMessages([]);
       onSessionReset();
@@ -153,6 +216,7 @@ export function useChatSessions({
         await client.session.remove({ sessionID: id });
         if (id === sessionId) {
           root.preferences.remove(storageKey);
+          messageCursorRef.current = null;
           setSessionId(null);
           setMessages([]);
           onSessionReset();
@@ -167,6 +231,7 @@ export function useChatSessions({
 
   const newConversation = useCallback(() => {
     root.preferences.remove(storageKey);
+    messageCursorRef.current = null;
     setSessionId(null);
     setMessages([]);
     setSessionsNotice(null);
@@ -174,12 +239,14 @@ export function useChatSessions({
   }, [storageKey, root, onSessionReset]);
 
   useEffect(() => {
+    messageCursorRef.current = null;
     setSessionId(initialSessionId ?? root.preferences.get(storageKey));
     setMessages([]);
     setLoadedSession(null);
   }, [storageKey, initialSessionId, root]);
 
   useEffect(() => {
+    messageCursorRef.current = null;
     setLoadedSession(null);
     if (!sessionId) {
       setMessages([]);
@@ -234,6 +301,7 @@ export function useChatSessions({
     setSessionsNotice,
     loadedSession,
     reload,
+    reloadIncremental,
     refreshSessions,
     selectSession,
     renameSession,
