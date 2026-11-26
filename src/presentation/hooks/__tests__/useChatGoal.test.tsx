@@ -15,20 +15,23 @@ function setup(
   const root = new CompositionRoot({ notifications: makeNotificationGateway() });
   prepare?.(root);
   const dispatch = vi.fn();
-  const view = renderHook(() =>
-    useChatGoal({
-      client: client as unknown as ChatServer,
-      sessionId: "s1",
-      workspace: makeWorkspace(),
-      root,
-      sessions: [],
-      messages: [],
-      sessionsRef: { current: [] },
-      busy: false,
-      permissionsCount: 0,
-      formsCount: 0,
-      dispatch,
-    }),
+  const view = renderHook(
+    ({ loadedSession }: { loadedSession: string | null }) =>
+      useChatGoal({
+        client: client as unknown as ChatServer,
+        sessionId: "s1",
+        workspace: makeWorkspace(),
+        root,
+        sessions: [],
+        messages: [],
+        sessionsRef: { current: [] },
+        loadedSession,
+        busy: false,
+        permissionsCount: 0,
+        formsCount: 0,
+        dispatch,
+      }),
+    { initialProps: { loadedSession: null as string | null } },
   );
   return { client, root, dispatch, ...view };
 }
@@ -44,12 +47,12 @@ beforeEach(() => {
 
 describe("useChatGoal", () => {
   test("reanuda un objetivo activo cuando la sesión ya está cargada", async () => {
-    const { client, dispatch, result } = setup({}, persistActiveGoal);
+    const { client, dispatch, result, rerender } = setup({}, persistActiveGoal);
     await waitFor(() => expect(result.current.goal?.status).toBe("active"));
     // El modelo de decisión llega del catálogo: la reanudación lo espera.
     await waitFor(() => expect(result.current.decisionModel).not.toBeNull());
 
-    act(() => result.current.markSessionLoaded("s1"));
+    rerender({ loadedSession: "s1" });
 
     await waitFor(() => expect(client.session.prompt).toHaveBeenCalled());
     expect(client.session.prompt).toHaveBeenCalledWith({
