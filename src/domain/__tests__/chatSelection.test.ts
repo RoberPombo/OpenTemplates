@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   effectiveVariant,
   modelKey,
+  parseModelRef,
   resolveAgentChoice,
   resolveModelChoice,
   selectWorkspaceModels,
@@ -184,5 +185,19 @@ describe("effectiveVariant", () => {
 
   test("sin variante → vacío", () => {
     expect(effectiveVariant("", model)).toBe("");
+  });
+});
+
+describe("parseModelRef", () => {
+  test("separa provider e id por el primer slash", () => {
+    expect(parseModelRef("anthropic/claude")).toEqual({ providerID: "anthropic", id: "claude" });
+    expect(parseModelRef(" openai/gpt/extra ")).toEqual({ providerID: "openai", id: "gpt/extra" });
+  });
+  test("sin separador o con una parte vacía → null", () => {
+    expect(parseModelRef("claude")).toBeNull();
+    expect(parseModelRef("/claude")).toBeNull();
+    expect(parseModelRef("anthropic/")).toBeNull();
+    expect(parseModelRef("")).toBeNull();
+    expect(parseModelRef(null)).toBeNull();
   });
 });

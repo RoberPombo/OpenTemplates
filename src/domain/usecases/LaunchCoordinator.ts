@@ -6,6 +6,7 @@
 import type { Feature } from "../features/model";
 import type { FeatureRunnerInfo } from "../features/coordinator";
 import { coordinatorPrompt } from "../features/coordinator";
+import { parseModelRef } from "../chat/selection";
 import type { FeatureGateway } from "../repositories/FeatureGateway";
 import type { ChatServer } from "../repositories/ChatGateway";
 import type { ServerInfo } from "../../types";
@@ -15,14 +16,6 @@ export type CoordinatorLaunch = {
   runner: FeatureRunnerInfo;
   sessionId: string;
 };
-
-function modelRef(raw: string | null | undefined): { providerID: string; id: string } | null {
-  const value = raw?.trim();
-  if (!value) return null;
-  const slash = value.indexOf("/");
-  if (slash <= 0 || slash === value.length - 1) return null;
-  return { providerID: value.slice(0, slash), id: value.slice(slash + 1) };
-}
 
 export class LaunchCoordinator {
   private readonly features: FeatureGateway;
@@ -49,7 +42,7 @@ export class LaunchCoordinator {
     }
 
     const client = this.chat(runner.server);
-    const model = modelRef(runner.server.model);
+    const model = parseModelRef(runner.server.model);
     const session = await client.session.create({
       location: { directory: runner.directory },
       title: `Coordinación · ${feature.name}`,

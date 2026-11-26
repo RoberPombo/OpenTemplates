@@ -138,7 +138,10 @@ describe("WorkspaceView — panel de cambios", () => {
     expect(screen.queryByRole("tab", { name: "Cambios" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Cambios" }));
-    expect(screen.getByRole("tab", { name: "Cambios" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "Cambios" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await waitFor(() => expect(client.session.diff).toHaveBeenCalledWith({ sessionID: "s1" }));
     expect(await screen.findByText("notas.txt")).toBeInTheDocument();
     expect(store.get("opentemplates:panel")).toBe("1");
@@ -149,7 +152,10 @@ describe("WorkspaceView — panel de cambios", () => {
     const user = userEvent.setup();
     const { client } = setup();
     await user.click(screen.getByRole("button", { name: "Panel" }));
-    expect(screen.getByRole("tab", { name: "Resumen" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "Resumen" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await user.click(screen.getByRole("tab", { name: "Ficheros" }));
     expect(screen.getByRole("tab", { name: "Ficheros" })).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(client.file.list).toHaveBeenCalled());

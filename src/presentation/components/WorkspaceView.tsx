@@ -1,4 +1,4 @@
-import { Profiler, useEffect, useMemo, useState } from "react";
+import { lazy, Profiler, Suspense, useEffect, useMemo, useState } from "react";
 import type { ProfileManifest, ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
@@ -6,11 +6,21 @@ import { folderName } from "../../domain/shared";
 import type { ChatGateway } from "../../domain/repositories/ChatGateway";
 import { useCommandAction } from "../context/CommandActions";
 import { Chat } from "./Chat";
-import { Inspector, type InspectorTab } from "./Inspector";
-import { PreviewDock } from "./PreviewDock";
+import type { InspectorTab } from "./Inspector";
 import { RaceControls } from "./RaceControls";
-import { TerminalDock } from "./TerminalDock";
 import { Button } from "./ui";
+
+// Los docks pesados (xterm, inspector con sus paneles, preview) se cargan al
+// abrirse: no forman parte del arranque del workspace.
+const Inspector = lazy(() =>
+  import("./Inspector").then((module) => ({ default: module.Inspector })),
+);
+const PreviewDock = lazy(() =>
+  import("./PreviewDock").then((module) => ({ default: module.PreviewDock })),
+);
+const TerminalDock = lazy(() =>
+  import("./TerminalDock").then((module) => ({ default: module.TerminalDock })),
+);
 
 type Props = {
   workspace: Workspace;
@@ -450,34 +460,40 @@ export function WorkspaceView({
               onSessionOpened={() => setOpenSessionId(null)}
             />
             {panelOpen && (
-              <Inspector
-                workspace={workspace}
-                client={client}
-                server={server}
-                sessionId={sessionId}
-                tab={panelTab}
-                onTabChange={changePanelTab}
-                onUpdated={onUpdated}
-                onClose={togglePanel}
-              />
+              <Suspense fallback={null}>
+                <Inspector
+                  workspace={workspace}
+                  client={client}
+                  server={server}
+                  sessionId={sessionId}
+                  tab={panelTab}
+                  onTabChange={changePanelTab}
+                  onUpdated={onUpdated}
+                  onClose={togglePanel}
+                />
+              </Suspense>
             )}
           </div>
           {previewOpen && (
-            <PreviewDock
-              gateway={previewGateway}
-              preferences={root.preferences}
-              workspace={workspace}
-              client={client}
-              sessionId={sessionId}
-              onClose={togglePreview}
-            />
+            <Suspense fallback={null}>
+              <PreviewDock
+                gateway={previewGateway}
+                preferences={root.preferences}
+                workspace={workspace}
+                client={client}
+                sessionId={sessionId}
+                onClose={togglePreview}
+              />
+            </Suspense>
           )}
           {terminalOpen && terminalGateway && (
-            <TerminalDock
-              gateway={terminalGateway}
-              directory={workspace.projectPath}
-              onClose={toggleTerminal}
-            />
+            <Suspense fallback={null}>
+              <TerminalDock
+                gateway={terminalGateway}
+                directory={workspace.projectPath}
+                onClose={toggleTerminal}
+              />
+            </Suspense>
           )}
         </>
       ) : (

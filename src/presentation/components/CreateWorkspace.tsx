@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAppContext } from "../context/AppContext";
-import { errorText } from "../../domain/shared";
+import { errorText, toggleMapValue, toggleSetValue } from "../../domain/shared";
 import {
   canContinue as canContinueStep,
   defaultBranch as branchDefault,
@@ -195,24 +195,12 @@ export function CreateWorkspace({
     }
   }
 
-  function toggleMcp(name_: string) {
-    setSelectedMcps((prev) => {
-      const next = new Set(prev);
-      if (next.has(name_)) next.delete(name_);
-      else next.add(name_);
-      return next;
-    });
+  function toggleMcp(name: string) {
+    setSelectedMcps((prev) => toggleSetValue(prev, name));
   }
-
   function toggleSkill(skill: Library["skills"][number]) {
-    setSelectedSkills((prev) => {
-      const next = new Map(prev);
-      if (next.has(skill.id)) next.delete(skill.id);
-      else next.set(skill.id, { id: skill.id, path: skill.path });
-      return next;
-    });
+    setSelectedSkills((prev) => toggleMapValue(prev, skill.id, { id: skill.id, path: skill.path }));
   }
-
   function canContinue() {
     return canContinueStep(step, { loose, loosePath, repoId, name, mode, useExisting, branch });
   }

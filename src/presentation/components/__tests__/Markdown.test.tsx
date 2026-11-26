@@ -144,6 +144,11 @@ describe("Markdown — inline", () => {
     expect(container.querySelector("li code")?.textContent).toBe("b");
   });
 
+  test("un enlace con esquema ejecutable se pinta como texto, no como enlace", () => {
+    const { container } = renderMd("[pulsa](javascript:alert(1))");
+    expect(container.querySelector("a")).toBeNull();
+    expect(screen.getByText("pulsa").tagName).toBe("SPAN");
+  });
   test("documento mixto conserva el orden de bloques", () => {
     const { container } = renderMd("# Título\n\npárrafo\n\n- item\n\n```\ncode\n```");
     const tags = [...(container.querySelector(".md")?.children ?? [])].map((el) => el.tagName);

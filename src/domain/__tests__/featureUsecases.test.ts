@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, test, vi } from "vitest";
-import type { CreateFeatureInput, Feature } from "../features/model";
-import { createFeatureDraft } from "../features/model";
+import type { Feature } from "../features/model";
 import type { FeatureProvisionOutcome } from "../features/provision";
 import type { FeatureRunnerInfo } from "../features/coordinator";
 import type { FeatureGateway } from "../repositories/FeatureGateway";
@@ -12,21 +11,7 @@ import { DeleteFeature } from "../usecases/DeleteFeature";
 import { ProvisionFeature } from "../usecases/ProvisionFeature";
 import { SaveFeature } from "../usecases/SaveFeature";
 import { StartFeature } from "../usecases/StartFeature";
-
-function draft(overrides: Partial<CreateFeatureInput> = {}): Feature {
-  const result = createFeatureDraft({
-    id: "feat-1",
-    name: "Checkout con Stripe",
-    kind: "feature",
-    brief: "Añadir el checkout",
-    directory: "/data/features/feat-1",
-    targets: [{ repoId: "repo-a", name: "Web", repoPath: "/repos/web" }],
-    now: 1000,
-    ...overrides,
-  });
-  if ("error" in result) throw new Error(result.error);
-  return result.feature;
-}
+import { makeFeature } from "../../tests/fixtures";
 
 function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
   return {
@@ -34,7 +19,7 @@ function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
     save: vi.fn(async (feature: Feature) => feature),
     remove: vi.fn(async () => undefined),
     provision: vi.fn(async (): Promise<FeatureProvisionOutcome> => ({
-      feature: draft(),
+      feature: makeFeature(),
       worktrees: [],
       warnings: [],
       errors: [],
@@ -69,7 +54,7 @@ function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
 describe("StartFeature", () => {
   test("confirma, expande y guarda", async () => {
     const gateway = fakeGateway();
-    const feature = await new StartFeature(gateway).execute(draft(), 2000);
+    const feature = await new StartFeature(gateway).execute(makeFeature(), 2000);
 
     expect(feature.status).toBe("confirmed");
     expect(feature.steps).toHaveLength(6);
@@ -78,7 +63,7 @@ describe("StartFeature", () => {
 
   test("no guarda si falta el brief", async () => {
     const gateway = fakeGateway();
-    await expect(new StartFeature(gateway).execute(draft({ brief: " " }))).rejects.toThrow(
+    await expect(new StartFeature(gateway).execute(makeFeature({ brief: " " }))).rejects.toThrow(
       "Describe la feature antes de confirmarla.",
     );
     expect(gateway.save).not.toHaveBeenCalled();
@@ -87,7 +72,7 @@ describe("StartFeature", () => {
 
 describe("SaveFeature", () => {
   test("delega en el gateway", async () => {
-    const feature = draft();
+    const feature = makeFeature();
     const gateway = fakeGateway({
       save: vi.fn(async (): Promise<Feature> => ({ ...feature, status: "running" })),
     });
@@ -108,7 +93,7 @@ describe("DeleteFeature", () => {
 describe("ProvisionFeature", () => {
   test("pide materializar y devuelve el resultado", async () => {
     const outcome: FeatureProvisionOutcome = {
-      feature: draft(),
+      feature: makeFeature(),
       worktrees: [
         {
           role: "root",
@@ -134,7 +119,7 @@ describe("ProvisionFeature", () => {
 
 describe("LaunchCoordinator", () => {
   test("arranca el runner, crea la sesión y guarda la coordinación", async () => {
-    const started = await new StartFeature(fakeGateway()).execute(draft(), 2000);
+    const started = await new StartFeature(fakeGateway()).execute(makeFeature(), 2000);
     const runner: FeatureRunnerInfo = {
       featureId: started.id,
       profileId: "coord",
@@ -182,7 +167,7 @@ describe("LaunchCoordinator", () => {
   });
 
   test("reutiliza la sesión existente sin volver a enviar el encargo", async () => {
-    const started = await new StartFeature(fakeGateway()).execute(draft(), 2000);
+    const started = await new StartFeature(fakeGateway()).execute(makeFeature(), 2000);
     const withSession: Feature = {
       ...started,
       steps: started.steps.map((step) =>
@@ -210,7 +195,7 @@ describe("LaunchCoordinator", () => {
 
 describe("ApproveDecomposition", () => {
   test("guarda el artefacto, refresca pasos y provisiona targets nuevos", async () => {
-    const started = await new StartFeature(fakeGateway()).execute(draft(), 2000);
+    const started = await new StartFeature(fakeGateway()).execute(makeFeature(), 2000);
     const content = `\`\`\`feature-decomposition
 {
   "requestTargets": [{ "name": "Back", "repoPath": "/repos/back", "scopes": ["api"] }],

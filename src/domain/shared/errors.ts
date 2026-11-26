@@ -8,3 +8,8 @@ export function errorText(error: unknown): string {
     return String(error);
   }
 }
+
+/** Igual que `errorText`, con texto propio cuando el error es vacío. */
+export function errorTextOr(error: unknown, fallback = "Error desconocido"): string {
+  return error ? errorText(error) : fallback;
+}
