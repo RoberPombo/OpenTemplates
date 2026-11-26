@@ -56,6 +56,8 @@ export type UseChatGoalInput = {
   /** Mensajes actuales de la sesión; el objetivo los lee al evaluar. */
   messages: ChatMessage[];
   sessionsRef: RefObject<SessionSummary[]>;
+  /** Sesión cuyos mensajes ya están cargados (puerta de reanudación). */
+  loadedSession: string | null;
   busy: boolean;
   permissionsCount: number;
   formsCount: number;
@@ -70,6 +72,7 @@ export function useChatGoal({
   sessions,
   messages,
   sessionsRef,
+  loadedSession,
   busy,
   permissionsCount,
   formsCount,
@@ -79,7 +82,6 @@ export function useChatGoal({
   const [goalError, setGoalError] = useState<string | null>(null);
   const [decisionModels, setDecisionModels] = useState<CatalogModel[]>([]);
   const [turnEnd, setTurnEnd] = useState<TurnEnd | null>(null);
-  const [loadedSession, setLoadedSession] = useState<string | null>(null);
 
   const goalRef = useRef<Goal | null>(null);
   const goalGenerationRef = useRef(0);
@@ -126,7 +128,6 @@ export function useChatGoal({
     processedTurnRef.current = 0;
     setGoalError(null);
     setTurnEnd(null);
-    setLoadedSession(null);
     const stored = sessionId
       ? parseGoal(root.preferences.get(prefKeys.goal(workspace.id, sessionId)))
       : null;
@@ -141,9 +142,6 @@ export function useChatGoal({
     turnSeqRef.current += 1;
     setTurnEnd({ seq: turnSeqRef.current, failed });
   }, []);
-
-  /** Marca la sesión cuyos mensajes ya están cargados (puerta de reanudación). */
-  const markSessionLoaded = useCallback((id: string | null) => setLoadedSession(id), []);
 
   /** Sesiones del panel con objetivo activo (para marcarlas). */
   const goalSessionIds = useMemo(() => {
@@ -375,6 +373,5 @@ export function useChatGoal({
     removeGoal: removeGoalAction,
     pauseGoalIfActive,
     onTurnEnd,
-    markSessionLoaded,
   };
 }
