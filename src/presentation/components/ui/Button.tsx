@@ -1,10 +1,14 @@
-import { Button as BaseButton } from "@base-ui/react/button";
 import type { ComponentProps } from "react";
 
 export type ButtonVariant = "primary" | "ghost" | "danger" | "icon";
 export type ButtonSize = "default" | "small";
 
-type Props = Omit<ComponentProps<typeof BaseButton>, "className" | "size"> & {
+/**
+ * Native button on purpose: Base UI's button adds no behaviour for these
+ * simple controls and pulled ~9 kB of render helpers into the initial chunk.
+ * Complex primitives (Select, Combobox) stay on Base UI.
+ */
+type Props = Omit<ComponentProps<"button">, "className" | "size"> & {
   className?: string;
   variant?: ButtonVariant;
   size?: ButtonSize;
@@ -28,5 +32,5 @@ export function Button({
     .filter(Boolean)
     .join(" ");
 
-  return <BaseButton {...props} type={type} className={classes} />;
+  return <button {...props} type={type} className={classes} />;
 }
