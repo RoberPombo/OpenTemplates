@@ -17,18 +17,6 @@ import {
 } from "../../domain/chat/commands";
 import { toChatMessages, type ChatMessage } from "../../domain/chat/messages";
 import {
-  removeAgentForm,
-  upsertAgentForm,
-  type AgentForm,
-  type FormAnswer,
-} from "../../domain/chat/forms";
-import {
-  removePermissionRequest,
-  upsertPermissionRequest,
-  type PermissionDecision,
-  type PermissionRequest,
-} from "../../domain/chat/permissions";
-import {
   agentLabel,
   effectiveVariant as supportedVariant,
   groupModelsByProvider,
@@ -67,6 +55,7 @@ import {
   suggestedSessionFileName,
 } from "../../domain/chat/transfer";
 import { useChatGoal } from "./useChatGoal";
+import { useChatRequests } from "./useChatRequests";
 
 type UseChatInput = {
   client: ChatServer;
@@ -119,10 +108,6 @@ export function useChat({
   const [skillCatalog, setSkillCatalog] = useState<ChatSkill[]>([]);
   const [command, setCommand] = useState<ChatCommand | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<ChatSkill[]>([]);
-  const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
-  const [forms, setForms] = useState<AgentForm[]>([]);
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const [requestBusy, setRequestBusy] = useState<string | null>(null);
   // Avisos: último turno avisado por sesión y permisos ya avisados (sin repetir).
   const lastNotifiedAt = useRef<Record<string, number>>({});
   const notifiedRequests = useRef<Set<string>>(new Set());
@@ -150,6 +135,22 @@ export function useChat({
     () => selectWorkspaceSkills(skillCatalog, workspace.skills, workspace.disabledSkills),
     [skillCatalog, workspace.skills, workspace.disabledSkills],
   );
+
+  // Solicitudes del agente (permisos y formularios): carga, respuestas y
+  // operaciones estrechas para el bucle SSE.
+  const {
+    permissions,
+    forms,
+    requestError,
+    requestBusy,
+    replyPermission,
+    replyForm,
+    cancelForm,
+    upsertPermission,
+    removePermission,
+    upsertForm,
+    removeForm,
+  } = useChatRequests({ client, sessionId });
 
   // Objetivo de la sesión: estado, evaluación al cerrar turno y acciones.
   const { onTurnEnd, markSessionLoaded, pauseGoalIfActive, ...goalApi } = useChatGoal({
@@ -347,35 +348,10 @@ export function useChat({
     [busy, client, refreshSessions, selectSession],
   );
 
-  const loadPendingRequests = useCallback(
-    async (id: string) => {
-      try {
-        const [permissionResponse, formResponse] = await Promise.all([
-          client.permission.list({ sessionID: id }),
-          client.form.list({ sessionID: id }),
-        ]);
-        setPermissions(permissionResponse.data);
-        setForms(formResponse.data);
-        setRequestError(null);
-      } catch (err) {
-        setPermissions([]);
-        setForms([]);
-        setRequestError(errorTextOr(err));
-      }
-    },
-    [client],
-  );
-
   useEffect(() => {
-    setPermissions([]);
-    setForms([]);
-    setRequestError(null);
-    setRequestBusy(null);
     // Los ids avisados son de la sesión anterior; se liberan al cambiarla.
     notifiedRequests.current.clear();
-    if (!sessionId) return;
-    void loadPendingRequests(sessionId);
-  }, [sessionId, loadPendingRequests]);
+  }, [sessionId]);
 
   useEffect(() => {
     setSessionId(initialSessionId ?? root.preferences.get(storageKey));
@@ -628,21 +604,21 @@ export function useChat({
           }
           const permission = event.permission;
           if (permission && permission.sessionID === sessionId) {
-            setPermissions((prev) => upsertPermissionRequest(prev, permission));
+            upsertPermission(permission);
           }
           const permissionReply = event.permissionReply;
           if (permissionReply) notifiedRequests.current.delete(permissionReply.requestID);
           if (permissionReply && permissionReply.sessionID === sessionId) {
-            setPermissions((prev) => removePermissionRequest(prev, permissionReply.requestID));
+            removePermission(permissionReply.requestID);
           }
           const form = event.form;
           if (form && form.sessionID === sessionId) {
-            setForms((prev) => upsertAgentForm(prev, form));
+            upsertForm(form);
           }
           const formSettled = event.formSettled;
           if (formSettled) notifiedRequests.current.delete(formSettled.formID);
           if (formSettled && formSettled.sessionID === sessionId) {
-            setForms((prev) => removeAgentForm(prev, formSettled.formID));
+            removeForm(formSettled.formID);
           }
           dispatch({ kind: "event", event, sessionId });
           if (eventRequestsReload(event, sessionId)) {
@@ -675,6 +651,10 @@ export function useChat({
     workspace.name,
     onWorkspaceActivity,
     onTurnEnd,
+    upsertPermission,
+    removePermission,
+    upsertForm,
+    removeForm,
   ]);
 
   const chooseModel = useCallback(
@@ -782,65 +762,6 @@ export function useChat({
     setSessionsNotice(null);
     dispatch({ kind: "reset" });
   }
-
-  const replyPermission = useCallback(
-    async (request: PermissionRequest, decision: PermissionDecision) => {
-      setRequestBusy(request.id);
-      try {
-        await client.permission.reply({
-          sessionID: request.sessionID,
-          requestID: request.id,
-          decision,
-        });
-        setPermissions((prev) => removePermissionRequest(prev, request.id));
-        setRequestError(null);
-      } catch (err) {
-        setRequestError(errorTextOr(err));
-        void loadPendingRequests(request.sessionID);
-      } finally {
-        setRequestBusy(null);
-      }
-    },
-    [client, loadPendingRequests],
-  );
-
-  const replyForm = useCallback(
-    async (form: AgentForm, answer: FormAnswer) => {
-      setRequestBusy(form.id);
-      try {
-        await client.form.reply({
-          sessionID: form.sessionID,
-          formID: form.id,
-          answer,
-        });
-        setForms((prev) => removeAgentForm(prev, form.id));
-        setRequestError(null);
-      } catch (err) {
-        setRequestError(errorTextOr(err));
-        void loadPendingRequests(form.sessionID);
-      } finally {
-        setRequestBusy(null);
-      }
-    },
-    [client, loadPendingRequests],
-  );
-
-  const cancelForm = useCallback(
-    async (form: AgentForm) => {
-      setRequestBusy(form.id);
-      try {
-        await client.form.cancel({ sessionID: form.sessionID, formID: form.id });
-        setForms((prev) => removeAgentForm(prev, form.id));
-        setRequestError(null);
-      } catch (err) {
-        setRequestError(errorTextOr(err));
-        void loadPendingRequests(form.sessionID);
-      } finally {
-        setRequestBusy(null);
-      }
-    },
-    [client, loadPendingRequests],
-  );
 
   return {
     ...goalApi,
