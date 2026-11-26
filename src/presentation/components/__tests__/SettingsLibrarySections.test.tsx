@@ -234,6 +234,18 @@ describe("SettingsDialog — perfiles", () => {
     expect(await screen.findByDisplayValue("# AGENTS")).toBeInTheDocument();
     expect(screen.getByLabelText("Nombre")).toHaveValue("Plantilla");
   });
+
+  test("los campos del editor de perfiles tienen nombre accesible", async () => {
+    setup([profile], "profiles");
+
+    expect(await screen.findByLabelText("Nombre")).toHaveValue("Plantilla");
+    expect(screen.getByLabelText("Id")).toHaveValue("plantilla");
+    expect(screen.getByLabelText("Descripción")).toBeInTheDocument();
+    expect(screen.getByLabelText("Versión")).toBeInTheDocument();
+    expect(screen.getByLabelText("AGENTS.md del perfil")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Modelos del perfil" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Modelo por defecto" })).toBeInTheDocument();
+  });
 });
 
 describe("SettingsDialog — ajustes", () => {
@@ -241,7 +253,7 @@ describe("SettingsDialog — ajustes", () => {
     const user = userEvent.setup();
     const { saveSettings, onWorktreesRootChanged } = setup([profile], "system");
 
-    const input = screen.getByPlaceholderText("/wt");
+    const input = screen.getByLabelText("Raíz de worktrees");
     await user.clear(input);
     await user.type(input, "/nuevo/wt");
     await user.click(screen.getByRole("button", { name: "Guardar ajustes" }));

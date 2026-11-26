@@ -73,20 +73,21 @@ export function RepoStep({
         </button>
       </div>
       {loose && (
-        <label className="field">
-          <span>Carpeta</span>
+        <div className="field">
+          <label htmlFor="wizard-loose-path">Carpeta</label>
           <div className="row">
             <input
+              id="wizard-loose-path"
               className="text-input"
               value={loosePath}
               placeholder="/ruta/al/proyecto"
               onChange={(event) => onLoosePathChange(event.target.value)}
             />
-            <button className="ghost" onClick={onPickLooseFolder}>
+            <button type="button" className="ghost" onClick={onPickLooseFolder}>
               Elegir…
             </button>
           </div>
-        </label>
+        </div>
       )}
     </section>
   );

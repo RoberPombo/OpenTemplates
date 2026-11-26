@@ -1,5 +1,7 @@
 /** Piezas visuales compartidas del wizard: marco, campos, pasos y pie del modal. */
-import type { ReactNode } from "react";
+// oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-interactions -- el modal conserva la estructura visual del resto de diálogos; foco y Escape se gestionan en el contenedor.
+import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useDialogDismiss } from "../../hooks/useDialogDismiss";
 import { TextInput } from "../ui";
 
 export const WIZARD_STEPS = ["Repo", "Profile", "Nombre", "Resumen"];
@@ -17,16 +19,28 @@ export function WizardShell({
   error: string | null;
   children: ReactNode;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const dismiss = useDialogDismiss(onClose);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <div
+        ref={dialogRef}
         className="modal wizard"
-        role="presentation"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wizard-title"
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={dismiss}
       >
         <header className="modal-head">
           <div>
-            <h2>Nuevo workspace</h2>
+            <h2 id="wizard-title">Nuevo workspace</h2>
             <p className="muted small-text">
               Repo, perfil y modo de trabajo. La config queda aislada.
             </p>
@@ -47,28 +61,33 @@ export function WizardShell({
 }
 
 export function SearchField({
+  id,
   label,
   value,
   onChange,
   placeholder,
   hint,
 }: {
+  id?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   hint?: string;
 }) {
+  const generatedId = useId();
+  const fieldId = id ?? generatedId;
   return (
-    <label className="field">
-      <span>{label}</span>
+    <div className="field">
+      <label htmlFor={fieldId}>{label}</label>
       <TextInput
+        id={fieldId}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
       {hint && <span className="field-hint">{hint}</span>}
-    </label>
+    </div>
   );
 }
 
