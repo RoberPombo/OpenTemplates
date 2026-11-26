@@ -1,8 +1,9 @@
 /**
  * Chat de un workspace como composición: sesión, historial y lista
  * (`useChatSessions`), catálogo y streaming, solicitudes del agente
- * (`useChatRequests`), objetivos (`useChatGoal`) y transferencia. Los efectos
- * secundarios viven en los hooks; aquí solo se encadenan.
+ * (`useChatRequests`), objetivos (`useChatGoal`) y transferencia
+ * (`useChatTransfer`). Los efectos secundarios viven en los hooks; aquí solo se
+ * encadenan.
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useAppContext } from "../context/AppContext";
@@ -40,17 +41,10 @@ import {
   notificationsEnabled,
 } from "../../domain/chat/notifications";
 import { eventTouchesSessionList } from "../../domain/chat/sessions";
-import {
-  createSessionFile,
-  importErrorMessage,
-  parseSessionFile,
-  prepareImport,
-  serializeSessionFile,
-  suggestedSessionFileName,
-} from "../../domain/chat/transfer";
 import { useChatGoal } from "./useChatGoal";
 import { useChatRequests } from "./useChatRequests";
 import { useChatSessions } from "./useChatSessions";
+import { useChatTransfer } from "./useChatTransfer";
 
 type UseChatInput = {
   client: ChatServer;
@@ -147,6 +141,20 @@ export function useChat({
     onSessionReset: resetSessionState,
   });
 
+  // Transferencia de sesiones: exportar, importar y bifurcar. Comparte los
+  // avisos del panel con `useChatSessions` (un único mensaje para la vista).
+  const { exportSession, importSession, forkSession } = useChatTransfer({
+    client,
+    root,
+    workspace,
+    sessionsRef,
+    refreshSessions,
+    selectSession,
+    busy,
+    setSessionsError,
+    setSessionsNotice,
+  });
+
   const selectedModel = useMemo(
     () => models.find((model) => model.key === modelChoice) ?? null,
     [models, modelChoice],
@@ -195,90 +203,6 @@ export function useChat({
     [models],
   );
   const agentName = useCallback((id: string | undefined) => agentLabel(agents, id), [agents]);
-
-  const exportSession = useCallback(
-    async (id: string, sanitize: boolean) => {
-      setSessionsError(null);
-      setSessionsNotice(null);
-      const title = sessionsRef.current.find((session) => session.id === id)?.title ?? "";
-      try {
-        const transfer = await client.session.export({ sessionID: id, sanitize });
-        const contents = serializeSessionFile(createSessionFile(transfer, { sanitized: sanitize }));
-        const suggestedName = suggestedSessionFileName(title);
-        let result = await root.sessionFiles.save({ suggestedName, contents });
-        if (result.status === "exists") {
-          const overwrite = root.confirm.confirm(
-            `Ya existe un archivo en ${result.path}. ¿Sobrescribirlo?`,
-          );
-          if (!overwrite) return;
-          result = await root.sessionFiles.save({ suggestedName, contents, overwrite: true });
-        }
-        if (result.status === "saved") {
-          setSessionsNotice(`Sesión exportada en ${result.path}`);
-        }
-      } catch (err) {
-        setSessionsError(errorTextOr(err));
-      }
-    },
-    [client, root, sessionsRef, setSessionsError, setSessionsNotice],
-  );
-
-  const importSession = useCallback(async () => {
-    setSessionsError(null);
-    setSessionsNotice(null);
-    try {
-      const picked = await root.sessionFiles.open();
-      if (!picked) return;
-      const parsed = parseSessionFile(picked.contents);
-      if (!parsed.ok) {
-        setSessionsError(parsed.error);
-        return;
-      }
-      const payload = prepareImport(parsed.file, {
-        directory: workspace.projectPath,
-        title: `Importada · ${workspace.name}`,
-      });
-      try {
-        const created = await client.session.import(payload);
-        await refreshSessions();
-        selectSession(created.id);
-        setSessionsNotice(`Sesión importada desde ${picked.path}`);
-      } catch (err) {
-        setSessionsError(importErrorMessage(err, payload.info.id));
-      }
-    } catch (err) {
-      setSessionsError(errorTextOr(err));
-    }
-  }, [
-    client,
-    root,
-    refreshSessions,
-    selectSession,
-    setSessionsError,
-    setSessionsNotice,
-    workspace.name,
-    workspace.projectPath,
-  ]);
-
-  const forkSession = useCallback(
-    async (id: string, before?: string) => {
-      if (busy) {
-        setSessionsError("Espera a que termine el turno en curso para duplicar la sesión.");
-        return;
-      }
-      setSessionsError(null);
-      setSessionsNotice(null);
-      try {
-        const created = await client.session.fork({ sessionID: id, before });
-        await refreshSessions();
-        selectSession(created.id);
-        setSessionsNotice(before ? "Sesión duplicada hasta ese mensaje." : "Sesión duplicada.");
-      } catch (err) {
-        setSessionsError(errorTextOr(err));
-      }
-    },
-    [busy, client, refreshSessions, selectSession, setSessionsError, setSessionsNotice],
-  );
 
   useEffect(() => {
     // Los ids avisados son de la sesión anterior; se liberan al cambiarla.
