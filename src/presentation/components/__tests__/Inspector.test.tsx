@@ -6,10 +6,10 @@ import { AppProvider } from "../../context/AppContext";
 import { CompositionRoot } from "../../../CompositionRoot";
 import type { ChatServer } from "../../../domain/repositories/ChatGateway";
 import { prefKeys } from "../../../domain/repositories/Preferences";
-import type { WorkspaceStats } from "../../../domain/chat/usage";
+import type { UsageLimits, WorkspaceStats } from "../../../domain/chat/usage";
 import type { McpServerStatus } from "../../../domain/chat/mcp";
 import type { ResourceUsage, ServerInfo, Workspace } from "../../../types";
-import { makeEventHub, makeNotificationGateway, makeWorkspace } from "../../../tests/fakes";
+import { makeFakeClient, makeNotificationGateway, makeWorkspace } from "../../../tests/fakes";
 
 // Caracterización del Inspector con el puerto opencode y los puertos del
 // CompositionRoot inyectados como fakes: sesión, proyecto, uso y toggles.
@@ -68,84 +68,40 @@ const stats: WorkspaceStats = {
   ],
 };
 
-function fakeClient(
-  sessionStats: WorkspaceStats | null = null,
-  mcpServers: McpServerStatus[] = [{ name: "mcp-a", state: "connected" }],
-  hub = makeEventHub(),
-): ChatServer {
-  const client = {
-    model: {
-      list: vi.fn(async () => ({
-        data: [
-          {
-            providerID: "anthropic",
-            id: "claude",
-            modelID: "claude",
-            name: "Claude",
-            enabled: true,
-            type: "chat",
-            variants: [{ id: "high" }],
-            limit: { context: 200_000 },
-          },
-        ],
-      })),
-      default: vi.fn(async () => ({ data: null })),
-    },
-    vcs: {
-      status: vi.fn(async () => ({
-        data: [
-          { additions: 5, deletions: 3 },
-          { additions: 1, deletions: 0 },
-        ],
-      })),
-      get: vi.fn(async () => ({ data: { branch: { current: "main" } } })),
-    },
-    usage: {
-      limits: vi.fn(async () => ({
-        data: {
-          go: {
-            rolling: { percent: 42, resetsAt: Date.now() + 3_600_000 },
-            weekly: null,
-            monthly: null,
-          },
-          budgets: [{ id: "plan", limit: 1000, spent: 250, resetsAt: Date.now() + 86_400_000 }],
-        },
-      })),
-    },
-    mcp: {
-      list: vi.fn(async () => ({ data: mcpServers })),
-      add: vi.fn(),
-      remove: vi.fn(),
-      connect: vi.fn(async () => undefined),
-      disconnect: vi.fn(async () => undefined),
-    },
-    message: {
-      list: vi.fn(async () => ({
-        data: [
-          {
-            id: "a1",
-            type: "assistant",
-            cost: 0.1,
-            model: { providerID: "anthropic", id: "claude" },
-            tokens: { input: 100_000, output: 500, cache: { read: 40_000, write: 10_000 } },
-          },
-        ],
-      })),
-    },
-    session: {
-      get: vi.fn(async () => ({ cost: 0.5 })),
-      stats: vi.fn(async () => ({ data: sessionStats })),
-      create: vi.fn(),
-      prompt: vi.fn(),
-      interrupt: vi.fn(),
-      switchModel: vi.fn(),
-      switchAgent: vi.fn(),
-    },
-    location: { reload: vi.fn(async () => undefined) },
-    event: { subscribe: vi.fn((opts?: { signal?: AbortSignal }) => hub.subscribe(opts)) },
-  };
-  return client as unknown as ChatServer;
-}
+const assistantMessage = {
+  id: "a1",
+  type: "assistant",
+  cost: 0.1,
+  model: { providerID: "anthropic", id: "claude" },
+  tokens: { input: 100_000, output: 500, cache: { read: 40_000, write: 10_000 } },
+};
+
+const chatModels = [
+  {
+    providerID: "anthropic",
+    id: "claude",
+    modelID: "claude",
+    name: "Claude",
+    enabled: true,
+    type: "chat",
+    variants: [{ id: "high" }],
+    limit: { context: 200_000 },
+  },
+];
+
+const vcsStatus = [
+  { additions: 5, deletions: 3 },
+  { additions: 1, deletions: 0 },
+];
+
+const usageLimits: UsageLimits = {
+  go: {
+    rolling: { percent: 42, resetsAt: 1_700_030_000_000 },
+    weekly: null,
+    monthly: null,
+  },
+  budgets: [{ id: "plan", limit: 1000, spent: 250, resetsAt: 1_700_040_000_000 }],
+};
 
 function setup(
   workspace: Workspace = makeWorkspace(),
@@ -174,8 +130,18 @@ function setup(
     notifications: options.notifications,
   });
   const onUpdated = vi.fn();
-  const hub = makeEventHub();
-  const client = fakeClient(options.stats ?? null, options.mcpServers, hub);
+  const { client: fakeClient, hub } = makeFakeClient({
+    branch: "main",
+    messages: [assistantMessage],
+    models: chatModels,
+    decisionModels: [],
+    sessionCost: 0.5,
+    stats: options.stats ?? null,
+    mcpServers: options.mcpServers ?? [{ name: "mcp-a", state: "connected" }],
+    vcsStatus,
+    usageLimits,
+  });
+  const client = fakeClient as unknown as ChatServer;
   const view = render(
     <AppProvider root={root}>
       <Inspector
