@@ -57,6 +57,21 @@ export function toModelOptions(list: CatalogModel[]): ModelOption[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Limita el catálogo a los modelos permitidos por el workspace. Si el servidor
+ * no ofrece ninguno de los permitidos (proveedor sin credenciales o catálogo
+ * todavía caliente), devuelve el catálogo completo para no bloquear el selector.
+ */
+export function selectWorkspaceModels(
+  options: ModelOption[],
+  allowed: string[] | null | undefined,
+): ModelOption[] {
+  const keys = new Set(allowed ?? []);
+  if (keys.size === 0) return options;
+  const filtered = options.filter((model) => keys.has(model.key));
+  return filtered.length > 0 ? filtered : options;
+}
+
 export function toAgentOptions(list: CatalogAgent[]): AgentOption[] {
   return list
     .filter((agent) => !agent.hidden && agent.mode !== "subagent")

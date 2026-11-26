@@ -5,6 +5,7 @@ import {
   modelKey,
   resolveAgentChoice,
   resolveModelChoice,
+  selectWorkspaceModels,
   toAgentOptions,
   toModelOptions,
   type AgentOption,
@@ -42,6 +43,24 @@ describe("toModelOptions", () => {
 
   test("type ausente se acepta como chat", () => {
     expect(toModelOptions(catalog).some((option) => option.id === "gpt")).toBe(true);
+  });
+});
+
+describe("selectWorkspaceModels — respeta la lista del workspace, con fallback", () => {
+  const options: ModelOption[] = toModelOptions(catalog);
+
+  test("sin lista permitida devuelve todo el catálogo", () => {
+    expect(selectWorkspaceModels(options, [])).toEqual(options);
+  });
+
+  test("con lista permitida devuelve solo esos modelos", () => {
+    expect(selectWorkspaceModels(options, ["openai/gpt"]).map((model) => model.key)).toEqual([
+      "openai/gpt",
+    ]);
+  });
+
+  test("si ningún permitido está disponible no deja el selector vacío", () => {
+    expect(selectWorkspaceModels(options, ["opencode-go/deepseek-v4.1-flash"])).toEqual(options);
   });
 });
 

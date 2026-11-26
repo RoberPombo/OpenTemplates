@@ -2,6 +2,7 @@ import { Profiler, useEffect, useMemo, useState } from "react";
 import type { ProfileManifest, ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
+import { folderName } from "../../domain/shared";
 import type { ChatGateway } from "../../domain/repositories/ChatGateway";
 import { useCommandAction } from "../context/CommandActions";
 import { Chat } from "./Chat";
@@ -439,6 +440,7 @@ export function WorkspaceView({
               key={server.contextHash ?? "default"}
               client={client}
               workspace={chatWorkspace}
+              projectName={repoPath ? folderName(repoPath) : undefined}
               scope={server.contextHash ?? "default"}
               onSessionChange={setSessionId}
               sessionsOpen={sessionsOpen}

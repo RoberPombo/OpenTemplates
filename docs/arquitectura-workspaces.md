@@ -25,7 +25,7 @@ Cada contexto se lanza como un `opencode serve` independiente con este entorno:
 | `OPENCODE_DISABLE_PROJECT_CONFIG` | `1` | ignora `opencode.json` del proyecto y de sus ancestros |
 | `OPENCODE_SERVER_PASSWORD` | aleatorio por workspace | auth del API local |
 | `OPENCODE_DISABLE_AUTOUPDATE` | `1` | no actualizar el sidecar en caliente |
-| `XDG_DATA_HOME` | **sin tocar** | `auth.json` compartido: se inicia sesión una vez para todos |
+| `XDG_DATA_HOME` | **sin tocar** | data dir compartido (caché e historial global); las credenciales se siembran en la DB del contexto al arrancar |
 | `OPENCODE_CONFIG`, `OPENCODE_CONFIG_CONTENT`, `OPENCODE_SESSION_ID` | **unset** | el proceso padre (p. ej. OpenChamber) los inyecta y se heredan |
 
 `XDG_CONFIG_HOME` y `OPENCODE_DISABLE_PROJECT_CONFIG` están verificados con
@@ -129,8 +129,12 @@ La biblioteca de skills de la app escanea como mínimo:
 
 ## Sesiones y auth
 
-- `auth.json` vive en el data dir compartido: un login sirve para todos los
-  contextos. Los tokens se refrescan en el mismo fichero.
+- opencode v2 guarda las credenciales en su DB
+  (`~/.local/share/opencode/opencode.db`), no en `auth.json`. Como cada contexto
+  usa su propia DB, `server::spawn` ejecuta `opencode auth export --standalone` y
+  las importa con `OPENCODE_DB=<contexto> opencode auth import --standalone`. El
+  import solo añade las que faltan (no pisa las que el contexto ya refrescó); si
+  falla, se anota un aviso en `logs/server.log` y el contexto sigue sin ellas.
 - Cada contexto tiene su propia DB; los workspaces y sesiones que comparten huella
   comparten DB y lista de sesiones. Cambiar de perfil con la misma huella no cambia
   de DB.
