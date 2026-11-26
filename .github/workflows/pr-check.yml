@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check architecture layers
+        run: pnpm run check:layers
+
       - name: Typecheck, lint, format and tests
         run: pnpm run check
 
