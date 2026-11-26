@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { useInspectorData } from "../useInspectorData";
+import {
+  INSPECTOR_POLL_FAST_MS,
+  INSPECTOR_POLL_FAST_WINDOW_MS,
+  INSPECTOR_POLL_SLOW_MS,
+  useInspectorData,
+} from "../useInspectorData";
 import { CompositionRoot } from "../../../CompositionRoot";
 import type { ChatServer } from "../../../domain/repositories/ChatGateway";
 import { prefKeys } from "../../../domain/repositories/Preferences";
@@ -163,5 +168,142 @@ describe("useInspectorData", () => {
     await waitFor(() => expect(result.current.statuses["mcp-a"]?.state).toBe("failed"));
     expect(result.current.statuses["mcp-a"]?.error).toBe("boom");
     expect(client.mcp.list).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * El sondeo se prueba con timers falsos: así el backoff y la pausa son
+ * observables contando peticiones, sin esperas reales.
+ */
+describe("useInspectorData · sondeo", () => {
+  type WindowState = { focused: boolean; visibility: DocumentVisibilityState };
+
+  function stubWindow(initial: Partial<WindowState> = {}): WindowState {
+    const state: WindowState = {
+      focused: true,
+      visibility: "visible",
+      ...initial,
+    };
+    vi.spyOn(Document.prototype, "hasFocus").mockImplementation(() => state.focused);
+    vi.spyOn(Document.prototype, "visibilityState", "get").mockImplementation(
+      () => state.visibility,
+    );
+    return state;
+  }
+
+  const polls = (client: ChatServer) => vi.mocked(client.vcs.status).mock.calls.length;
+
+  async function advance(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test("primer tick inmediato, 5 s durante 2 minutos y 15 s después", async () => {
+    stubWindow();
+    const { client } = setup();
+
+    // La primera carga no espera al intervalo.
+    expect(polls(client as unknown as ChatServer)).toBe(1);
+
+    await advance(INSPECTOR_POLL_FAST_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(2);
+
+    // Del segundo 5 al 120 el ciclo sigue siendo rápido: 24 peticiones más.
+    await advance(INSPECTOR_POLL_FAST_WINDOW_MS - INSPECTOR_POLL_FAST_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(25);
+
+    // Pasada la ventana, el siguiente ciclo tarda 15 s, no 5.
+    await advance(INSPECTOR_POLL_FAST_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(25);
+    await advance(INSPECTOR_POLL_SLOW_MS - INSPECTOR_POLL_FAST_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(26);
+  });
+
+  test("sin foco no sondea y al recuperarlo refresca una sola vez de inmediato", async () => {
+    const windowState = stubWindow({ focused: false });
+    const { client } = setup();
+
+    // El arranque siempre carga una vez, aunque la ventana no tenga foco.
+    expect(polls(client as unknown as ChatServer)).toBe(1);
+
+    await advance(INSPECTOR_POLL_FAST_WINDOW_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(1);
+
+    windowState.focused = true;
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(polls(client as unknown as ChatServer)).toBe(2);
+
+    // Un focus con el temporizador ya armado no duplica el refresco.
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(polls(client as unknown as ChatServer)).toBe(2);
+
+    // El temporizador queda armado con la cadencia vigente (ya lenta por el tiempo sin foco).
+    await advance(INSPECTOR_POLL_SLOW_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(3);
+  });
+
+  test("con la pestaña oculta no sondea y reanuda al volver", async () => {
+    const windowState = stubWindow({ visibility: "hidden" });
+    const { client } = setup();
+
+    expect(polls(client as unknown as ChatServer)).toBe(1);
+    await advance(INSPECTOR_POLL_FAST_WINDOW_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(1);
+
+    windowState.visibility = "visible";
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(polls(client as unknown as ChatServer)).toBe(2);
+  });
+
+  test("un evento mcp.status.changed reinicia el backoff a 5 s", async () => {
+    stubWindow();
+    const { client, hub } = setup({
+      client: { mcpServers: [{ name: "mcp-a", state: "connected" }] },
+    });
+
+    await advance(INSPECTOR_POLL_FAST_WINDOW_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(25);
+
+    await act(async () => {
+      hub.push({ type: "mcp.status.changed", data: { server: "mcp-a" } });
+      await Promise.resolve();
+    });
+
+    // Ya en la ventana lenta, el evento devuelve la cadencia a 5 s.
+    await advance(INSPECTOR_POLL_FAST_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(26);
+  });
+
+  test("el refresco manual reinicia el backoff y relee la instantánea", async () => {
+    stubWindow();
+    const { client, result } = setup();
+
+    await advance(INSPECTOR_POLL_FAST_WINDOW_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(25);
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(polls(client as unknown as ChatServer)).toBe(26);
+
+    // Tras el refresco manual, el siguiente ciclo vuelve a ser rápido.
+    await advance(INSPECTOR_POLL_FAST_MS);
+    expect(polls(client as unknown as ChatServer)).toBe(27);
   });
 });
