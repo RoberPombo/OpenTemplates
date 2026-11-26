@@ -28,6 +28,7 @@ Revisión aplicada sobre el repo de OpenTemplates. Lo que depende de una persona
 | Releases en draft, publicadas tras comprobar duplicados | `tauri-release.yml` |
 | Política de reporte y rotación de claves | `SECURITY.md` |
 | `frame-src` del preview acotado a `http://localhost:* http://127.0.0.1:*` | `src-tauri/tauri.conf.json` |
+| `preview_probe` solo alcanza loopback; artefactos con tope de 1 MiB | `src-tauri/src/preview.rs`, `src-tauri/src/artifacts.rs` |
 
 ## CSP del preview
 
@@ -55,6 +56,67 @@ La CSP no se puede validar en CI: hace falta abrir la ventana de Tauri.
    se pinta dentro del iframe, sin errores de CSP en la consola del webview.
 4. Repetir con una URL remota (por ejemplo `https://example.com`) y comprobar que
    el iframe no carga por la CSP. Ese bloqueo es el comportamiento esperado.
+
+## Preview: modelo de confianza y SSRF (#83)
+
+El sondeo del preview (`preview_probe`) corre en Rust, fuera del sandbox del
+webview, así que es una vía clásica de SSRF. La política se alinea con la CSP de
+#81: **el preview es local y el sondeo no puede alcanzar nada que no sea
+loopback**.
+
+Qué se valida en `src-tauri/src/preview.rs`:
+
+- Esquema `http://` o `https://`, sin usuario ni contraseña, sin espacios ni
+  caracteres de control en host o ruta.
+- Host permitido: `localhost` (sin distinguir mayúsculas), cualquier dirección
+  de `127.0.0.0/8`, `::1` y su forma IPv4 mapeada en IPv6 (`::ffff:127.0.0.1`).
+  Cualquier otro nombre se rechaza **antes de resolver DNS**; las IPs literales
+  privadas, link-local, multicast, `0.0.0.0` y `::` se rechazan con un error
+  legible que dice qué son.
+- Resolución defensiva: tras resolver el nombre, **todas** las direcciones deben
+  ser de loopback y se conecta a esas direcciones ya resueltas, sin volver a
+  resolver. Un `localhost` manipulado en `/etc/hosts` o un intento de DNS
+  rebinding no llega a abrir el socket.
+- Redirecciones: **no se siguen**. Si un `3xx` trae un `Location` absoluto o
+  protocol-relative (`//host/...`) fuera de loopback, el sondeo falla con
+  «El preview redirige a … fuera de loopback»; una ruta relativa se queda en el
+  mismo origen ya validado y se devuelve el `3xx` sin seguirlo.
+- Límites: timeout de conexión de 2 s, de E/S de 3 s, respuesta máxima de
+  128 KiB y título recortado a 120 caracteres.
+
+**Preview remoto:** no está soportado y no se habilita por comodín. Si algún día
+el producto lo necesita, hace falta una allowlist explícita de `host:puerto` en
+este módulo **y** ampliar `frame-src` en la CSP; ambas cosas se revisan juntas.
+
+Limitaciones asumidas:
+
+- Un webview comprometido todavía puede escanear puertos de loopback y hacer un
+  `GET` a servicios locales (Vite, opencode, etc.). El sondeo no reenvía cookies
+  ni cuerpo, descarta la respuesta salvo estado, cabeceras de marco y título, y
+  acota tiempos y tamaño; el riesgo residual es el propio de un preview local.
+- Para `https` solo se comprueba que el puerto acepta conexión: no hay handshake
+  TLS ni validación de certificado (`verified: false` en el resultado).
+- `open_external` mantiene la validación de URL http(s) pero no exige loopback:
+  delega en el navegador del usuario, no hace la petición la app.
+- La comprobación es del backend. La CSP sigue siendo la barrera del iframe; una
+  URL remota se sondea con error y no se embebe.
+
+Tests de regresión en `preview.rs`: host remoto, IP privada, link-local,
+redirección absoluta a otro host, redirección protocol-relative a IP privada,
+redirección relativa permitida y sondeo feliz contra un servidor HTTP en
+`127.0.0.1`.
+
+## Artefactos de feature
+
+`write_feature_artifact` solo escribe nombres de la allowlist (`BRIEF.md`,
+`DECOMPOSITION.md`, `NOTES.md` y prefijos `RECON-`/`PLAN-`/`VERIFY-`), en la
+carpeta de la feature y sin `..` ni separadores. Además, el contenido se mide en
+bytes UTF-8 **antes** de crear el directorio o escribir: más de 1 MiB devuelve
+error y no deja fichero. Los artefactos son notas de coordinación, no adjuntos.
+
+La lectura (`feature_artifacts`) sigue mostrando lo que ya exista en disco,
+aunque se haya creado fuera de la app o supere el tope; el límite aplica a las
+escrituras que pasan por el comando.
 
 ## Pendiente o limitado por el plan
 

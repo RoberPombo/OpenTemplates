@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, TcpStream, ToSocketAddrs};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -28,6 +28,81 @@ struct Target {
     port: u16,
     path: String,
     tls: bool,
+}
+
+/// Loopback incluye `127.0.0.0/8`, `::1` y la forma IPv4 mapeada en IPv6
+/// (`::ffff:127.0.0.1`), que es como algunos resolvers devuelven `localhost`.
+fn is_loopback_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback(),
+        IpAddr::V6(v6) => {
+            v6.is_loopback() || v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
+        }
+    }
+}
+
+fn describe_ip(ip: IpAddr) -> &'static str {
+    match ip {
+        IpAddr::V4(v4) if v4.is_private() => "una dirección privada",
+        IpAddr::V4(v4) if v4.is_link_local() => "una dirección link-local",
+        IpAddr::V4(v4) if v4.is_unspecified() => "la dirección comodín 0.0.0.0",
+        IpAddr::V4(v4) if v4.is_multicast() => "una dirección multicast",
+        IpAddr::V4(_) => "una dirección fuera de loopback",
+        IpAddr::V6(v6) if v6.is_unspecified() => "la dirección comodín ::",
+        IpAddr::V6(v6) if v6.is_multicast() => "una dirección multicast",
+        IpAddr::V6(v6) if v6.is_unicast_link_local() => "una dirección link-local",
+        IpAddr::V6(_) => "una dirección fuera de loopback",
+    }
+}
+
+/// Política del sondeo: el preview incrustado solo carga orígenes locales
+/// (decisión de #81), así que el backend no debe poder alcanzar nada más.
+/// Se admiten `localhost` y direcciones literales de loopback; cualquier otro
+/// nombre o IP se rechaza antes de resolver o conectar.
+fn validate_preview_host(host: &str) -> Result<(), String> {
+    let name = host.trim_matches(['[', ']']);
+    if name.eq_ignore_ascii_case("localhost") {
+        return Ok(());
+    }
+    if let Ok(ip) = name.parse::<IpAddr>() {
+        if is_loopback_ip(ip) {
+            return Ok(());
+        }
+        return Err(format!(
+            "El preview solo admite loopback; {name} es {}. Usa localhost, 127.0.0.1 o ::1.",
+            describe_ip(ip)
+        ));
+    }
+    Err(format!(
+        "El preview solo admite hosts de loopback (localhost, 127.0.0.1 o ::1); '{name}' no está permitido."
+    ))
+}
+
+/// Valida un `Location` de redirección antes de darla por buena. No se siguen
+/// redirecciones: una absoluta a otro host o a una IP no permitida se rechaza,
+/// y una relativa se queda en el mismo origen ya validado.
+fn validate_redirect(from: &Target, location: &str) -> Result<(), String> {
+    let value = location.trim();
+    if value.is_empty() {
+        return Ok(());
+    }
+    let lower = value.to_ascii_lowercase();
+    let absolute = if let Some(rest) = value.strip_prefix("//") {
+        format!("{}://{rest}", if from.tls { "https" } else { "http" })
+    } else if lower.starts_with("http://") || lower.starts_with("https://") {
+        value.to_string()
+    } else {
+        // Ruta relativa (incluida la que empieza por `/`): mismo host y puerto.
+        return Ok(());
+    };
+    let target = parse_target(&absolute)
+        .map_err(|error| format!("El preview redirige a una URL no válida: {error}"))?;
+    validate_preview_host(&target.host).map_err(|_| {
+        format!(
+            "El preview redirige a {}:{} fuera de loopback. Revisa la URL del servidor.",
+            target.host, target.port
+        )
+    })
 }
 
 fn failure(error: impl Into<String>) -> PreviewProbe {
@@ -142,9 +217,20 @@ fn describe_io(error: &std::io::Error, host: &str, port: u16) -> String {
 
 fn connect(target: &Target) -> Result<TcpStream, String> {
     let lookup = target.host.trim_matches(['[', ']']);
-    let addresses = (lookup, target.port)
+    let addresses: Vec<_> = (lookup, target.port)
         .to_socket_addrs()
-        .map_err(|error| format!("No se pudo resolver {}: {error}", target.host))?;
+        .map_err(|error| format!("No se pudo resolver {}: {error}", target.host))?
+        .collect();
+    for address in &addresses {
+        if !is_loopback_ip(address.ip()) {
+            return Err(format!(
+                "El preview resolvió {} a {} ({}); solo se admite loopback.",
+                target.host,
+                address.ip(),
+                describe_ip(address.ip())
+            ));
+        }
+    }
     let mut last: Option<std::io::Error> = None;
     for address in addresses {
         match TcpStream::connect_timeout(&address, CONNECT_TIMEOUT) {
@@ -215,12 +301,16 @@ fn parse_response(buffer: &[u8], target: &Target) -> PreviewProbe {
     };
 
     let mut frame_blocked = false;
+    let mut location: Option<&str> = None;
     for line in lines {
         let Some((name, value)) = line.split_once(':') else {
             continue;
         };
         let name = name.trim().to_ascii_lowercase();
         let value = value.trim();
+        if name == "location" {
+            location = Some(value);
+        }
         if name == "x-frame-options" && !value.eq_ignore_ascii_case("allowall") {
             frame_blocked = true;
         }
@@ -234,6 +324,20 @@ fn parse_response(buffer: &[u8], target: &Target) -> PreviewProbe {
                 }
             }
         }
+    }
+
+    if (300..400).contains(&status)
+        && let Some(location) = location
+        && let Err(error) = validate_redirect(target, location)
+    {
+        return PreviewProbe {
+            ok: false,
+            status: Some(status),
+            title: None,
+            error: Some(error),
+            frame_blocked,
+            verified: true,
+        };
     }
 
     if status >= 400 {
@@ -263,6 +367,9 @@ pub fn probe(raw: &str) -> PreviewProbe {
         Ok(target) => target,
         Err(error) => return failure(error),
     };
+    if let Err(error) = validate_preview_host(&target.host) {
+        return failure(error);
+    }
     let mut stream = match connect(&target) {
         Ok(stream) => stream,
         Err(error) => return failure(error),
@@ -398,6 +505,99 @@ mod tests {
         assert!(parse_target("http://localhost:0").is_err());
         assert!(parse_target("http://localhost:70000").is_err());
         assert!(parse_target("http://").is_err());
+    }
+
+    fn loopback_target() -> Target {
+        Target {
+            host: "localhost".into(),
+            port: 5173,
+            path: "/".into(),
+            tls: false,
+        }
+    }
+
+    #[test]
+    fn acepta_solo_hosts_de_loopback() {
+        for host in [
+            "localhost",
+            "LOCALHOST",
+            "127.0.0.1",
+            "127.5.5.5",
+            "::1",
+            "[::1]",
+            "0:0:0:0:0:0:0:1",
+            "[::ffff:127.0.0.1]",
+        ] {
+            assert!(validate_preview_host(host).is_ok(), "rechazó {host}");
+        }
+        for host in [
+            "example.com",
+            "app.localhost.evil.com",
+            "192.168.1.10",
+            "10.0.0.5",
+            "172.16.0.1",
+            "169.254.10.1",
+            "0.0.0.0",
+            "[::]",
+            "[fe80::1]",
+            "[fd00::1]",
+        ] {
+            assert!(validate_preview_host(host).is_err(), "aceptó {host}");
+        }
+    }
+
+    #[test]
+    fn rechaza_un_host_remoto_antes_de_conectar() {
+        let probe = probe("http://example.com/");
+        assert!(!probe.ok);
+        let error = probe.error.unwrap();
+        assert!(error.contains("loopback"), "{error}");
+    }
+
+    #[test]
+    fn rechaza_ips_privadas_y_link_local() {
+        let private = probe("http://192.168.1.10:5173/");
+        assert!(!private.ok);
+        assert!(
+            private.error.unwrap().contains("privada"),
+            "el error debe explicar que es una IP privada"
+        );
+
+        let link_local = probe("http://[fe80::1]:5173/");
+        assert!(!link_local.ok);
+        assert!(
+            link_local.error.unwrap().contains("link-local"),
+            "el error debe explicar que es link-local"
+        );
+    }
+
+    #[test]
+    fn rechaza_redireccion_a_otro_host() {
+        let raw = b"HTTP/1.1 302 Found\r\nLocation: http://example.com/login\r\n\r\n";
+        let probe = parse_response(raw, &loopback_target());
+        assert!(!probe.ok);
+        assert_eq!(probe.status, Some(302));
+        let error = probe.error.unwrap();
+        assert!(
+            error.contains("redirige") && error.contains("loopback"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn rechaza_redireccion_protocol_relative_a_ip_privada() {
+        let raw = b"HTTP/1.1 301 Moved\r\nLocation: //192.168.1.10/admin\r\n\r\n";
+        let probe = parse_response(raw, &loopback_target());
+        assert!(!probe.ok);
+        assert!(probe.error.unwrap().contains("redirige"));
+    }
+
+    #[test]
+    fn acepta_redireccion_relativa_sin_seguirla() {
+        let raw = b"HTTP/1.1 302 Found\r\nLocation: /login\r\n\r\n";
+        let probe = parse_response(raw, &loopback_target());
+        assert!(probe.ok);
+        assert_eq!(probe.status, Some(302));
     }
 
     #[test]
