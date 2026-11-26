@@ -85,9 +85,13 @@ export function createChatGateway(server: ServerInfo): ChatServer {
       }),
     },
     message: {
-      list: async (input) => ({
-        data: toSessionMessages((await sdk.message.list(input)).data),
-      }),
+      list: async (input) => {
+        const response = await sdk.message.list(input);
+        return {
+          data: toSessionMessages(response.data),
+          cursor: response.cursor,
+        };
+      },
     },
     project: {
       list: async () => ({

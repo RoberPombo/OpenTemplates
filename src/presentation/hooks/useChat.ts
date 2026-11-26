@@ -122,7 +122,7 @@ export function useChat({
     setSessionsError,
     setSessionsNotice,
     loadedSession,
-    reload,
+    reloadIncremental,
     refreshSessions,
     selectSession,
     renameSession,
@@ -435,7 +435,7 @@ export function useChat({
           }
           dispatch({ kind: "event", event, sessionId });
           if (eventRequestsReload(event, sessionId)) {
-            void reload().finally(() => {
+            void reloadIncremental().finally(() => {
               dispatch({ kind: "streamCleared" });
               onTurnEnd(event.type === "session.execution.failed");
             });
@@ -457,7 +457,7 @@ export function useChat({
   }, [
     client,
     sessionId,
-    reload,
+    reloadIncremental,
     refreshSessions,
     sessionsRef,
     root,
