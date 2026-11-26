@@ -63,6 +63,9 @@ jobs:
       - name: Build frontend
         run: pnpm run build
 
+      - name: Check frontend bundle budget
+        run: pnpm run check:bundle
+
       - name: Rust tests
         working-directory: src-tauri
         # Sin --locked: release-please sube la versión del crate en Cargo.toml y
