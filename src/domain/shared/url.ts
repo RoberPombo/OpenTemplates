@@ -9,9 +9,14 @@ const ALLOWED_SCHEMES = new Set(["http", "https", "mailto"]);
 export function safeExternalUrl(raw: string | null | undefined): string | null {
   const value = raw?.trim();
   if (!value) return null;
-  // Los caracteres de control permiten escribir `java\nscript:` y que el
-  // navegador lo interprete como esquema ejecutable.
-  const compact = value.replace(/[\s\u0000-\u001f\u007f]+/g, "");
+  // Los caracteres de control y los espacios permiten escribir `java\nscript:`
+  // y que el navegador lo interprete como esquema ejecutable.
+  const compact = [...value]
+    .filter((char) => {
+      const code = char.codePointAt(0) ?? 0;
+      return code > 0x20 && code !== 0x7f;
+    })
+    .join("");
   if (EXECUTABLE_SCHEMES.test(compact)) return null;
   const scheme = compact.match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase();
   if (scheme && !ALLOWED_SCHEMES.has(scheme)) return null;
