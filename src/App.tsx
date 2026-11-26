@@ -11,7 +11,7 @@ import { WorkspaceView } from "./presentation/components/WorkspaceView";
 import { CommandPalette } from "./presentation/components/CommandPalette";
 import { useCommandActions } from "./presentation/context/CommandActions";
 import { buildPaletteCommands } from "./domain/palette/catalog";
-import { cycleWorkspaceIndex } from "./domain/workspace/navigation";
+import { resolvePaletteAction } from "./domain/palette/actions";
 import { formatShortcut, resolveShortcut, shortcutFor } from "./domain/palette/keybindings";
 import { Button } from "./presentation/components/ui";
 import { useUpdater } from "./presentation/hooks/useUpdater";
@@ -112,32 +112,28 @@ function App() {
 
   const runPaletteAction = useCallback(
     (id: string) => {
-      if (id === "workspace.create") {
-        setCreating(true);
-        return true;
+      const action = resolvePaletteAction(id, { workspaces, selectedId, handlers: entries });
+      switch (action.kind) {
+        case "create":
+          setCreating(true);
+          return true;
+        case "select":
+          select(action.workspaceId);
+          return true;
+        case "cycle":
+          if (!action.workspaceId) return false;
+          select(action.workspaceId);
+          return true;
+        case "openPalette":
+          setPaletteOpen(true);
+          return true;
+        case "delegate":
+          return runRegisteredAction(action.id);
+        case "unknown":
+          return false;
       }
-      if (id === "workspace.next" || id === "workspace.previous") {
-        if (workspaces.length < 2) return false;
-        const current = workspaces.findIndex((workspace) => workspace.id === selectedId);
-        const delta = id === "workspace.next" ? 1 : -1;
-        const index = cycleWorkspaceIndex(current, workspaces.length, delta);
-        if (index < 0) return false;
-        select(workspaces[index].id);
-        return true;
-      }
-      if (id.startsWith("workspace.select:")) {
-        const workspaceId = id.slice("workspace.select:".length);
-        if (!workspaces.some((workspace) => workspace.id === workspaceId)) return false;
-        select(workspaceId);
-        return true;
-      }
-      if (id === "palette.open") {
-        setPaletteOpen(true);
-        return true;
-      }
-      return runRegisteredAction(id);
     },
-    [workspaces, selectedId, select, runRegisteredAction],
+    [workspaces, selectedId, select, runRegisteredAction, entries],
   );
 
   useEffect(() => {

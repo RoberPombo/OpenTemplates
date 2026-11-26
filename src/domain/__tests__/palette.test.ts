@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { resolvePaletteAction, type PaletteActionState } from "../palette/actions";
 import {
   buildPaletteCommands,
   filterPaletteCommands,
@@ -177,5 +178,96 @@ describe("navegación de la paleta", () => {
     expect(firstEnabledIndex(disabled)).toBe(-1);
     expect(lastEnabledIndex(disabled)).toBe(-1);
     expect(movePaletteSelection(disabled, 0, 1)).toBe(-1);
+  });
+});
+
+describe("despacho de acciones", () => {
+  function state(overrides: Partial<PaletteActionState> = {}): PaletteActionState {
+    return {
+      workspaces: [{ id: "w1" }, { id: "w2" }, { id: "w3" }],
+      selectedId: "w2",
+      handlers: {},
+      ...overrides,
+    };
+  }
+
+  test("siguiente y anterior giran sobre el workspace seleccionado", () => {
+    expect(resolvePaletteAction("workspace.next", state())).toEqual({
+      kind: "cycle",
+      workspaceId: "w3",
+      delta: 1,
+    });
+    expect(resolvePaletteAction("workspace.previous", state())).toEqual({
+      kind: "cycle",
+      workspaceId: "w1",
+      delta: -1,
+    });
+    expect(resolvePaletteAction("workspace.next", state({ selectedId: "w3" }))).toEqual({
+      kind: "cycle",
+      workspaceId: "w1",
+      delta: 1,
+    });
+  });
+
+  test("sin selección, siguiente empieza por el primero y anterior por el último", () => {
+    expect(resolvePaletteAction("workspace.next", state({ selectedId: null }))).toEqual({
+      kind: "cycle",
+      workspaceId: "w1",
+      delta: 1,
+    });
+    expect(resolvePaletteAction("workspace.previous", state({ selectedId: null }))).toEqual({
+      kind: "cycle",
+      workspaceId: "w3",
+      delta: -1,
+    });
+  });
+
+  test("con menos de dos workspaces no hay a dónde cambiar", () => {
+    const single = state({ workspaces: [{ id: "w1" }], selectedId: "w1" });
+    expect(resolvePaletteAction("workspace.next", single)).toEqual({
+      kind: "cycle",
+      workspaceId: null,
+      delta: 1,
+    });
+    expect(
+      resolvePaletteAction("workspace.next", state({ workspaces: [], selectedId: null })),
+    ).toEqual({ kind: "cycle", workspaceId: null, delta: 1 });
+  });
+
+  test("workspace.select con id existente selecciona", () => {
+    expect(resolvePaletteAction("workspace.select:w3", state())).toEqual({
+      kind: "select",
+      workspaceId: "w3",
+    });
+  });
+
+  test("workspace.select con id inexistente es desconocida", () => {
+    expect(resolvePaletteAction("workspace.select:fantasma", state())).toEqual({
+      kind: "unknown",
+      id: "workspace.select:fantasma",
+    });
+    expect(resolvePaletteAction("workspace.select:", state())).toEqual({
+      kind: "unknown",
+      id: "workspace.select:",
+    });
+  });
+
+  test("crear y abrir la paleta no necesitan navegación", () => {
+    expect(resolvePaletteAction("workspace.create", state())).toEqual({ kind: "create" });
+    expect(resolvePaletteAction("palette.open", state())).toEqual({ kind: "openPalette" });
+  });
+
+  test("delega solo en handlers registrados", () => {
+    expect(
+      resolvePaletteAction("panel.terminal", state({ handlers: { "panel.terminal": {} } })),
+    ).toEqual({ kind: "delegate", id: "panel.terminal" });
+    expect(resolvePaletteAction("panel.terminal", state())).toEqual({
+      kind: "unknown",
+      id: "panel.terminal",
+    });
+    expect(resolvePaletteAction("accion.inventada", state())).toEqual({
+      kind: "unknown",
+      id: "accion.inventada",
+    });
   });
 });
