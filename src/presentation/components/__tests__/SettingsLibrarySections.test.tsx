@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ManagePanel } from "../ManagePanel";
+import { SettingsDialog, type SettingsSectionId } from "../SettingsDialog";
 import { AppProvider } from "../../context/AppContext";
 import { CompositionRoot } from "../../../CompositionRoot";
 import type { Library, Repo, ProfileManifest } from "../../../types";
 
-// Caracterización de ManagePanel con los puertos fake inyectados por
-// CompositionRoot: repos, perfiles, ajustes, selector de carpetas y confirmación.
+// Caracterización de las secciones de biblioteca del diálogo unificado con
+// los puertos fake inyectados por CompositionRoot.
 
 const repo: Repo = {
   id: "r1",
@@ -47,7 +47,10 @@ const library: Library = {
   mcps: [{ name: "mcp-a", config: { url: "http://a" }, source: "global" }],
 };
 
-function setup(profiles: ProfileManifest[] = [profile]) {
+function setup(
+  profiles: ProfileManifest[] = [profile],
+  initialSection: SettingsSectionId = "repos",
+) {
   let stored = [...profiles];
   const reposList = vi.fn(async () => [repo]);
   const add = vi.fn(async () => repo);
@@ -97,6 +100,10 @@ function setup(profiles: ProfileManifest[] = [profile]) {
     modelCatalog: { list: listModels } as never,
     confirm: { confirm } as never,
     folderPicker: { pickDirectory } as never,
+    library: {
+      mcps: async () => library.mcps,
+      skills: async () => library.skills,
+    } as never,
   });
 
   const onReposChanged = vi.fn();
@@ -104,7 +111,9 @@ function setup(profiles: ProfileManifest[] = [profile]) {
   const onWorktreesRootChanged = vi.fn();
   render(
     <AppProvider root={root}>
-      <ManagePanel
+      <SettingsDialog
+        workspace={null}
+        client={null}
         repos={[repo]}
         profiles={profiles}
         library={library}
@@ -114,6 +123,7 @@ function setup(profiles: ProfileManifest[] = [profile]) {
         onReposChanged={onReposChanged}
         onProfilesChanged={onProfilesChanged}
         onWorktreesRootChanged={onWorktreesRootChanged}
+        initialSection={initialSection}
         onClose={vi.fn()}
       />
     </AppProvider>,
@@ -139,7 +149,7 @@ function setup(profiles: ProfileManifest[] = [profile]) {
   };
 }
 
-describe("ManagePanel — repos", () => {
+describe("SettingsDialog — repos", () => {
   test("añadir repo usa el selector y recarga la lista", async () => {
     const user = userEvent.setup();
     const { add, listRepos, pickDirectory, onReposChanged } = setup();
@@ -164,12 +174,11 @@ describe("ManagePanel — repos", () => {
   });
 });
 
-describe("ManagePanel — perfiles", () => {
+describe("SettingsDialog — perfiles", () => {
   test("crea un perfil nuevo con id derivado del nombre y modelos normalizados", async () => {
     const user = userEvent.setup();
-    const { save, saveAgentsMd, onProfilesChanged } = setup();
+    const { save, saveAgentsMd, onProfilesChanged } = setup([profile], "profiles");
 
-    await user.click(screen.getByRole("button", { name: "Perfiles" }));
     await user.click(screen.getByRole("button", { name: /Nuevo perfil/ }));
     await user.type(screen.getByLabelText("Nombre"), "Backend review");
     const models = await screen.findByRole("combobox", { name: "Modelos del perfil" });
@@ -195,9 +204,8 @@ describe("ManagePanel — perfiles", () => {
 
   test("el selector de suscripción filtra los modelos disponibles", async () => {
     const user = userEvent.setup();
-    setup();
+    setup([profile], "profiles");
 
-    await user.click(screen.getByRole("button", { name: "Perfiles" }));
     const subscription = await screen.findByRole("combobox", { name: "Suscripción" });
     await user.click(subscription);
     await user.click(await screen.findByRole("option", { name: "openai" }));
@@ -211,9 +219,8 @@ describe("ManagePanel — perfiles", () => {
 
   test("sin nombre muestra error y no guarda", async () => {
     const user = userEvent.setup();
-    const { save } = setup();
+    const { save } = setup([profile], "profiles");
 
-    await user.click(screen.getByRole("button", { name: "Perfiles" }));
     await user.click(screen.getByRole("button", { name: /Nuevo perfil/ }));
     await user.click(screen.getByRole("button", { name: "Guardar perfil" }));
 
@@ -222,21 +229,18 @@ describe("ManagePanel — perfiles", () => {
   });
 
   test("seleccionar un perfil carga su AGENTS.md", async () => {
-    const user = userEvent.setup();
-    setup();
+    setup([profile], "profiles");
 
-    await user.click(screen.getByRole("button", { name: "Perfiles" }));
     expect(await screen.findByDisplayValue("# AGENTS")).toBeInTheDocument();
     expect(screen.getByLabelText("Nombre")).toHaveValue("Plantilla");
   });
 });
 
-describe("ManagePanel — ajustes", () => {
+describe("SettingsDialog — ajustes", () => {
   test("guardar la raíz de worktrees delega en settings y notifica la raíz resultante", async () => {
     const user = userEvent.setup();
-    const { saveSettings, onWorktreesRootChanged } = setup();
+    const { saveSettings, onWorktreesRootChanged } = setup([profile], "system");
 
-    await user.click(screen.getByRole("button", { name: "Ajustes" }));
     const input = screen.getByPlaceholderText("/wt");
     await user.clear(input);
     await user.type(input, "/nuevo/wt");

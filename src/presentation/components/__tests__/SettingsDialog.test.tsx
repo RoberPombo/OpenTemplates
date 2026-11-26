@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { SettingsPanel } from "../SettingsPanel";
+import { SettingsDialog, type SettingsSectionId } from "../SettingsDialog";
 import { AppProvider } from "../../context/AppContext";
 import { CompositionRoot } from "../../../CompositionRoot";
 import type { ChatGateway } from "../../../domain/repositories/ChatGateway";
@@ -10,6 +10,7 @@ import { makeNotificationGateway, makeWorkspace } from "../../../tests/fakes";
 
 const mcpA: McpInfo = { name: "a", config: { url: "http://a" }, source: "global" };
 const mcpB: McpInfo = { name: "b", config: { command: ["b"] }, source: "global" };
+const emptyLibrary = { agents: [], commands: [], plugins: [], skills: [], mcps: [] };
 
 function fakeServer() {
   return {
@@ -26,6 +27,7 @@ function setup(
   workspace: Workspace,
   server: ReturnType<typeof fakeServer> | null,
   notifications = makeNotificationGateway(),
+  initialSection: SettingsSectionId = "mcps",
 ) {
   const update = vi.fn(
     async (input: { mcpNames: string[]; skills: unknown[]; model: string | null }) => ({
@@ -52,10 +54,20 @@ function setup(
   const onUpdated = vi.fn();
   render(
     <AppProvider root={root}>
-      <SettingsPanel
+      <SettingsDialog
         workspace={workspace}
         client={server as unknown as ChatGateway | null}
-        onUpdated={onUpdated}
+        onWorkspaceUpdated={onUpdated}
+        repos={[]}
+        profiles={[]}
+        library={emptyLibrary}
+        workspaces={[workspace]}
+        worktreesRoot="/wt"
+        defaultProfileId={null}
+        onReposChanged={vi.fn()}
+        onProfilesChanged={vi.fn()}
+        onWorktreesRootChanged={vi.fn()}
+        initialSection={initialSection}
         onClose={vi.fn()}
       />
     </AppProvider>,
@@ -63,7 +75,7 @@ function setup(
   return { update, reapplyProfile, onUpdated, notifications };
 }
 
-describe("SettingsPanel — aplicar", () => {
+describe("SettingsDialog — aplicar", () => {
   test("sin cambios persiste la config y no toca el servidor", async () => {
     const user = userEvent.setup();
     const server = fakeServer();
@@ -88,6 +100,7 @@ describe("SettingsPanel — aplicar", () => {
 
     await screen.findByRole("checkbox", { name: /^b/ });
     await user.click(screen.getByRole("checkbox", { name: /^b/ }));
+    await user.click(screen.getByRole("button", { name: "Modelo" }));
     await user.type(
       screen.getByPlaceholderText("provider/modelo (vacío = el de la config global)"),
       "openai/gpt",
@@ -132,7 +145,7 @@ describe("SettingsPanel — aplicar", () => {
   });
 });
 
-describe("SettingsPanel — notificaciones", () => {
+describe("SettingsDialog — notificaciones", () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -140,7 +153,7 @@ describe("SettingsPanel — notificaciones", () => {
   test("activarlas pide permiso y persiste la preferencia", async () => {
     const user = userEvent.setup();
     const workspace = makeWorkspace({ mcpNames: [], skills: [] });
-    const { notifications } = setup(workspace, null);
+    const { notifications } = setup(workspace, null, undefined, "notifications");
 
     const toggle = screen.getByRole("checkbox", { name: /Avisarme cuando el agente/ });
     expect(toggle).not.toBeChecked();
@@ -155,7 +168,12 @@ describe("SettingsPanel — notificaciones", () => {
   test("si el sistema deniega el permiso no se activa y avisa", async () => {
     const user = userEvent.setup();
     const workspace = makeWorkspace({ mcpNames: [], skills: [] });
-    const { notifications } = setup(workspace, null, makeNotificationGateway("denied"));
+    const { notifications } = setup(
+      workspace,
+      null,
+      makeNotificationGateway("denied"),
+      "notifications",
+    );
 
     const toggle = screen.getByRole("checkbox", { name: /Avisarme cuando el agente/ });
     await user.click(toggle);
@@ -170,7 +188,7 @@ describe("SettingsPanel — notificaciones", () => {
     localStorage.setItem("opentemplates:notifications", "1");
     const user = userEvent.setup();
     const workspace = makeWorkspace({ mcpNames: [], skills: [] });
-    const { notifications } = setup(workspace, null);
+    const { notifications } = setup(workspace, null, undefined, "notifications");
 
     const toggle = screen.getByRole("checkbox", { name: /Avisarme cuando el agente/ });
     expect(toggle).toBeChecked();
@@ -182,7 +200,7 @@ describe("SettingsPanel — notificaciones", () => {
   });
 });
 
-describe("SettingsPanel — reaplicar perfil", () => {
+describe("SettingsDialog — reaplicar perfil", () => {
   test("delega en el gateway y notifica el workspace actualizado", async () => {
     const user = userEvent.setup();
     const workspace = makeWorkspace({
@@ -192,9 +210,8 @@ describe("SettingsPanel — reaplicar perfil", () => {
       profileId: "plantilla",
       profileVersion: 1,
     });
-    const { reapplyProfile, onUpdated } = setup(workspace, null);
+    const { reapplyProfile, onUpdated } = setup(workspace, null, undefined, "workspace-profile");
 
-    await screen.findByRole("checkbox", { name: /^a/ });
     await user.click(screen.getByRole("button", { name: "Reaplicar perfil" }));
 
     expect(reapplyProfile).toHaveBeenCalledWith("w1");
@@ -204,14 +221,14 @@ describe("SettingsPanel — reaplicar perfil", () => {
   });
 });
 
-describe("SettingsPanel — presupuesto", () => {
+describe("SettingsDialog — presupuesto", () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
   test("guarda el presupuesto por workspace y lo borra al vaciar el campo", async () => {
     const user = userEvent.setup();
-    setup(makeWorkspace({ mcpNames: [], skills: [] }), null);
+    setup(makeWorkspace({ mcpNames: [], skills: [] }), null, undefined, "budget");
 
     const input = screen.getByLabelText("Presupuesto mensual en dólares");
     await user.type(input, "12.5");
@@ -223,7 +240,7 @@ describe("SettingsPanel — presupuesto", () => {
 
   test("no persiste importes no positivos y muestra el error", async () => {
     const user = userEvent.setup();
-    setup(makeWorkspace({ mcpNames: [], skills: [] }), null);
+    setup(makeWorkspace({ mcpNames: [], skills: [] }), null, undefined, "budget");
 
     await user.type(screen.getByLabelText("Presupuesto mensual en dólares"), "0");
     expect(

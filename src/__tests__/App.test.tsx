@@ -90,8 +90,8 @@ vi.mock("../presentation/components/CreateWorkspace", () => ({
     </div>
   ),
 }));
-vi.mock("../presentation/components/ManagePanel", () => ({
-  ManagePanel: ({ onClose }: { onClose: () => void }) => (
+vi.mock("../presentation/components/SettingsDialog", () => ({
+  SettingsDialog: ({ onClose }: { onClose: () => void }) => (
     <button onClick={onClose}>close-manage</button>
   ),
 }));
@@ -341,7 +341,7 @@ describe("App — creación y gestión", () => {
     const user = userEvent.setup();
     renderApp();
     await screen.findByText("Primero");
-    await user.click(screen.getByText("Repos y perfiles"));
+    await user.click(screen.getByText("Ajustes"));
     expect(screen.getByText("close-manage")).toBeInTheDocument();
     await user.click(screen.getByText("close-manage"));
     expect(screen.queryByText("close-manage")).toBeNull();

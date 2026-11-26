@@ -403,7 +403,7 @@ export function CreateWorkspace({
                   </div>
                   <p className="muted small-text">
                     Se crea con los MCPs y skills que has marcado. Podrás ajustar agentes, comandos
-                    y plugins en «Repos y perfiles».
+                    y plugins en Ajustes → Perfiles.
                   </p>
                 </div>
               )}

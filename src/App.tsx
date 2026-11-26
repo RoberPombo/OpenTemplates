@@ -5,7 +5,7 @@ import { useFeatures } from "./presentation/hooks/useFeatures";
 import { CreateWorkspace } from "./presentation/components/CreateWorkspace";
 import { FeatureDialog } from "./presentation/components/FeatureDialog";
 import { FeatureView } from "./presentation/components/FeatureView";
-import { ManagePanel } from "./presentation/components/ManagePanel";
+import { SettingsDialog, type SettingsSectionId } from "./presentation/components/SettingsDialog";
 import { UpdateDialog } from "./presentation/components/UpdateDialog";
 import { WorkspaceView } from "./presentation/components/WorkspaceView";
 import { CommandPalette } from "./presentation/components/CommandPalette";
@@ -14,7 +14,9 @@ import { buildPaletteCommands } from "./domain/palette/catalog";
 import { formatShortcut, resolveShortcut, shortcutFor } from "./domain/palette/keybindings";
 import { Button } from "./presentation/components/ui";
 import { useUpdater } from "./presentation/hooks/useUpdater";
+import { useAppContext } from "./presentation/context/AppContext";
 import type { Workspace } from "./types";
+import type { ChatGateway } from "./domain/repositories/ChatGateway";
 import "./styles.css";
 
 const PALETTE_SHORTCUT = shortcutFor("palette.open");
@@ -55,12 +57,24 @@ function App() {
     setWorktreesRoot,
   } = useWorkspaces();
   const featuresState = useFeatures();
+  const root = useAppContext();
   const [creating, setCreating] = useState(false);
   const [creatingFeature, setCreatingFeature] = useState(false);
-  const [managing, setManaging] = useState(false);
+  const [settings, setSettings] = useState<{
+    section: SettingsSectionId;
+    client?: ChatGateway | null;
+  } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { entries, run: runRegisteredAction } = useCommandActions();
   const updater = useUpdater();
+
+  const settingsServer = selected ? running[selected.id] : undefined;
+  // El gateway se recrea solo cuando cambian los datos del servidor, igual que
+  // en WorkspaceView, para no reiniciar efectos en cada render.
+  const settingsClient = useMemo(
+    () => (settingsServer ? root.provideChatGateway(settingsServer) : null),
+    [root, settingsServer?.baseUrl, settingsServer?.password],
+  );
 
   const paletteCommands = useMemo(
     () =>
@@ -304,8 +318,12 @@ function App() {
               </kbd>
             )}
           </Button>
-          <Button variant="ghost" className="sidebar-link" onClick={() => setManaging(true)}>
-            Repos y perfiles
+          <Button
+            variant="ghost"
+            className="sidebar-link"
+            onClick={() => setSettings({ section: "appearance" })}
+          >
+            Ajustes
           </Button>
           {boot.error ? (
             <span className="danger-text">{boot.error}</span>
@@ -376,6 +394,7 @@ function App() {
             onStop={() => void stop(selected.id)}
             onDelete={() => void remove(selected.id)}
             onUpdated={updated}
+            onOpenSettings={(client) => setSettings({ section: "model", client })}
             onWorkspaceActivity={markUnseen}
             worktreesRoot={worktreesRoot}
             repoPath={selectedRepoPath}
@@ -425,8 +444,11 @@ function App() {
         />
       )}
 
-      {managing && (
-        <ManagePanel
+      {settings && (
+        <SettingsDialog
+          workspace={selected}
+          client={settings.client !== undefined ? settings.client : settingsClient}
+          onWorkspaceUpdated={updated}
           repos={repos}
           profiles={profiles}
           library={library}
@@ -436,7 +458,8 @@ function App() {
           onReposChanged={setRepos}
           onProfilesChanged={setProfiles}
           onWorktreesRootChanged={setWorktreesRoot}
-          onClose={() => setManaging(false)}
+          initialSection={settings.section}
+          onClose={() => setSettings(null)}
         />
       )}
       {updater.update && (
