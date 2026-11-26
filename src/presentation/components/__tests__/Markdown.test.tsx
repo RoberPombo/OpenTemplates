@@ -1,9 +1,17 @@
 import { describe, expect, test } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { Markdown } from "../Markdown";
 
-// Tests de caracterización del renderer Markdown tal cual está hoy (fase 0).
-// Cubren el comportamiento observable a través del componente público, sin tocar producción.
+// Tests de caracterización del renderer Markdown.
+// Afirman comportamiento observable (roles ARIA, nombre accesible, texto y estructura
+// semántica) en vez de marcado exacto, para que sobrevivan a refactors del renderer.
+//
+// Aserciones de protocolo permitido (no tienen equivalente semántico):
+// - `language-*` en <pre>: es el contrato estándar con el resaltador/CSS, no un detalle
+//   interno del marcado.
+// - clases `md`/`extra` del contenedor: son la API pública de estilo del componente.
+// - orden de las etiquetas de bloque: el orden es la salida observable del parser y no
+//   se puede consultar por rol sin perder la secuencia entre tipos de bloque.
 
 function renderMd(text: string) {
   return render(<Markdown text={text} />);
@@ -15,54 +23,65 @@ describe("Markdown — bloques", () => {
     expect(screen.getByText("hola mundo").tagName).toBe("P");
   });
 
-  test("varias líneas del mismo párrafo se unen con <br>", () => {
-    const { container } = renderMd("primera\nsegunda");
-    const paragraph = container.querySelector("p");
-    expect(paragraph?.innerHTML).toBe("primera<br>segunda");
-  });
-
-  test("normaliza saltos CRLF", () => {
-    const { container } = renderMd("primera\r\nsegunda");
-    expect(container.querySelector("p")?.innerHTML).toBe("primera<br>segunda");
+  test("une las líneas de un párrafo con <br> y normaliza CRLF", () => {
+    for (const source of ["primera\nsegunda", "primera\r\nsegunda"]) {
+      const { container, unmount } = renderMd(source);
+      const paragraph = container.querySelector("p");
+      expect(paragraph?.textContent).toBe("primerasegunda");
+      expect([...(paragraph?.childNodes ?? [])].map((node) => node.nodeName)).toEqual([
+        "#text",
+        "BR",
+        "#text",
+      ]);
+      unmount();
+    }
   });
 
   test("encabezados h1-h3 y límite en h4 para niveles 5-6", () => {
-    const { container } = renderMd(
-      "# Uno\n## Dos\n### Tres\n#### Cuatro\n##### Cinco\n###### Seis",
-    );
-    expect(container.querySelector("h1")?.textContent).toBe("Uno");
-    expect(container.querySelector("h2")?.textContent).toBe("Dos");
-    expect(container.querySelector("h3")?.textContent).toBe("Tres");
-    expect(container.querySelectorAll("h4")).toHaveLength(3);
-    expect(container.querySelector("h5")).toBeNull();
-    expect(container.querySelector("h6")).toBeNull();
+    renderMd("# Uno\n## Dos\n### Tres\n#### Cuatro\n##### Cinco\n###### Seis");
+    expect(screen.getByRole("heading", { level: 1, name: "Uno" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Dos" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Tres" })).toBeInTheDocument();
+    const level4 = screen
+      .getAllByRole("heading", { level: 4 })
+      .map((heading) => heading.textContent);
+    expect(level4).toEqual(["Cuatro", "Cinco", "Seis"]);
+    expect(screen.queryAllByRole("heading", { level: 5 })).toHaveLength(0);
+    expect(screen.queryAllByRole("heading", { level: 6 })).toHaveLength(0);
   });
 
   test("un encabezado corta el párrafo anterior", () => {
-    const { container } = renderMd("texto suelto\n# Título");
-    expect(container.querySelector("p")?.textContent).toBe("texto suelto");
-    expect(container.querySelector("h1")?.textContent).toBe("Título");
+    renderMd("texto suelto\n# Título");
+    expect(screen.getByText("texto suelto").tagName).toBe("P");
+    expect(screen.getByRole("heading", { level: 1, name: "Título" })).toBeInTheDocument();
   });
 
-  test("lista desordenada con -, * y +", () => {
-    const { container } = renderMd("- a\n* b\n+ c");
-    const list = container.querySelector("ul");
-    expect(list?.querySelectorAll("li")).toHaveLength(3);
-    expect(container.querySelector("ol")).toBeNull();
-  });
+  test("listas: viñetas -, *, +, numeradas con 1. y 1), y formato inline en items", () => {
+    const bullets = renderMd("- a\n* b\n+ c");
+    const bulletList = screen.getByRole("list");
+    expect(bulletList.tagName).toBe("UL");
+    expect(within(bulletList).getAllByRole("listitem")).toHaveLength(3);
+    expect(bullets.container.querySelector("ol")).toBeNull();
+    bullets.unmount();
 
-  test("lista ordenada con 1. y 1)", () => {
-    const { container } = renderMd("1. a\n2. b");
-    expect(container.querySelector("ol")?.querySelectorAll("li")).toHaveLength(2);
-    const { container: paren } = renderMd("1) a\n2) b");
-    expect(paren.querySelector("ol")?.querySelectorAll("li")).toHaveLength(2);
+    for (const source of ["1. a\n2. b", "1) a\n2) b"]) {
+      const { unmount } = renderMd(source);
+      const orderedList = screen.getByRole("list");
+      expect(orderedList.tagName).toBe("OL");
+      expect(within(orderedList).getAllByRole("listitem")).toHaveLength(2);
+      unmount();
+    }
+
+    renderMd("- **a**\n- `b`");
+    expect(screen.getByText("a").tagName).toBe("STRONG");
+    expect(screen.getByText("b").tagName).toBe("CODE");
   });
 
   test("bloque de código con lenguaje y sin parseo inline", () => {
     const { container } = renderMd("```ts\nconst x = **1**;\n```");
-    const pre = container.querySelector("pre");
-    expect(pre?.className).toBe("language-ts");
-    expect(pre?.querySelector("code")?.textContent).toBe("const x = **1**;");
+    // `language-*` es el protocolo que consume el resaltador; no hay rol/atributo semántico.
+    expect(container.querySelector("pre")).toHaveClass("language-ts");
+    expect(screen.getByText("const x = **1**;").tagName).toBe("CODE");
     expect(container.querySelector("strong")).toBeNull();
   });
 
@@ -73,61 +92,76 @@ describe("Markdown — bloques", () => {
 
   test("cita", () => {
     const { container } = renderMd("> citado\n> segunda");
-    expect(container.querySelector("blockquote")?.innerHTML).toBe("citado<br>segunda");
+    const quote = container.querySelector("blockquote");
+    expect(quote?.textContent).toBe("citadosegunda");
+    expect([...(quote?.childNodes ?? [])].map((node) => node.nodeName)).toEqual([
+      "#text",
+      "BR",
+      "#text",
+    ]);
   });
 
   test("regla horizontal con ---, *** y ___", () => {
     for (const rule of ["---", "***", "___"]) {
-      const { container } = renderMd(rule);
-      expect(container.querySelector("hr")).not.toBeNull();
+      const { container, unmount } = renderMd(rule);
+      expect(container.querySelectorAll("hr")).toHaveLength(1);
+      unmount();
     }
   });
 
-  test("tabla con cabecera, filas y celdas ausentes", () => {
-    const { container } = renderMd("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 |");
-    expect(container.querySelector(".md-table")).not.toBeNull();
-    const heads = [...container.querySelectorAll("th")].map((cell) => cell.textContent);
-    expect(heads).toEqual(["a", "b"]);
-    const rows = [...container.querySelectorAll("tbody tr")].map((row) =>
-      [...row.querySelectorAll("td")].map((cell) => cell.textContent),
-    );
+  test("tabla con cabecera, filas, celdas ausentes y separador alineado", () => {
+    renderMd("| a | b |\n|:---|---:|\n| 1 | 2 |\n| 3 |");
+    const table = screen.getByRole("table");
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent);
+    expect(headers).toEqual(["a", "b"]);
+    const rows = within(table)
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) =>
+        within(row)
+          .getAllByRole("cell")
+          .map((cell) => cell.textContent),
+      );
     expect(rows).toEqual([
       ["1", "2"],
       ["3", ""],
     ]);
   });
 
-  test("separador de tabla con alineación", () => {
-    const { container } = renderMd("| a |\n| :---: |\n| 1 |");
-    expect(container.querySelector("table")).not.toBeNull();
-  });
-
   test("texto vacío no genera bloques", () => {
     const { container } = renderMd("");
-    expect(container.querySelector(".md")?.childElementCount).toBe(0);
+    expect(container.textContent).toBe("");
+    expect(
+      container.querySelector("p, h1, h2, h3, h4, ul, ol, pre, blockquote, table, hr"),
+    ).toBeNull();
   });
 
-  test("className adicional se combina con md", () => {
+  test("className público se suma a la clase base (API de estilo del componente)", () => {
     const { container } = render(<Markdown text="x" className="extra" />);
-    expect(container.querySelector(".md.extra")).not.toBeNull();
+    expect(container.firstElementChild).toHaveClass("md", "extra");
   });
 });
 
 describe("Markdown — inline", () => {
   test("negrita con ** y __, cursiva con *", () => {
-    const { container } = renderMd("**bold** y __otro__ y *em*");
-    expect(container.querySelectorAll("strong")).toHaveLength(2);
-    expect(container.querySelector("em")?.textContent).toBe("em");
+    renderMd("**bold** y __otro__ y *em*");
+    expect(screen.getByText("bold").tagName).toBe("STRONG");
+    expect(screen.getByText("otro").tagName).toBe("STRONG");
+    expect(screen.getByText("em").tagName).toBe("EM");
   });
 
   test("código inline", () => {
-    const { container } = renderMd("usa `pnpm test` ya");
-    expect(container.querySelector("code")?.textContent).toBe("pnpm test");
+    renderMd("usa `pnpm test` ya");
+    expect(screen.getByText("pnpm test").tagName).toBe("CODE");
   });
 
   test("inline anidado dentro de negrita", () => {
-    const { container } = renderMd("**hola `mundo`**");
-    expect(container.querySelector("strong code")?.textContent).toBe("mundo");
+    renderMd("**hola `mundo`**");
+    const nested = screen.getByText("mundo");
+    expect(nested.tagName).toBe("CODE");
+    expect(nested.parentElement?.tagName).toBe("STRONG");
   });
 
   test("enlace con target y rel seguros", () => {
@@ -138,20 +172,17 @@ describe("Markdown — inline", () => {
     expect(link).toHaveAttribute("rel", "noreferrer noopener");
   });
 
-  test("elementos inline dentro de items de lista", () => {
-    const { container } = renderMd("- **a**\n- `b`");
-    expect(container.querySelector("li strong")?.textContent).toBe("a");
-    expect(container.querySelector("li code")?.textContent).toBe("b");
-  });
-
   test("un enlace con esquema ejecutable se pinta como texto, no como enlace", () => {
-    const { container } = renderMd("[pulsa](javascript:alert(1))");
-    expect(container.querySelector("a")).toBeNull();
+    renderMd("[pulsa](javascript:alert(1))");
+    expect(screen.queryByRole("link")).toBeNull();
     expect(screen.getByText("pulsa").tagName).toBe("SPAN");
   });
+
   test("documento mixto conserva el orden de bloques", () => {
     const { container } = renderMd("# Título\n\npárrafo\n\n- item\n\n```\ncode\n```");
-    const tags = [...(container.querySelector(".md")?.children ?? [])].map((el) => el.tagName);
-    expect(tags).toEqual(["H1", "P", "UL", "PRE"]);
+    // El orden entre tipos de bloque es salida observable del parser; no hay consulta
+    // por rol que preserve la secuencia.
+    const blocks = [...(container.firstElementChild?.children ?? [])].map((el) => el.tagName);
+    expect(blocks).toEqual(["H1", "P", "UL", "PRE"]);
   });
 });
