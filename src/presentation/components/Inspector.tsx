@@ -1,13 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { useBudgetAlerts } from "../hooks/useBudgetAlerts";
+import { useInspectorData } from "../hooks/useInspectorData";
 import { errorText, formatBytes, formatPercent } from "../../domain/shared";
-import {
-  mcpAction,
-  mcpStateLabel,
-  readableMcpError,
-  type McpServerStatus,
-} from "../../domain/chat/mcp";
+import { mcpAction, mcpStateLabel, readableMcpError } from "../../domain/chat/mcp";
 import {
   activityBars,
   budgetLevel,
@@ -18,21 +14,13 @@ import {
   formatCost,
   formatCount,
   formatTokens,
-  parseBudgetUsd,
   sortModelUsage,
   totalTokens,
-  toSessionUsage,
   usageModelKey,
-  usageStatsInput,
-  type SessionUsage,
-  type UsageLimits,
   type UsageRange,
-  type WorkspaceStats,
 } from "../../domain/chat/usage";
-import type { CatalogModel } from "../../domain/chat/selection";
-import { prefKeys } from "../../domain/repositories/Preferences";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
-import type { ResourceUsage, ServerInfo, SkillRef, Workspace } from "../../types";
+import type { ServerInfo, SkillRef, Workspace } from "../../types";
 import { ChangesPanel } from "./ChangesPanel";
 import { FilesPanel } from "./FilesPanel";
 
@@ -48,21 +36,6 @@ type Props = {
   tab?: InspectorTab;
   onTabChange?: (tab: InspectorTab) => void;
 };
-
-type ProjectSummary = {
-  branch: string | null;
-  files: number;
-  additions: number;
-  deletions: number;
-};
-
-function safe<T>(call: () => Promise<T>): Promise<T> {
-  try {
-    return call();
-  } catch (error) {
-    return Promise.reject(error);
-  }
-}
 
 function resetText(at: number) {
   const delta = at - Date.now();
@@ -104,161 +77,34 @@ export function Inspector({
   onTabChange,
 }: Props) {
   const root = useAppContext();
-  const [project, setProject] = useState<ProjectSummary | null>(null);
-  const [session, setSession] = useState<SessionUsage | null>(null);
-  const [usage, setUsage] = useState<UsageLimits | null>(null);
-  const [models, setModels] = useState<CatalogModel[]>([]);
-  const [statuses, setStatuses] = useState<Record<string, McpServerStatus>>({});
-  const [resources, setResources] = useState<ResourceUsage | null>(null);
   const [savingMcp, setSavingMcp] = useState<string | null>(null);
   const [savingSkill, setSavingSkill] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [usageRange, setUsageRange] = useState<UsageRange>("30d");
-  const [stats, setStats] = useState<WorkspaceStats | null>(null);
-  const [statsError, setStatsError] = useState<string | null>(null);
-  const [monthlyBudget, setMonthlyBudget] = useState<number | null>(() =>
-    parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))),
-  );
 
-  const location = useMemo(() => ({ directory: workspace.projectPath }), [workspace.projectPath]);
-  const timeZone = useMemo(() => {
-    try {
-      return new Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch {
-      return undefined;
-    }
-  }, []);
-
-  useEffect(() => {
-    setStats(null);
-    setStatsError(null);
-    setMonthlyBudget(parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))));
-  }, [root, workspace.id]);
-
-  useEffect(() => {
-    let alive = true;
-    safe(() => client.model.list({ location, types: ["chat"] }))
-      .then((result) => {
-        if (alive) setModels(result.data);
-        return undefined;
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, [client, location]);
-
-  const refresh = useCallback(async () => {
-    const [vcs, vcsInfo, limits, mcpList, resourcesNow] = await Promise.allSettled([
-      safe(() => client.vcs.status({ location })),
-      safe(() => client.vcs.get({ location })),
-      safe(() => client.usage.limits()),
-      safe(() => client.mcp.list({ location })),
-      root.resources.usage(server.pid),
-    ]);
-
-    if (vcs.status === "fulfilled") {
-      const files = vcs.value.data;
-      setProject((prev) => ({
-        branch:
-          vcsInfo.status === "fulfilled"
-            ? (vcsInfo.value.data.branch.current ?? null)
-            : (prev?.branch ?? null),
-        files: files.length,
-        additions: files.reduce((total, file) => total + file.additions, 0),
-        deletions: files.reduce((total, file) => total + file.deletions, 0),
-      }));
-    } else if (vcsInfo.status === "fulfilled") {
-      setProject((prev) => ({
-        branch: vcsInfo.value.data.branch.current ?? null,
-        files: prev?.files ?? 0,
-        additions: prev?.additions ?? 0,
-        deletions: prev?.deletions ?? 0,
-      }));
-    }
-
-    if (limits.status === "fulfilled") {
-      setUsage(limits.value.data ?? null);
-    }
-
-    if (mcpList.status === "fulfilled") {
-      setStatuses(Object.fromEntries(mcpList.value.data.map((item) => [item.name, item])));
-    }
-
-    setResources(resourcesNow.status === "fulfilled" ? resourcesNow.value : null);
-  }, [client, location, server.pid, root]);
-  const refreshMcp = useCallback(async () => {
-    try {
-      const result = await client.mcp.list({ location });
-      setStatuses(Object.fromEntries(result.data.map((item) => [item.name, item])));
-    } catch {
-      // El servidor puede estar parando; el siguiente ciclo reintenta.
-    }
-  }, [client, location]);
-  // `mcp.status.changed` avisa cuando un servidor se conecta, falla o cierra:
-  // se relee el estado sin esperar al sondeo de 5 s.
-  useEffect(() => {
-    const abort = new AbortController();
-    (async () => {
-      try {
-        for await (const event of client.event.subscribe({ signal: abort.signal })) {
-          if (event.type !== "mcp.status.changed") continue;
-          await refreshMcp();
-        }
-      } catch {
-        // El cierre de la suscripción no es un error de la vista.
-      }
-    })();
-    return () => abort.abort();
-  }, [client, refreshMcp]);
-
-  const refreshSession = useCallback(async () => {
-    if (!sessionId) {
-      setSession(null);
-      return;
-    }
-    try {
-      const [messages, info] = await Promise.all([
-        client.message.list({
-          sessionID: sessionId,
-          limit: 10,
-          order: "desc",
-        }),
-        client.session.get({ sessionID: sessionId }).catch(() => null),
-      ]);
-      setSession(toSessionUsage(messages.data, info));
-    } catch {
-      setSession(null);
-    }
-  }, [client, sessionId]);
-
-  const refreshStats = useCallback(async () => {
-    setMonthlyBudget(parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))));
-    try {
-      const result = await client.session.stats(usageStatsInput(usageRange, Date.now(), timeZone));
-      setStats(result.data);
-      setStatsError(null);
-    } catch (err) {
-      setStats(null);
-      setStatsError(errorText(err));
-    }
-  }, [client, root, timeZone, usageRange, workspace.id]);
-
-  useEffect(() => {
-    let alive = true;
-    const tick = () => {
-      if (!alive || tab !== "resumen" || document.visibilityState === "hidden") return;
-      void refresh();
-      void refreshSession();
-      void refreshStats();
-    };
-    tick();
-    const timer = window.setInterval(tick, 5000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [refresh, refreshSession, refreshStats, tab]);
+  const {
+    project,
+    session,
+    usage,
+    models,
+    statuses,
+    resources,
+    stats,
+    statsError,
+    monthlyBudget,
+    location,
+    timeZone,
+    refresh,
+    refreshMcp,
+  } = useInspectorData({
+    client,
+    root,
+    workspace,
+    server,
+    sessionId,
+    usageRange,
+    active: tab === "resumen",
+  });
 
   useBudgetAlerts({
     root,

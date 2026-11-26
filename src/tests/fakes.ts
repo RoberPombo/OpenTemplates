@@ -5,7 +5,7 @@ import type { GoalDecisionRequest, GoalDecisionResult } from "../domain/chat/goa
 import type { McpServerStatus } from "../domain/chat/mcp";
 import type { PermissionRequest } from "../domain/chat/permissions";
 import type { SessionTransfer } from "../domain/chat/transfer";
-import type { WorkspaceStats } from "../domain/chat/usage";
+import type { UsageLimits, WorkspaceStats } from "../domain/chat/usage";
 import type { TerminalInfo } from "../domain/terminal/terminals";
 import type {
   TerminalChannel,
@@ -139,6 +139,8 @@ export type FakeClientOptions = {
   importError?: unknown;
   forkError?: unknown;
   mcpServers?: McpServerStatus[];
+  /** Límites del proveedor que devuelve `usage.limits`. */
+  usageLimits?: UsageLimits | null;
   /** Modelos con capacidad de decisión para el objetivo de sesión. */
   decisionModels?: unknown[];
   /** Resultados de `generate.decisions`; se consumen en orden. */
@@ -372,7 +374,7 @@ export function makeFakeClient(options: FakeClientOptions = {}) {
       connect: vi.fn(async () => undefined),
       disconnect: vi.fn(async () => undefined),
     },
-    usage: { limits: vi.fn(async () => ({ data: null })) },
+    usage: { limits: vi.fn(async () => ({ data: options.usageLimits ?? null })) },
     permission: {
       list: vi.fn(async () => ({ data: options.permissions ?? [] })),
       reply: vi.fn(async () => undefined),
