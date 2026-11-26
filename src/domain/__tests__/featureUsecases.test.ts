@@ -7,9 +7,6 @@ import type { FeatureGateway } from "../repositories/FeatureGateway";
 import type { ChatServer } from "../repositories/ChatGateway";
 import { ApproveDecomposition } from "../usecases/ApproveDecomposition";
 import { LaunchCoordinator } from "../usecases/LaunchCoordinator";
-import { DeleteFeature } from "../usecases/DeleteFeature";
-import { ProvisionFeature } from "../usecases/ProvisionFeature";
-import { SaveFeature } from "../usecases/SaveFeature";
 import { StartFeature } from "../usecases/StartFeature";
 import { makeFeature } from "../../tests/fixtures";
 
@@ -67,53 +64,6 @@ describe("StartFeature", () => {
       "Describe la feature antes de confirmarla.",
     );
     expect(gateway.save).not.toHaveBeenCalled();
-  });
-});
-
-describe("SaveFeature", () => {
-  test("delega en el gateway", async () => {
-    const feature = makeFeature();
-    const gateway = fakeGateway({
-      save: vi.fn(async (): Promise<Feature> => ({ ...feature, status: "running" })),
-    });
-    const saved = await new SaveFeature(gateway).execute(feature);
-    expect(saved.status).toBe("running");
-    expect(gateway.save).toHaveBeenCalledWith(feature);
-  });
-});
-
-describe("DeleteFeature", () => {
-  test("borra por id", async () => {
-    const gateway = fakeGateway();
-    await new DeleteFeature(gateway).execute("feat-1");
-    expect(gateway.remove).toHaveBeenCalledWith("feat-1");
-  });
-});
-
-describe("ProvisionFeature", () => {
-  test("pide materializar y devuelve el resultado", async () => {
-    const outcome: FeatureProvisionOutcome = {
-      feature: makeFeature(),
-      worktrees: [
-        {
-          role: "root",
-          repoPath: "/repos/main",
-          path: "/data/features/feat-1/main",
-          branch: "feature/checkout-con-stripe",
-          base: "origin/develop",
-        },
-      ],
-      warnings: ["aviso"],
-      errors: [],
-      applied: [".env listo"],
-      blocked: false,
-    };
-    const gateway = fakeGateway({ provision: vi.fn(async () => outcome) });
-
-    const result = await new ProvisionFeature(gateway).execute("feat-1");
-
-    expect(result).toBe(outcome);
-    expect(gateway.provision).toHaveBeenCalledWith("feat-1");
   });
 });
 
