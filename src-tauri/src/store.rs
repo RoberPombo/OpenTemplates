@@ -11,6 +11,7 @@ pub const STORE_VERSION: u32 = 2;
 pub const WORKSPACES_FILE: &str = "workspaces.json";
 pub const REPOS_FILE: &str = "repos.json";
 pub const PROFILES_FILE: &str = "profiles.json";
+pub const FEATURES_FILE: &str = "features.json";
 const LEGACY_PROFILES_FILE: &str = "templates.json";
 const LEGACY_PROFILES_DIR: &str = "templates";
 pub const SETTINGS_FILE: &str = "settings.json";
@@ -275,6 +276,31 @@ pub fn save_profiles(data_dir: &Path, profiles: &[ProfileManifest]) -> Result<()
 
 pub fn save_settings(data_dir: &Path, settings: &AppSettings) -> Result<(), String> {
     write_json(data_dir, SETTINGS_FILE, settings)
+}
+
+pub fn load_features(data_dir: &Path) -> (Vec<crate::model::Feature>, Vec<String>) {
+    let path = data_dir.join(FEATURES_FILE);
+    if !path.exists() {
+        return (Vec::new(), Vec::new());
+    }
+    match read_json::<crate::model::FeatureStore>(&path) {
+        Some(store) => (store.features, Vec::new()),
+        None => (
+            Vec::new(),
+            vec!["features.json inválido; se ignoró".to_string()],
+        ),
+    }
+}
+
+pub fn save_features(
+    data_dir: &Path,
+    features: &[crate::model::Feature],
+) -> Result<(), String> {
+    let store = crate::model::FeatureStore {
+        version: 1,
+        features: features.to_vec(),
+    };
+    write_json(data_dir, FEATURES_FILE, &store)
 }
 
 #[cfg(test)]

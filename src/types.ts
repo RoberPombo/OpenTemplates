@@ -51,8 +51,20 @@ export type Repo = {
   remote?: string | null;
   provider: string;
   mainBranch: string;
+  /** Ficheros/dirs ignorados que hay que traer al worktree de una feature. */
+  bootstrap?: BootstrapEntry[];
   createdAt: number;
   updatedAt: number;
+};
+
+export type BootstrapMode = "auto" | "copy" | "link" | "clone";
+
+export type BootstrapEntry = {
+  /** Ruta relativa al repo; nunca `.`, `.git` ni con `..`. */
+  path: string;
+  mode: BootstrapMode;
+  /** Si falta y es obligatorio, la feature queda `blocked`. */
+  required?: boolean;
 };
 
 export type ProfileManifest = {

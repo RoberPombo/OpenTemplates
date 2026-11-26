@@ -1,3 +1,3 @@
 export { errorText } from "./errors";
-export { folderName } from "./paths";
+export { folderName, slugify } from "./paths";
 export { formatDuration, formatRelativeTime } from "./format";

@@ -9,14 +9,16 @@ use crate::context;
 use crate::git;
 use crate::library;
 use crate::model::{
-    AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, GhStatus,
-    GitCommitResult, GitCommitSummary, GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost,
-    ModelDetail, ModelLimit, ProfileManifest, PullRequestCheck, PullRequestInfo, Repo, ServerInfo,
-    SkillInfo, SkillRef, Workspace, WorkspaceMode, WorktreeStatus,
+    AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, Feature,
+    FeatureArtifact, FeatureProvisionOutcome, GhStatus, GitCommitResult, GitCommitSummary,
+    GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost, ModelDetail, ModelLimit,
+    ProfileManifest, PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo, SkillRef,
+    Workspace, WorkspaceMode, WorktreeStatus,
 };
 use crate::preview::{self, PreviewProbe};
 use crate::profiles;
-use crate::server::{self, ServerHandle};
+use crate::runner::{self, Owner};
+use crate::server;
 use crate::state::{AppState, ensure_workspace_dir, expand_tilde};
 
 fn now_ms() -> u64 {
@@ -27,30 +29,11 @@ fn now_ms() -> u64 {
 }
 
 fn find_opencode_bin() -> Option<PathBuf> {
-    if let Ok(value) = std::env::var("OPENCODE_BIN") {
-        let path = PathBuf::from(value);
-        if path.is_file() {
-            return Some(path);
-        }
-    }
-    if let Ok(path) = which::which("opencode") {
-        return Some(path);
-    }
-    let fallback = dirs::home_dir()?.join(".local/bin/opencode");
-    fallback.is_file().then_some(fallback)
+    runner::find_opencode_bin()
 }
 
-fn info_of(workspace_id: &str, handle: &mut ServerHandle) -> Option<ServerInfo> {
-    Some(ServerInfo {
-        workspace_id: workspace_id.to_string(),
-        context_hash: handle.context_hash.clone(),
-        base_url: format!("http://127.0.0.1:{}", handle.port),
-        password: handle.password.clone(),
-        port: handle.port,
-        pid: handle.child.id().unwrap_or(0),
-        model: handle.model.clone(),
-        models: handle.models.clone(),
-    })
+fn info_of(workspace_id: &str, handle: &mut server::ServerHandle) -> Option<ServerInfo> {
+    runner::info_for(&Owner::Workspace(workspace_id.to_string()), handle)
 }
 
 fn repo_of(state: &AppState, id: &str) -> Result<Repo, String> {
@@ -80,6 +63,7 @@ fn repo_from_path(path: &Path) -> Result<Repo, String> {
         provider: git::provider(remote.as_deref()),
         remote,
         main_branch: git::main_branch(&toplevel),
+        bootstrap: Vec::new(),
         created_at: now,
         updated_at: now,
     })
@@ -90,25 +74,18 @@ fn materialize_workspace(
     workspace: &Workspace,
     workspace_dir: &Path,
 ) -> Result<(String, config::Materialized), String> {
-    let (global, error) = config::read_global_config();
-    let global_dir = config::global_config_dir();
-    let plan = config::plan(workspace, workspace_dir, &global_dir, &global);
     let root = project_root(state, workspace);
-    let hash = context::fingerprint_without_model(&root, &plan.config, &plan.agents_md);
-    let context_dir = context::ensure(&state.data_dir, &hash, &root)?;
-    let mut materialized = config::write_plan(workspace, workspace_dir, &context_dir, &plan)?;
+    let context = runner::materialize(&state.data_dir, workspace, workspace_dir, &root)?;
+    let mut materialized = context.materialized;
     // Los workspaces anteriores guardaban su DB en workspaces/<id>. La primera
     // vez que entran en un contexto se copia para no perder sus sesiones.
     migrate_legacy_db(
         state,
         &workspace.id,
-        &context_dir,
+        &context.dir,
         &mut materialized.warnings,
     );
-    if let Some(error) = error {
-        materialized.warnings.push(error);
-    }
-    Ok((hash, materialized))
+    Ok((context.hash, materialized))
 }
 
 fn migrate_legacy_db(
@@ -274,9 +251,7 @@ pub fn bootstrap(state: State<'_, AppState>) -> Bootstrap {
         running,
         data_dir: state.data_dir.to_string_lossy().to_string(),
         opencode_bin: bin.as_ref().map(|p| p.to_string_lossy().to_string()),
-        error: bin
-            .is_none()
-            .then(|| "No se encontró el binario de opencode. Define OPENCODE_BIN.".to_string()),
+        error: bin.is_none().then(runner::bin_error),
         notices,
     }
 }
@@ -391,8 +366,7 @@ fn model_detail(key: &str, registry: &serde_json::Value) -> ModelDetail {
 #[tauri::command]
 pub async fn list_available_models() -> Result<Vec<ModelDetail>, String> {
     tauri::async_runtime::spawn_blocking(|| {
-        let bin = find_opencode_bin()
-            .ok_or_else(|| "No se encontró el binario de opencode".to_string())?;
+        let bin = find_opencode_bin().ok_or_else(runner::bin_error)?;
         let output = std::process::Command::new(bin)
             .arg("models")
             .env_remove("OPENCODE_CONFIG")
@@ -622,6 +596,128 @@ pub fn save_profile_agents_md(
 ) -> Result<String, String> {
     profiles::write_agents_md(&state.profiles_root(), &id, &content)?;
     Ok(content)
+}
+
+// ---------------------------------------------------------------------------
+// Features
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn list_features(state: State<'_, AppState>) -> Vec<Feature> {
+    state
+        .features
+        .lock()
+        .map(|items| items.clone())
+        .unwrap_or_default()
+}
+
+/// Upsert de una feature. El dominio (tipos, flujo y pasos) vive en el frontend;
+/// aquí solo se valida lo mínimo y se persiste.
+#[tauri::command]
+pub fn save_feature(state: State<'_, AppState>, feature: Feature) -> Result<Feature, String> {
+    if feature.id.trim().is_empty() {
+        return Err("La feature necesita un identificador".into());
+    }
+    if feature.name.trim().is_empty() {
+        return Err("Ponle un nombre a la feature".into());
+    }
+    {
+        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
+        match features.iter_mut().find(|item| item.id == feature.id) {
+            Some(existing) => *existing = feature.clone(),
+            None => features.push(feature.clone()),
+        }
+    }
+    state.save()?;
+    Ok(feature)
+}
+
+#[tauri::command]
+pub fn delete_feature(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    {
+        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
+        let before = features.len();
+        features.retain(|item| item.id != id);
+        if features.len() == before {
+            return Err(format!("La feature '{id}' no existe"));
+        }
+    }
+    state.save()
+}
+
+/// Crea los worktrees de la feature (metarepo y subrepos). Idempotente.
+#[tauri::command]
+pub fn provision_feature(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<FeatureProvisionOutcome, String> {
+    let feature = feature_of(&state, &id)?;
+
+    let (worktrees, warnings, errors, applied) = {
+        let report = crate::features::provision(&feature)?;
+        (
+            report.worktrees,
+            report.warnings,
+            report.errors,
+            report.applied,
+        )
+    };
+    let blocked = !errors.is_empty();
+    let mut feature = feature;
+    if blocked {
+        feature.status = "blocked".into();
+    } else if feature.status == "blocked" {
+        feature.status = "confirmed".into();
+    }
+    feature.updated_at = now_ms();
+    {
+        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
+        match features.iter_mut().find(|item| item.id == feature.id) {
+            Some(existing) => *existing = feature.clone(),
+            None => features.push(feature.clone()),
+        }
+    }
+    state.save()?;
+    Ok(FeatureProvisionOutcome {
+        feature,
+        worktrees,
+        warnings,
+        errors,
+        applied,
+        blocked,
+    })
+}
+
+fn feature_of(state: &AppState, id: &str) -> Result<Feature, String> {
+    state
+        .features
+        .lock()
+        .map_err(|_| "estado bloqueado")?
+        .iter()
+        .find(|item| item.id == id)
+        .cloned()
+        .ok_or_else(|| format!("La feature '{id}' no existe"))
+}
+
+/// Artefactos compartidos de la feature (`BRIEF.md`, `DECOMPOSITION.md`…).
+#[tauri::command]
+pub fn feature_artifacts(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<FeatureArtifact>, String> {
+    let feature = feature_of(&state, &id)?;
+    Ok(crate::artifacts::list(&feature))
+}
+
+#[tauri::command]
+pub fn write_feature_artifact(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    content: String,
+) -> Result<FeatureArtifact, String> {
+    let feature = feature_of(&state, &id)?;
+    crate::artifacts::write(&feature, &name, &content)
 }
 
 // ---------------------------------------------------------------------------
@@ -1074,7 +1170,7 @@ pub async fn delete_workspace(
             let mut empty = false;
             if let Some(handle) = servers.get_mut(&key) {
                 handle.workspaces.retain(|workspace| workspace != &id);
-                empty = handle.workspaces.is_empty();
+                empty = handle.is_empty();
             }
             if empty && let Some(handle) = servers.remove(&key) {
                 stopped.push(handle);
@@ -1111,9 +1207,10 @@ pub async fn delete_workspace(
                 }
             }
         }
-        // La DB del contexto es compartida: solo se borra si ningún otro
-        // workspace la usa.
+        // La DB del contexto es compartida: solo se borra si no queda ningún
+        // workspace ni feature enganchado a ese contexto.
         if let Some(hash) = workspace.context_hash.as_deref() {
+            let context_dir = context::context_dir(&state.data_dir, hash);
             let shared = state
                 .workspaces
                 .lock()
@@ -1122,9 +1219,11 @@ pub async fn delete_workspace(
                         .iter()
                         .any(|other| other.id != id && other.context_hash.as_deref() == Some(hash))
                 })
-                .unwrap_or(true);
+                .unwrap_or(true)
+                || context::read_meta(&context_dir)
+                    .map(|meta| !meta.workspaces.is_empty())
+                    .unwrap_or(false);
             if !shared {
-                let context_dir = context::context_dir(&state.data_dir, hash);
                 if let Ok(entries) = fs::read_dir(&context_dir) {
                     for entry in entries.flatten() {
                         let name = entry.file_name().to_string_lossy().to_string();
@@ -1142,48 +1241,6 @@ pub async fn delete_workspace(
         workspaces.retain(|workspace| workspace.id != id);
     }
     state.save()
-}
-
-/// Arranca (o reutiliza) el servidor de un contexto ya materializado.
-async fn ensure_context_server(
-    state: &AppState,
-    workspace: &Workspace,
-    hash: &str,
-    context_dir: &Path,
-) -> Result<ServerInfo, String> {
-    let id = workspace.id.clone();
-    let mut dead = None;
-    {
-        let mut servers = state.servers.lock().map_err(|_| "estado bloqueado")?;
-        let alive = servers.get_mut(hash).map(server::is_alive).unwrap_or(false);
-        if alive {
-            let handle = servers.get_mut(hash).expect("servidor comprobado");
-            if !handle.workspaces.iter().any(|workspace| workspace == &id) {
-                handle.workspaces.push(id.clone());
-            }
-            return info_of(&id, handle).ok_or("El servidor no tiene PID".into());
-        }
-        if servers.contains_key(hash) {
-            dead = servers.remove(hash);
-        }
-    }
-    if let Some(handle) = dead {
-        server::stop(handle).await;
-    }
-
-    let bin =
-        find_opencode_bin().ok_or("No se encontró el binario de opencode. Define OPENCODE_BIN.")?;
-    let (mut handle, _) = server::spawn(workspace, context_dir, &bin, hash).await?;
-    if !handle.workspaces.iter().any(|workspace| workspace == &id) {
-        handle.workspaces.push(id.clone());
-    }
-    let info = info_of(&id, &mut handle).ok_or("El servidor no tiene PID")?;
-    state
-        .servers
-        .lock()
-        .map_err(|_| "estado bloqueado")?
-        .insert(hash.to_string(), handle);
-    Ok(info)
 }
 
 /// Materializa y arranca un perfil distinto del perfil por defecto del
@@ -1244,7 +1301,14 @@ pub async fn start_profile(
         eprintln!("[opentemplates] {}", warning);
     }
     context::attach(&state.data_dir, &hash, &root, &workspace_id)?;
-    let mut info = ensure_context_server(&state, &applied, &hash, &context_dir).await?;
+    let mut info = runner::ensure_server(
+        &state,
+        &applied,
+        &hash,
+        &context_dir,
+        Owner::Workspace(workspace_id.clone()),
+    )
+    .await?;
     // Dos perfiles pueden compartir huella y diferir solo en el modelo.
     info.model = applied.model.clone();
     info.models = applied.models.clone();
@@ -1287,7 +1351,7 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
             let mut empty = false;
             if let Some(handle) = servers.get_mut(&key) {
                 handle.workspaces.retain(|workspace| workspace != &id);
-                empty = handle.workspaces.is_empty();
+                empty = handle.is_empty();
             }
             if empty && let Some(handle) = servers.remove(&key) {
                 stale.push(handle);
@@ -1299,7 +1363,14 @@ pub async fn start_workspace(state: State<'_, AppState>, id: String) -> Result<S
     }
 
     let context_dir = context::context_dir(&state.data_dir, &hash);
-    let info = ensure_context_server(&state, &workspace, &hash, &context_dir).await?;
+    let info = runner::ensure_server(
+        &state,
+        &workspace,
+        &hash,
+        &context_dir,
+        Owner::Workspace(id.clone()),
+    )
+    .await?;
     state.save()?;
     Ok(info)
 }
@@ -1320,7 +1391,7 @@ pub async fn stop_workspace(state: State<'_, AppState>, id: String) -> Result<()
             let mut empty = false;
             if let Some(handle) = servers.get_mut(&key) {
                 handle.workspaces.retain(|workspace| workspace != &id);
-                empty = handle.workspaces.is_empty();
+                empty = handle.is_empty();
             }
             if empty && let Some(handle) = servers.remove(&key) {
                 stopped.push(handle);

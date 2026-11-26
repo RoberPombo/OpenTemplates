@@ -19,6 +19,10 @@ import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/work
 import type { ResourcesGateway } from "../domain/repositories/ResourcesGateway";
 import type { ProfileGateway } from "../domain/repositories/ProfileGateway";
 import type { WorkspaceGateway } from "../domain/repositories/WorkspaceGateway";
+import type { FeatureGateway } from "../domain/repositories/FeatureGateway";
+import type { Feature } from "../domain/features/model";
+import type { FeatureArtifact, FeatureRunnerInfo } from "../domain/features/coordinator";
+import type { FeatureProvisionOutcome } from "../domain/features/provision";
 import type {
   AppSettings,
   Bootstrap,
@@ -245,5 +249,43 @@ export class TauriPreviewGateway implements PreviewGateway {
 
   openExternal(url: string): Promise<void> {
     return call(api.openExternal(url));
+  }
+}
+
+export class TauriFeatureGateway implements FeatureGateway {
+  list(): Promise<Feature[]> {
+    return call(api.listFeatures());
+  }
+
+  save(feature: Feature): Promise<Feature> {
+    return call(api.saveFeature(feature));
+  }
+
+  remove(id: string): Promise<void> {
+    return call(api.deleteFeature(id));
+  }
+
+  provision(id: string): Promise<FeatureProvisionOutcome> {
+    return call(api.provisionFeature(id));
+  }
+
+  artifacts(id: string): Promise<FeatureArtifact[]> {
+    return call(api.featureArtifacts(id));
+  }
+
+  writeArtifact(id: string, name: string, content: string): Promise<FeatureArtifact> {
+    return call(api.writeFeatureArtifact(id, name, content));
+  }
+
+  startRunner(id: string, profileId: string | null): Promise<FeatureRunnerInfo> {
+    return call(api.startFeatureRunner(id, profileId));
+  }
+
+  runnerStatus(id: string): Promise<FeatureRunnerInfo | null> {
+    return call(api.featureRunnerStatus(id));
+  }
+
+  stopRunner(id: string): Promise<void> {
+    return call(api.stopFeatureRunner(id));
   }
 }

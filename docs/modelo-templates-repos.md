@@ -130,6 +130,9 @@ suyos. No se duplica lo instalado; los assets propios viven en su carpeta.
 - Los AGENTS.md del repo (raíz y anidados, sin `node_modules`/`.git`) se escanean y
   se combinan en el AGENTS.md base, en orden padre → hijo. Por eso el contenido del
   repo forma parte de la huella.
+- Excepción, multirepo con submódulos: solo entra el AGENTS.md de la raíz. Ese
+  texto remite al del subrepo, que se lee ya en ejecución; los hijos no se combinan
+  ni cambian la huella. Ver `docs/modelo-features.md`.
 - Si el workspace nace de una issue, se escribe `ISSUE.md` en la carpeta del
   proyecto y se referencia desde el AGENTS.md combinado.
 - **Multirepo**: si hay raíz común, un solo proyecto y un solo `cwd`; las sesiones

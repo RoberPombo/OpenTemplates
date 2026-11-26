@@ -5,6 +5,7 @@
  */
 import {
   TauriBootstrapGateway,
+  TauriFeatureGateway,
   TauriLibraryGateway,
   TauriGitGateway,
   TauriModelCatalogGateway,
@@ -29,6 +30,12 @@ import { CreateWorkspace } from "./domain/usecases/CreateWorkspace";
 import { ApplyWorkspaceSettings } from "./domain/usecases/ApplyWorkspaceSettings";
 import { CheckForUpdate } from "./domain/usecases/CheckForUpdate";
 import { InstallUpdate } from "./domain/usecases/InstallUpdate";
+import { DeleteFeature } from "./domain/usecases/DeleteFeature";
+import { ProvisionFeature } from "./domain/usecases/ProvisionFeature";
+import { SaveFeature } from "./domain/usecases/SaveFeature";
+import { StartFeature } from "./domain/usecases/StartFeature";
+import { ApproveDecomposition } from "./domain/usecases/ApproveDecomposition";
+import { LaunchCoordinator } from "./domain/usecases/LaunchCoordinator";
 import type { BootstrapGateway, SettingsGateway } from "./domain/repositories/SettingsGateway";
 import type { ChatGateway, ChatServer } from "./domain/repositories/ChatGateway";
 import type { ConfirmDialog, FolderPicker } from "./domain/repositories/Dialogs";
@@ -46,12 +53,14 @@ import type { ProfileGateway } from "./domain/repositories/ProfileGateway";
 import type { TerminalGateway } from "./domain/repositories/TerminalGateway";
 import type { UpdateGateway } from "./domain/repositories/UpdateGateway";
 import type { WorkspaceGateway } from "./domain/repositories/WorkspaceGateway";
+import type { FeatureGateway } from "./domain/repositories/FeatureGateway";
 import type { ServerInfo } from "./types";
 
 export type Ports = {
   bootstrap: BootstrapGateway;
   workspaces: WorkspaceGateway;
   repos: RepoGateway;
+  features: FeatureGateway;
   git: GitGateway;
   pullRequests: PullRequestGateway;
   preview: PreviewGateway;
@@ -74,6 +83,7 @@ export class CompositionRoot {
   readonly bootstrap: BootstrapGateway;
   readonly workspaces: WorkspaceGateway;
   readonly repos: RepoGateway;
+  readonly features: FeatureGateway;
   readonly git: GitGateway;
   readonly pullRequests: PullRequestGateway;
   readonly preview: PreviewGateway;
@@ -93,6 +103,7 @@ export class CompositionRoot {
     this.bootstrap = overrides.bootstrap ?? new TauriBootstrapGateway();
     this.workspaces = overrides.workspaces ?? new TauriWorkspaceGateway();
     this.repos = overrides.repos ?? new TauriRepoGateway();
+    this.features = overrides.features ?? new TauriFeatureGateway();
     this.git = overrides.git ?? new TauriGitGateway();
     this.pullRequests = overrides.pullRequests ?? new TauriPullRequestGateway();
     this.preview = overrides.preview ?? new TauriPreviewGateway();
@@ -122,6 +133,30 @@ export class CompositionRoot {
 
   provideCreateWorkspace(): CreateWorkspace {
     return new CreateWorkspace(this.workspaces);
+  }
+
+  provideSaveFeature(): SaveFeature {
+    return new SaveFeature(this.features);
+  }
+
+  provideStartFeature(): StartFeature {
+    return new StartFeature(this.features);
+  }
+
+  provideDeleteFeature(): DeleteFeature {
+    return new DeleteFeature(this.features);
+  }
+
+  provideProvisionFeature(): ProvisionFeature {
+    return new ProvisionFeature(this.features);
+  }
+
+  provideLaunchCoordinator(): LaunchCoordinator {
+    return new LaunchCoordinator(this.features, (server) => this.provideChatGateway(server));
+  }
+
+  provideApproveDecomposition(): ApproveDecomposition {
+    return new ApproveDecomposition(this.features);
   }
 
   provideApplyWorkspaceSettings(server: ChatGateway | null): ApplyWorkspaceSettings {

@@ -97,6 +97,17 @@ pub struct Workspace {
     pub missing: bool,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BootstrapEntry {
+    pub path: String,
+    /// `auto`, `copy`, `link` o `clone`.
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub required: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Repo {
@@ -111,6 +122,9 @@ pub struct Repo {
     pub provider: String,
     #[serde(default = "default_main_branch")]
     pub main_branch: String,
+    /// Ficheros/dirs ignorados que se traen al worktree de una feature.
+    #[serde(default)]
+    pub bootstrap: Vec<BootstrapEntry>,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -427,6 +441,151 @@ pub struct ProfileStore {
     pub version: u32,
     #[serde(default, alias = "templates")]
     pub profiles: Vec<ProfileManifest>,
+}
+
+// ---------------------------------------------------------------------------
+// Features
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureScope {
+    pub id: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureRoot {
+    #[serde(default)]
+    pub repo_id: Option<String>,
+    pub name: String,
+    pub repo_path: String,
+    pub base_branch: String,
+    pub branch: String,
+    pub relative_path: String,
+    #[serde(default)]
+    pub bootstrap: Vec<BootstrapEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureTarget {
+    pub id: String,
+    #[serde(default)]
+    pub repo_id: Option<String>,
+    pub name: String,
+    pub repo_path: String,
+    pub base_branch: String,
+    pub branch: String,
+    pub relative_path: String,
+    #[serde(default)]
+    pub scopes: Vec<FeatureScope>,
+    #[serde(default)]
+    pub bootstrap: Vec<BootstrapEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureStep {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub step_type: String,
+    #[serde(default)]
+    pub target_id: Option<String>,
+    #[serde(default)]
+    pub scope_id: Option<String>,
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    pub status: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
+}
+
+/// Feature persistida. El dominio y la expansión de flujos viven en el frontend;
+/// Rust solo guarda y materializa worktrees.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Feature {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub flow: String,
+    pub status: String,
+    #[serde(default)]
+    pub brief: String,
+    #[serde(default)]
+    pub issue: Option<IssueRef>,
+    pub directory: String,
+    #[serde(default)]
+    pub root: Option<FeatureRoot>,
+    #[serde(default)]
+    pub targets: Vec<FeatureTarget>,
+    #[serde(default)]
+    pub steps: Vec<FeatureStep>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureStore {
+    #[serde(default)]
+    pub version: u32,
+    #[serde(default)]
+    pub features: Vec<Feature>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureArtifact {
+    pub name: String,
+    pub content: String,
+}
+
+/// Servidor y contexto efímero de una feature (coordinador). No es un
+/// workspace: vive en `state.servers` como dueño `Feature`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureRunnerInfo {
+    pub feature_id: String,
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    /// Carpeta de trabajo del coordinador (raíz de la feature).
+    pub directory: String,
+    pub context_hash: String,
+    pub server: ServerInfo,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionedWorktree {    /// `root` o `target`.
+    pub role: String,
+    pub repo_path: String,
+    pub path: String,
+    pub branch: String,
+    pub base: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureProvisionOutcome {
+    pub feature: Feature,
+    pub worktrees: Vec<ProvisionedWorktree>,
+    pub warnings: Vec<String>,
+    /// Fallos de bootstrap obligatorio; si hay alguno, `blocked` es `true`.
+    #[serde(default)]
+    pub errors: Vec<String>,
+    /// Entradas de bootstrap aplicadas (para mostrar progreso).
+    #[serde(default)]
+    pub applied: Vec<String>,
+    pub blocked: bool,
 }
 
 /// Líneas de un fichero no rastreado, calculadas por Rust al leerlo.

@@ -7,7 +7,7 @@ trabajadores con el mismo contexto comparten proceso, config y base de datos.
 
 ## Requisitos
 
-- opencode v2 en `PATH` (o `OPENCODE_BIN=/ruta/al/binario`).
+- opencode v2 en `PATH`, en `~/.opencode/bin` o con `OPENCODE_BIN=/ruta/al/binario`.
 - Node.js 20+, pnpm 10+ y Rust estable.
 - Linux: `webkit2gtk-4.1` (Tauri v2).
 
