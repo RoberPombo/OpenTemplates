@@ -54,6 +54,7 @@ export function GoalDialog({
   return (
     <div
       className="modal-backdrop"
+      role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

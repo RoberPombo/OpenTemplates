@@ -139,6 +139,7 @@ export function createTerminalGateway(server: ServerInfo): TerminalGateway {
           if (frame.kind === "data")
             input.handlers.onData({ text: frame.text, bytes: frame.bytes });
           else input.handlers.onCursor(frame.cursor);
+          return undefined;
         });
       });
       socket.addEventListener("close", (event) => {

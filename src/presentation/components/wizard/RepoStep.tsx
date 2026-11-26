@@ -44,6 +44,7 @@ export function RepoStep({
             key={item.id}
             type="button"
             className={`option ${!loose && repoId === item.id ? "on" : ""}`}
+            aria-label={`${item.name} · ${item.path}`}
             onClick={() => onSelectRepo(item.id)}
           >
             <span className="option-main">
@@ -59,7 +60,12 @@ export function RepoStep({
             </span>
           </button>
         ))}
-        <button type="button" className={`option ${loose ? "on" : ""}`} onClick={onSelectLoose}>
+        <button
+          type="button"
+          className={`option ${loose ? "on" : ""}`}
+          aria-label="Carpeta suelta (sin repo)"
+          onClick={onSelectLoose}
+        >
           <span className="option-main">
             <span className="option-title">Carpeta suelta (sin repo)</span>
             <span className="option-sub">Workspace ad-hoc como en la versión anterior.</span>

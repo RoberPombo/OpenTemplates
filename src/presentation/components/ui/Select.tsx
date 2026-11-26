@@ -411,8 +411,8 @@ export const SearchableSelect = memo(function SearchableSelect({
   const [query, setQuery] = useState("");
   const filter = BaseCombobox.useFilter({ locale: "es", sensitivity: "base" });
   const filterItem = useCallback(
-    (item: SelectOption, query: string) =>
-      filter.contains(`${item.label} ${item.description ?? ""} ${item.searchText ?? ""}`, query),
+    (item: SelectOption, text: string) =>
+      filter.contains(`${item.label} ${item.description ?? ""} ${item.searchText ?? ""}`, text),
     [filter],
   );
   const inputClasses = [

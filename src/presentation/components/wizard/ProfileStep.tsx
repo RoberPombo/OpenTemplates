@@ -91,6 +91,7 @@ export function ProfileStep({
         <button
           type="button"
           className={`option ${profileId === null ? "on" : ""}`}
+          aria-label="Sin perfil"
           onClick={() => onSelectProfile(null)}
         >
           <span className="option-main">
@@ -105,6 +106,7 @@ export function ProfileStep({
             key={item.id}
             type="button"
             className={`option ${profileId === item.id ? "on" : ""}`}
+            aria-label={item.name}
             onClick={() => onSelectProfile(item.id)}
           >
             <span className="option-main">

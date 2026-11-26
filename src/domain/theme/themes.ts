@@ -245,7 +245,7 @@ export const THEMES: Record<ThemeId, { label: string; tokens: ThemeTokens }> = {
 
 type AccentOverrides = Partial<ThemeTokens>;
 
-function accent(
+function defineAccent(
   label: string,
   dark: AccentOverrides,
   light: AccentOverrides,
@@ -258,7 +258,7 @@ export const ACCENTS: Record<
   AccentId,
   { label: string; overrides: Record<ThemeId, AccentOverrides> }
 > = {
-  verde: accent(
+  verde: defineAccent(
     "Verde",
     {},
     {},
@@ -276,7 +276,7 @@ export const ACCENTS: Record<
       onAccentStrong: "#000000",
     },
   ),
-  azul: accent(
+  azul: defineAccent(
     "Azul",
     {
       accent: "#5aa0ff",
@@ -318,7 +318,7 @@ export const ACCENTS: Record<
       onAccentStrong: "#000000",
     },
   ),
-  violeta: accent(
+  violeta: defineAccent(
     "Violeta",
     {
       accent: "#b18cff",

@@ -17,6 +17,7 @@ export function useUpdater() {
     let active = true;
     void root.updates.check().then((info) => {
       if (active && info) setUpdate(info);
+      return undefined;
     });
     return () => {
       active = false;

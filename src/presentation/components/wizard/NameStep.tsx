@@ -76,6 +76,7 @@ export function NameStep({
             <button
               type="button"
               className={`option ${mode === "worktree" ? "on" : ""}`}
+              aria-label="Worktree (recomendado)"
               onClick={() => onModeChange("worktree")}
             >
               <span className="option-main">
@@ -89,6 +90,7 @@ export function NameStep({
             <button
               type="button"
               className={`option ${mode === "principal" ? "on" : ""}`}
+              aria-label="Checkout principal"
               onClick={() => onModeChange("principal")}
             >
               <span className="option-main">
