@@ -91,7 +91,8 @@ export function makeEventHub() {
       });
       return {
         async *[Symbol.asyncIterator]() {
-          while (!done) {
+          for (;;) {
+            if (done) return;
             if (queue.length > 0) {
               yield queue.shift() as FakeEvent;
               continue;

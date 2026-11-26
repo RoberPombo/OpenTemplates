@@ -1,4 +1,4 @@
-import { lazy, Profiler, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Profiler, Suspense, useMemo, useState } from "react";
 import type { ProfileManifest, ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
@@ -91,10 +91,9 @@ export function WorkspaceView({
   repoPath,
 }: Props) {
   const root = useAppContext();
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(
-    () => workspace.profileId ?? profiles[0]?.id ?? null,
-  );
-  const [activeHash, setActiveHash] = useState<string | null>(null);
+  const defaultProfileId = workspace.profileId ?? profiles[0]?.id ?? null;
+  const [activeProfileIdState, setActiveProfileId] = useState<string | null>(defaultProfileId);
+  const [activeHashState, setActiveHash] = useState<string | null>(null);
   const [startingProfile, setStartingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [extraServers, setExtraServers] = useState<ServerInfo[]>([]);
@@ -105,6 +104,13 @@ export function WorkspaceView({
     }
     return [...byHash.values()];
   }, [defaultServer, contexts, extraServers]);
+  // Un contexto que desaparece del sondeo no puede seguir seleccionado: se
+  // ignora en render en vez de corregir el estado desde un efecto.
+  const activeHashValid =
+    activeHashState !== null && servers.some((item) => item.contextHash === activeHashState);
+  const activeHash = activeHashValid ? activeHashState : null;
+  const activeProfileId =
+    activeHashState !== null && !activeHashValid ? defaultProfileId : activeProfileIdState;
   const activeServer = useMemo(() => {
     if (activeHash) {
       const found = servers.find((item) => item.contextHash === activeHash);
@@ -118,19 +124,15 @@ export function WorkspaceView({
   }, [activeHash, servers, workspace.contextHash, defaultServer]);
   // El resto del componente usa este `server` como el contexto activo.
   const server = activeServer;
-  useEffect(() => {
-    if (activeHash && !servers.some((item) => item.contextHash === activeHash)) {
-      setActiveHash(null);
-      setActiveProfileId(workspace.profileId ?? profiles[0]?.id ?? null);
-    }
-  }, [activeHash, servers, workspace.profileId, profiles]);
+  const serverModel = server?.model;
+  const serverModels = server?.models;
   const chatWorkspace = useMemo(
     () => ({
       ...workspace,
-      model: server?.model ?? workspace.model,
-      models: server?.models?.length ? server.models : workspace.models,
+      model: serverModel ?? workspace.model,
+      models: serverModels?.length ? serverModels : workspace.models,
     }),
-    [workspace, server?.model, server?.models],
+    [workspace, serverModel, serverModels],
   );
   const [panelOpen, setPanelOpen] = useState(
     () => root.preferences.get(prefKeys.panelOpen) !== "0",
@@ -172,8 +174,10 @@ export function WorkspaceView({
   );
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
   const [liveRace, setLiveRace] = useState(false);
-  // `server` cambia de identidad en cada sondeo de estado; los memo se anclan a
-  // los valores que definen el cliente para no recrear gateways ni terminales.
+  // Los memo se anclan a los valores que definen el cliente (URL y contraseña)
+  // para no recrear gateways ni terminales: `server` cambia de identidad en cada
+  // sondeo. Recrear el gateway reiniciaría los efectos de chat y terminal.
+  // oxlint-disable react-hooks/exhaustive-deps -- gateway estable por URL/contraseña
   const client = useMemo(
     () => (server ? root.provideChatGateway(server) : null),
     [root, server?.baseUrl, server?.password],
@@ -182,6 +186,7 @@ export function WorkspaceView({
     () => (server ? root.provideTerminalGateway(server) : null),
     [root, server?.baseUrl, server?.password],
   );
+  // oxlint-enable react-hooks/exhaustive-deps
   const previewGateway = useMemo(() => root.providePreviewGateway(), [root]);
   function togglePanel() {
     setPanelOpen((prev) => {

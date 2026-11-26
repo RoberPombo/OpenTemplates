@@ -72,6 +72,9 @@ export function usePreview({ gateway, preferences, workspaceId }: UsePreviewInpu
   );
 
   useEffect(() => {
+    // Sondeo de la URL en un sistema externo (red); el estado de "probando"
+    // debe reflejarse de inmediato en la UI.
+    // oxlint-disable-next-line react/set-state-in-effect -- sondeo externo de la URL
     void runProbe(url);
   }, [url, runProbe]);
 

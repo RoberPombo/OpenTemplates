@@ -164,6 +164,9 @@ export function useChatSessions({
   }, [client, workspace.projectPath]);
 
   useEffect(() => {
+    // Carga de la lista de sesiones del workspace (I/O externa). El setState
+    // ocurre al resolver la promesa; el analizador no distingue ese límite.
+    // oxlint-disable-next-line react/set-state-in-effect -- carga asíncrona de sesiones
     void refreshSessions();
   }, [refreshSessions]);
 
@@ -192,6 +195,9 @@ export function useChatSessions({
     }
     if (openedSessionRef.current === openSessionId) return;
     openedSessionRef.current = openSessionId;
+    // `openSessionId` es una petición externa (carrera o coordinador) de abrir
+    // una sesión: hay que aplicarla una sola vez y avisar al solicitante.
+    // oxlint-disable-next-line react/set-state-in-effect -- apertura de sesión externa
     if (openSessionId !== sessionId) selectSession(openSessionId);
     onSessionOpened?.();
   }, [openSessionId, sessionId, selectSession, onSessionOpened]);
@@ -239,14 +245,22 @@ export function useChatSessions({
   }, [storageKey, root, onSessionReset]);
 
   useEffect(() => {
+    // La huella del ámbito (workspace + perfil) cambia la sesión persistida: el
+    // historial de la anterior no debe sobrevivir. Es un reset por cambio de
+    // fuente, no un valor derivable, y debe aplicarse antes de la recarga.
     messageCursorRef.current = null;
+    // oxlint-disable-next-line react/set-state-in-effect -- reset al cambiar de ámbito
     setSessionId(initialSessionId ?? root.preferences.get(storageKey));
     setMessages([]);
     setLoadedSession(null);
   }, [storageKey, initialSessionId, root]);
 
   useEffect(() => {
+    // Cambia la sesión activa: se invalida el cursor y el historial cargado y se
+    // pide el de la nueva. El efecto es el punto correcto porque la recarga es
+    // I/O externa y el reset debe precederla en el mismo commit.
     messageCursorRef.current = null;
+    // oxlint-disable-next-line react/set-state-in-effect -- reset y recarga al cambiar de sesión
     setLoadedSession(null);
     if (!sessionId) {
       setMessages([]);

@@ -126,6 +126,10 @@ export function useChatGoal({
     goalGenerationRef.current += 1;
     checkingGoalRef.current = false;
     processedTurnRef.current = 0;
+    // Reinicio del objetivo al cambiar de sesión: los avisos y el fin de turno
+    // anteriores no aplican a la nueva. No es derivable porque también hay que
+    // invalidar generación y cursores de la máquina de estados.
+    // oxlint-disable-next-line react/set-state-in-effect -- reset al cambiar de sesión
     setGoalError(null);
     setTurnEnd(null);
     const stored = sessionId
@@ -269,6 +273,9 @@ export function useChatGoal({
     if (busy || permissionsCount > 0 || formsCount > 0) return;
     if (!decisionModel) {
       pendingResumeRef.current = false;
+      // Política de reanudación: sin modelo de decisión el objetivo se pausa y
+      // se avisa. Forma parte del efecto de arranque, no de un render.
+      // oxlint-disable-next-line react/set-state-in-effect -- política de reanudación
       setGoalError("Este workspace no tiene un modelo de decisión disponible.");
       commitGoal(pauseGoal(goal, Date.now()));
       return;

@@ -83,8 +83,11 @@ export function useInspectorData({
   const [resources, setResources] = useState<ResourceUsage | null>(null);
   const [stats, setStats] = useState<WorkspaceStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
-  const [monthlyBudget, setMonthlyBudget] = useState<number | null>(() =>
-    parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))),
+  // El presupuesto vive en preferencias: se deriva del workspace activo en vez
+  // de copiarlo a estado y sincronizarlo con un efecto.
+  const monthlyBudget = useMemo(
+    () => parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))),
+    [root, workspace.id],
   );
   /** Inicio de la ventana de sondeo rápido; el efecto lo fija y lo reinician eventos y refresco manual. */
   const pollStartedAt = useRef(0);
@@ -101,9 +104,13 @@ export function useInspectorData({
   }, []);
 
   useEffect(() => {
+    // Al cambiar de workspace no deben verse las estadísticas del anterior.
+    // El reset es síncrono a propósito; el estado nuevo llega del sondeo. Las
+    // dependencias no se leen en el cuerpo: definen cuándo hay que reiniciar.
+    // oxlint-disable-next-line react/set-state-in-effect -- reset al cambiar de workspace
     setStats(null);
     setStatsError(null);
-    setMonthlyBudget(parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))));
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- deps de reset, no de lectura
   }, [root, workspace.id]);
 
   useEffect(() => {
@@ -193,6 +200,10 @@ export function useInspectorData({
       }
     })();
     return () => abort.abort();
+    // La suscripción se reabre al cambiar el cliente o el lector de MCPs; es
+    // el efecto correcto para un stream externo. El analizador no ve las
+    // dependencias detrás de la IIFE async.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- falso positivo con IIFE async
   }, [client, refreshMcp]);
 
   const refreshSession = useCallback(async () => {
@@ -216,7 +227,6 @@ export function useInspectorData({
   }, [client, sessionId]);
 
   const refreshStats = useCallback(async () => {
-    setMonthlyBudget(parseBudgetUsd(root.preferences.get(prefKeys.budget(workspace.id))));
     try {
       const result = await client.session.stats(usageStatsInput(usageRange, Date.now(), timeZone));
       setStats(result.data);
@@ -225,7 +235,7 @@ export function useInspectorData({
       setStats(null);
       setStatsError(errorText(err));
     }
-  }, [client, root, timeZone, usageRange, workspace.id]);
+  }, [client, timeZone, usageRange]);
 
   // Sondeo adaptativo: primer ciclo inmediato y luego 5 s durante la ventana
   // reciente, 15 s cuando el inspector lleva un rato abierto. Solo corre con la
@@ -278,6 +288,9 @@ export function useInspectorData({
 
     // El primer ciclo no espera al intervalo ni al foco.
     pollStartedAt.current = Date.now();
+    // Sondeo externo: los setState llegan al resolver las lecturas; el
+    // analizador no distingue ese límite y marca la llamada como síncrona.
+    // oxlint-disable-next-line react/set-state-in-effect -- primer ciclo de sondeo
     void loadSnapshot();
     void refreshSession();
     void refreshStats();

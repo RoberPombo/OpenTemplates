@@ -104,8 +104,12 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal feature-dialog" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <div
+        className="modal feature-dialog"
+        role="presentation"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <header className="modal-head">
           <div>
             <h2>Nueva feature</h2>
@@ -238,6 +242,7 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
                     type="checkbox"
                     checked={selected.has(repo.id)}
                     disabled={isRoot}
+                    aria-label={repo.name}
                     onChange={() => toggleTarget(repo.id)}
                   />
                   <span className="check-main">

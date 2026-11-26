@@ -12,24 +12,30 @@ import type { FeatureProvisionOutcome } from "../../domain/features/provision";
 export function useFeatures() {
   const root = useAppContext();
   const [features, setFeatures] = useState<Feature[]>([]);
-  const [artifacts, setArtifacts] = useState<FeatureArtifact[]>([]);
+  const [artifactsState, setArtifactsState] = useState<{
+    id: string;
+    items: FeatureArtifact[];
+  } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [coordinator, setCoordinator] = useState<FeatureRunnerInfo | null>(null);
+  const [coordinatorState, setCoordinatorState] = useState<{
+    id: string;
+    info: FeatureRunnerInfo | null;
+  } | null>(null);
   const [coordinatorBusy, setCoordinatorBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    root.features
-      .list()
-      .then((items) => {
+    void (async () => {
+      try {
+        const items = await root.features.list();
         if (alive) setFeatures(items);
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         if (alive) setError(errorText(err));
-      });
+      }
+    })();
     return () => {
       alive = false;
     };
@@ -39,18 +45,25 @@ export function useFeatures() {
     () => features.find((feature) => feature.id === selectedId) ?? null,
     [features, selectedId],
   );
+  // Los datos del coordinador y de los artefactos pertenecen a la feature
+  // seleccionada: si cambia la selección se ignoran en render, sin un reset
+  // intermedio desde un efecto.
+  const coordinator =
+    coordinatorState && coordinatorState.id === selectedId ? coordinatorState.info : null;
+  const artifacts = artifactsState && artifactsState.id === selectedId ? artifactsState.items : [];
 
   useEffect(() => {
-    setCoordinator(null);
     if (!selectedId) return;
+    const id = selectedId;
     let alive = true;
     root.features
-      .runnerStatus(selectedId)
+      .runnerStatus(id)
       .then((info) => {
-        if (alive) setCoordinator(info);
+        if (alive) setCoordinatorState({ id, info });
+        return undefined;
       })
       .catch(() => {
-        if (alive) setCoordinator(null);
+        if (alive) setCoordinatorState({ id, info: null });
       });
     return () => {
       alive = false;
@@ -58,18 +71,17 @@ export function useFeatures() {
   }, [selectedId, root]);
 
   useEffect(() => {
-    if (!selectedId) {
-      setArtifacts([]);
-      return;
-    }
+    if (!selectedId) return;
+    const id = selectedId;
     let alive = true;
     root.features
-      .artifacts(selectedId)
+      .artifacts(id)
       .then((items) => {
-        if (alive) setArtifacts(items);
+        if (alive) setArtifactsState({ id, items });
+        return undefined;
       })
       .catch(() => {
-        if (alive) setArtifacts([]);
+        if (alive) setArtifactsState({ id, items: [] });
       });
     return () => {
       alive = false;
@@ -79,9 +91,9 @@ export function useFeatures() {
   const reloadArtifacts = useCallback(
     async (id: string) => {
       try {
-        setArtifacts(await root.features.artifacts(id));
+        setArtifactsState({ id, items: await root.features.artifacts(id) });
       } catch {
-        setArtifacts([]);
+        setArtifactsState({ id, items: [] });
       }
     },
     [root],
@@ -149,7 +161,7 @@ export function useFeatures() {
       try {
         const result = await root.provideLaunchCoordinator().execute(feature, profileId);
         upsert(result.feature);
-        setCoordinator(result.runner);
+        setCoordinatorState({ id, info: result.runner });
         setNotice(
           result.runner.warnings.length > 0
             ? `Coordinador listo · ${result.runner.warnings.length} aviso(s).`
@@ -172,7 +184,7 @@ export function useFeatures() {
       setError(null);
       try {
         await root.features.stopRunner(id);
-        setCoordinator(null);
+        setCoordinatorState({ id, info: null });
         setNotice("Coordinador parado. La sesión queda guardada.");
       } catch (err: unknown) {
         setError(errorText(err));
@@ -211,12 +223,12 @@ export function useFeatures() {
     async (name: string, content: string): Promise<FeatureArtifact> => {
       if (!selectedId) throw new Error("No hay una feature seleccionada.");
       const saved = await root.features.writeArtifact(selectedId, name, content);
-      setArtifacts((prev) => {
-        const index = prev.findIndex((item) => item.name === saved.name);
-        if (index < 0) return [...prev, saved];
-        const next = [...prev];
-        next[index] = saved;
-        return next;
+      setArtifactsState((prev) => {
+        const items = prev?.id === selectedId ? prev.items : [];
+        const index = items.findIndex((item) => item.name === saved.name);
+        const next =
+          index < 0 ? [...items, saved] : items.map((item, i) => (i === index ? saved : item));
+        return { id: selectedId, items: next };
       });
       return saved;
     },

@@ -122,6 +122,9 @@ export function useWorkspaces() {
   }, [root, rememberWorkspace]);
 
   useEffect(() => {
+    // Carga inicial y recarga al cambiar las dependencias de `refresh` (I/O
+    // externa); el setState llega al resolver la promesa.
+    // oxlint-disable-next-line react/set-state-in-effect -- carga asíncrona del bootstrap
     void refresh();
   }, [refresh]);
 
@@ -135,6 +138,7 @@ export function useWorkspaces() {
         .status()
         .then((items) => {
           if (alive) setContexts(items);
+          return undefined;
         })
         .catch(() => undefined);
     };

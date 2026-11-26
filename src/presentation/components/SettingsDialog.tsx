@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { ShortcutsSettings } from "./ShortcutsSettings";
@@ -104,9 +104,9 @@ export function SettingsDialog({
     reapply,
   } = useWorkspaceSettingsForm({ workspace, client, onWorkspaceUpdated });
 
-  useEffect(() => {
-    if (!workspace && isWorkspaceSection(section)) setSection("appearance");
-  }, [workspace, section]);
+  // Sin workspace no hay secciones que dependan de él: la sección efectiva es
+  // apariencia aunque la seleccionada siga apuntando a una sección de workspace.
+  const activeSection = !workspace && isWorkspaceSection(section) ? "appearance" : section;
 
   async function toggleNotifications() {
     setNotificationError(null);
@@ -133,12 +133,16 @@ export function SettingsDialog({
       (item) => (!group.workspaceOnly || workspace) && item.label.toLowerCase().includes(query),
     ),
   })).filter((group) => group.items.length > 0);
-  const canApply = Boolean(workspace) && APPLY_SECTIONS.has(section);
-  const showStatus = Boolean(workspace) && isWorkspaceSection(section);
+  const canApply = Boolean(workspace) && APPLY_SECTIONS.has(activeSection);
+  const showStatus = Boolean(workspace) && isWorkspaceSection(activeSection);
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal settings" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <div
+        className="modal settings"
+        role="presentation"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <header className="modal-head">
           <div>
             <h2>Ajustes</h2>
@@ -169,8 +173,8 @@ export function SettingsDialog({
                   <button
                     key={item.id}
                     type="button"
-                    className={`settings-nav-item ${section === item.id ? "active" : ""}`}
-                    aria-current={section === item.id ? "page" : undefined}
+                    className={`settings-nav-item ${activeSection === item.id ? "active" : ""}`}
+                    aria-current={activeSection === item.id ? "page" : undefined}
                     onClick={() => {
                       setSection(item.id);
                       clearFeedback();
@@ -185,22 +189,22 @@ export function SettingsDialog({
           </aside>
 
           <div className="settings-main">
-            {!workspace && isWorkspaceSection(section) ? (
+            {!workspace && isWorkspaceSection(activeSection) ? (
               <div className="settings-pane">
                 <SectionHead
                   title="Sin workspace"
                   description="Selecciona un workspace en la barra lateral para configurar su modelo, skills, MCPs y presupuesto."
                 />
               </div>
-            ) : section === "appearance" ? (
+            ) : activeSection === "appearance" ? (
               <div className="settings-pane">
                 <AppearanceSettings />
               </div>
-            ) : section === "shortcuts" ? (
+            ) : activeSection === "shortcuts" ? (
               <div className="settings-pane">
                 <ShortcutsSettings />
               </div>
-            ) : section === "notifications" ? (
+            ) : activeSection === "notifications" ? (
               <div className="settings-pane">
                 <SectionHead
                   title="Notificaciones"
@@ -211,6 +215,7 @@ export function SettingsDialog({
                   <input
                     type="checkbox"
                     checked={notifications}
+                    aria-label="Avisarme cuando el agente termine o espere algo"
                     onChange={() => void toggleNotifications()}
                   />
                   <span className="check-main">
@@ -224,7 +229,7 @@ export function SettingsDialog({
                 </label>
                 {notificationError && <div className="inline-error">{notificationError}</div>}
               </div>
-            ) : section === "model" ? (
+            ) : activeSection === "model" ? (
               <div className="settings-pane">
                 <SectionHead
                   title="Modelo"
@@ -238,16 +243,16 @@ export function SettingsDialog({
                   onChange={(event) => changeModel(event.target.value)}
                 />
               </div>
-            ) : section === "skills" ? (
+            ) : activeSection === "skills" ? (
               <SkillsSection skills={skills} selected={selectedSkills} onToggle={toggleSkill} />
-            ) : section === "mcps" ? (
+            ) : activeSection === "mcps" ? (
               <McpsSection
                 mcps={mcps}
                 selected={selectedMcps}
                 statuses={statuses}
                 onToggle={toggleMcp}
               />
-            ) : section === "budget" ? (
+            ) : activeSection === "budget" ? (
               <div className="settings-pane">
                 <SectionHead
                   title="Presupuesto"
@@ -267,7 +272,7 @@ export function SettingsDialog({
                 />
                 {budgetError && <div className="inline-error">{budgetError}</div>}
               </div>
-            ) : section === "workspace-profile" ? (
+            ) : activeSection === "workspace-profile" ? (
               <div className="settings-pane">
                 <SectionHead
                   title="Perfil"
@@ -289,9 +294,9 @@ export function SettingsDialog({
                   </p>
                 )}
               </div>
-            ) : section === "repos" ? (
+            ) : activeSection === "repos" ? (
               <ReposSection repos={repos} workspaces={workspaces} onReposChanged={onReposChanged} />
-            ) : section === "profiles" ? (
+            ) : activeSection === "profiles" ? (
               <ProfilesSection
                 profiles={profiles}
                 library={library}

@@ -92,6 +92,8 @@ export function useChat({
   // Avisos: último turno avisado por sesión y permisos ya avisados (sin repetir).
   const lastNotifiedAt = useRef<Record<string, number>>({});
   const notifiedRequests = useRef<Set<string>>(new Set());
+  /** Sesión a la que pertenecen los ids de `notifiedRequests`. */
+  const notifiedSession = useRef<string | null>(null);
 
   const [stream, dispatch] = useReducer(chatStreamReducer, undefined, () =>
     initialChatStreamState({
@@ -205,11 +207,12 @@ export function useChat({
   const agentName = useCallback((id: string | undefined) => agentLabel(agents, id), [agents]);
 
   useEffect(() => {
-    // Los ids avisados son de la sesión anterior; se liberan al cambiarla.
-    notifiedRequests.current.clear();
-  }, [sessionId]);
-
-  useEffect(() => {
+    // Reinicio del compositor al cambiar de workspace o de ámbito: el comando y
+    // las skills forman parte de un borrador de UI que no sobrevive al cambio, y
+    // el reducer recarga las preferencias del ámbito nuevo. No es un valor
+    // derivable porque el cambio llega por props y debe aplicarse como una única
+    // transición junto al `dispatch`.
+    // oxlint-disable-next-line react/set-state-in-effect -- reset deliberado por cambio de workspace/scope
     setCommand(null);
     setSelectedSkills([]);
     dispatch({
@@ -218,7 +221,17 @@ export function useChat({
       agentChoice: root.preferences.get(agentStorageKey) ?? "",
       variant: root.preferences.get(variantStorageKey) ?? "",
     });
-  }, [modelStorageKey, agentStorageKey, variantStorageKey, initialSessionId, root]);
+  }, [
+    modelStorageKey,
+    agentStorageKey,
+    variantStorageKey,
+    // `initialSessionId` no se lee en el efecto, pero identifica una sesión
+    // abierta desde fuera (coordinador o carrera): su cambio debe reiniciar la
+    // selección del compositor igual que un cambio de ámbito.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- reinicio intencional al abrir sesión externa
+    initialSessionId,
+    root,
+  ]);
 
   // Catálogo de modelos y agentes del workspace.
   useEffect(() => {
@@ -376,6 +389,13 @@ export function useChat({
   useEffect(() => {
     let alive = true;
     const abort = new AbortController();
+    // Los ids avisados son de la sesión anterior: se liberan al abrir su
+    // suscripción, no en un efecto aparte. Comparar la sesión evita borrarlos
+    // si la suscripción se reabre por otro motivo.
+    if (notifiedSession.current !== sessionId) {
+      notifiedSession.current = sessionId;
+      notifiedRequests.current.clear();
+    }
     (async () => {
       try {
         for await (const event of client.event.subscribe({
@@ -455,6 +475,10 @@ export function useChat({
       abort.abort();
     };
   }, [
+    // La suscripción se reabre cuando cambia cualquiera de estas dependencias:
+    // es el efecto correcto para un stream externo. El analizador no las ve
+    // porque se leen dentro de la IIFE async y las marca como innecesarias.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- falso positivo con IIFE async
     client,
     sessionId,
     reloadIncremental,

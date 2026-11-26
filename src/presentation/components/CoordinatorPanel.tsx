@@ -50,9 +50,17 @@ export function CoordinatorPanel({
   const coordinate = feature.steps.find((step) => step.type === "coordinate");
   const sessionId = coordinate?.sessionId ?? null;
   const [draft, setDraft] = useState(saved?.content ?? decompositionTemplate(feature));
-  const [profileId, setProfileId] = useState(() =>
-    coordinatorProfileId(feature, profiles, defaultProfileId),
-  );
+  const defaultProfileForFeature = coordinatorProfileId(feature, profiles, defaultProfileId);
+  const [profileOverride, setProfileOverride] = useState<{
+    featureId: string;
+    id: string | null;
+  } | null>(null);
+  // La elección del usuario vale solo para la feature actual; al cambiar de
+  // feature se vuelve al perfil por defecto sin un efecto de reset.
+  const profileId =
+    profileOverride && profileOverride.featureId === feature.id
+      ? profileOverride.id
+      : defaultProfileForFeature;
   const [chatOpen, setChatOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -60,14 +68,16 @@ export function CoordinatorPanel({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // La descomposición guardada o la feature cambian la fuente del borrador:
+    // hay que descartar lo escrito y los avisos de la versión anterior. No es
+    // derivable porque el textarea conserva ediciones del usuario; `feature` se
+    // identifica por su id (el objeto cambia en cada refresco).
+    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- reset del borrador al cambiar de feature/artefacto
     setDraft(saved?.content ?? decompositionTemplate(feature));
     setNotice(null);
     setError(null);
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- reset por feature/artefacto
   }, [feature.id, saved?.content]);
-
-  useEffect(() => {
-    setProfileId(coordinatorProfileId(feature, profiles, defaultProfileId));
-  }, [feature, profiles, defaultProfileId]);
 
   async function save() {
     setSaving(true);
@@ -144,7 +154,9 @@ export function CoordinatorPanel({
                 ? "La sesión conserva el perfil con el que se creó."
                 : "Elige un perfil barato para coordinación."
             }
-            onChange={(event) => setProfileId(event.target.value || null)}
+            onChange={(event) =>
+              setProfileOverride({ featureId: feature.id, id: event.target.value || null })
+            }
           >
             {profiles.length === 0 && <option value="">Sin perfiles</option>}
             {profiles.map((profile) => (

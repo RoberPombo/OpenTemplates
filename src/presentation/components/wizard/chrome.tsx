@@ -18,8 +18,12 @@ export function WizardShell({
   children: ReactNode;
 }) {
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal wizard" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <div
+        className="modal wizard"
+        role="presentation"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <header className="modal-head">
           <div>
             <h2>Nuevo workspace</h2>
@@ -81,7 +85,7 @@ export function CheckboxRow({
 }) {
   return (
     <label className={`check ${checked ? "on" : ""}`}>
-      <input type="checkbox" checked={checked} onChange={onChange} />
+      <input type="checkbox" checked={checked} aria-label={title} onChange={onChange} />
       <span className="check-main">
         <span className="check-title">{title}</span>
         <span className="check-sub">{subtitle}</span>
