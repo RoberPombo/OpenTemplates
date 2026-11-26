@@ -3,6 +3,7 @@
  * features repita el mismo borrador con pequeñas variaciones.
  */
 import type { CreateFeatureInput, Feature } from "../domain/features/model";
+import type { FeatureRunnerInfo } from "../domain/features/coordinator";
 import { createFeatureDraft } from "../domain/features/model";
 import { startFeature } from "../domain/features/flow";
 
@@ -32,4 +33,26 @@ export function makeStartedFeature(
   const result = startFeature(makeFeature(overrides), now);
   if ("error" in result) throw new Error(result.error);
   return result.feature;
+}
+
+/** Runner de coordinador con servidor local ficticio; sin red. */
+export function makeRunner(
+  featureId = "feat-1",
+  overrides: Partial<FeatureRunnerInfo> = {},
+): FeatureRunnerInfo {
+  return {
+    featureId,
+    profileId: "coord",
+    directory: `/data/features/${featureId}/web`,
+    contextHash: "hash",
+    server: {
+      workspaceId: featureId,
+      baseUrl: "http://127.0.0.1:4100",
+      password: "pw",
+      port: 4100,
+      pid: 10,
+    },
+    warnings: [],
+    ...overrides,
+  };
 }
