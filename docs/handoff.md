@@ -48,9 +48,10 @@ Arquitectura de aislamiento: `docs/arquitectura-workspaces.md`.
     Dos workspaces con la misma huella comparten servidor y DB.
 - CORS: pasar `http://localhost:1420`, `http://tauri.localhost`,
   `https://tauri.localhost`, `tauri://localhost`.
-- CSP: el preview de la app en marcha necesita `frame-src http: https:` (la URL
-  es configurable). El iframe es de otro origen, no recibe IPC de Tauri y no se
-  puede inspeccionar desde el webview padre.
+- CSP: el preview de la app en marcha necesita `frame-src http://localhost:*
+  http://127.0.0.1:*` (la URL es configurable en puerto y ruta, pero solo se
+  embeben servidores locales). El iframe es de otro origen, no recibe IPC de
+  Tauri y no se puede inspeccionar desde el webview padre.
 - **Skills**: el descubrimiento NO respeta `XDG_CONFIG_HOME`; se descubren las de
   `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills` y las del
   proyecto. El aislamiento real es la allowlist de `permissions`:

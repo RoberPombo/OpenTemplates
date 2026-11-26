@@ -69,10 +69,11 @@ propio o sin cambiar el modelo de ventanas y renunciar a Wayland.
 
 ## Decisión
 
-1. **Preview por iframe** (opción A), con `frame-src http: https:` en la CSP
-   porque la URL es configurable por el usuario. El iframe es de otro origen y
-   no puede invocar IPC de Tauri; la carga de una URL arbitraria queda aislada
-   por el navegador.
+1. **Preview por iframe** (opción A), con `frame-src http://localhost:*
+   http://127.0.0.1:*` en la CSP: la URL es configurable en puerto y ruta, pero
+   solo se embeben servidores locales (decisión de #81). El iframe es de otro
+   origen y no puede invocar IPC de Tauri; la carga de una URL arbitraria queda
+   aislada por el navegador.
 2. **Sondeo en Rust** (`preview_probe`) en lugar de `fetch` del webview: sin
    CORS, con timeout, estado HTTP, título, detección de `X-Frame-Options` /
    `frame-ancestors` y mensajes de conexión concretos. Sin dependencias nuevas:
