@@ -1,37 +1,24 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { ShortcutsSettings } from "./ShortcutsSettings";
 import { ProfilesSection, ReposSection, SystemSection } from "./SettingsLibrarySections";
 import { McpsSection } from "./settings/McpsSection";
 import { SkillsSection } from "./settings/SkillsSection";
-import { errorText, toggleMapValue, toggleSetValue } from "../../domain/shared";
+import {
+  APPLY_SECTIONS,
+  NAV_GROUPS,
+  NavIcon,
+  isWorkspaceSection,
+  type SettingsSectionId,
+} from "./settings/navigation";
+import { useWorkspaceSettingsForm } from "../hooks/useWorkspaceSettingsForm";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import { NOTIFICATIONS_ON, notificationsEnabled } from "../../domain/chat/notifications";
-import { parseBudgetUsd } from "../../domain/chat/usage";
-import type {
-  Library,
-  McpInfo,
-  ProfileManifest,
-  Repo,
-  SkillInfo,
-  SkillRef,
-  Workspace,
-} from "../../types";
+import type { Library, ProfileManifest, Repo, Workspace } from "../../types";
 import type { ChatGateway as WorkspaceClient } from "../../domain/repositories/ChatGateway";
 
-export type SettingsSectionId =
-  | "appearance"
-  | "shortcuts"
-  | "notifications"
-  | "model"
-  | "skills"
-  | "mcps"
-  | "budget"
-  | "workspace-profile"
-  | "repos"
-  | "profiles"
-  | "system";
+export type { SettingsSectionId } from "./settings/navigation";
 
 type Props = {
   workspace?: Workspace | null;
@@ -49,157 +36,6 @@ type Props = {
   onClose: () => void;
   initialSection?: SettingsSectionId;
 };
-
-type IconName =
-  | "appearance"
-  | "shortcuts"
-  | "notifications"
-  | "model"
-  | "skills"
-  | "mcps"
-  | "budget"
-  | "profile"
-  | "repos"
-  | "profiles"
-  | "system";
-
-const ICONS: Record<IconName, ReactNode> = {
-  appearance: (
-    <>
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-    </>
-  ),
-  shortcuts: (
-    <>
-      <rect x="2" y="6" width="20" height="12" rx="2" />
-      <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6" />
-    </>
-  ),
-  notifications: (
-    <>
-      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-      <path d="M10 21h4" />
-    </>
-  ),
-  model: (
-    <>
-      <rect x="5" y="5" width="14" height="14" rx="2" />
-      <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
-    </>
-  ),
-  skills: (
-    <>
-      <path d="M12 3 9.6 8.6 4 11l5.6 2.4L12 19l2.4-5.6L20 11l-5.6-2.4L12 3Z" />
-      <path d="M19 3v3M20.5 4.5h-3" />
-    </>
-  ),
-  mcps: (
-    <>
-      <path d="M9 7V3M15 7V3" />
-      <rect x="5" y="7" width="14" height="8" rx="2" />
-      <path d="M12 15v6" />
-    </>
-  ),
-  budget: (
-    <>
-      <path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
-      <path d="M16 12h.01" />
-    </>
-  ),
-  profile: (
-    <>
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" />
-    </>
-  ),
-  repos: (
-    <>
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
-    </>
-  ),
-  profiles: (
-    <>
-      <path d="M12 2 3 7l9 5 9-5-9-5Z" />
-      <path d="m3 12 9 5 9-5M3 17l9 5 9-5" />
-    </>
-  ),
-  system: (
-    <>
-      <path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4" />
-      <circle cx="16" cy="6" r="2" />
-      <circle cx="8" cy="12" r="2" />
-      <circle cx="14" cy="18" r="2" />
-    </>
-  ),
-};
-
-type NavItem = { id: SettingsSectionId; label: string; icon: IconName };
-type NavGroup = { label: string; items: NavItem[]; workspaceOnly?: boolean };
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "Aplicación",
-    items: [
-      { id: "appearance", label: "Apariencia", icon: "appearance" },
-      { id: "shortcuts", label: "Atajos", icon: "shortcuts" },
-      { id: "notifications", label: "Notificaciones", icon: "notifications" },
-    ],
-  },
-  {
-    label: "Workspace",
-    workspaceOnly: true,
-    items: [
-      { id: "model", label: "Modelo", icon: "model" },
-      { id: "skills", label: "Skills", icon: "skills" },
-      { id: "mcps", label: "MCPs", icon: "mcps" },
-      { id: "budget", label: "Presupuesto", icon: "budget" },
-      { id: "workspace-profile", label: "Perfil", icon: "profile" },
-    ],
-  },
-  {
-    label: "Biblioteca",
-    items: [
-      { id: "repos", label: "Repositorios", icon: "repos" },
-      { id: "profiles", label: "Perfiles", icon: "profiles" },
-    ],
-  },
-  {
-    label: "Sistema",
-    items: [{ id: "system", label: "Rutas y worktrees", icon: "system" }],
-  },
-];
-
-const WORKSPACE_SECTIONS = new Set<SettingsSectionId>([
-  "model",
-  "skills",
-  "mcps",
-  "budget",
-  "workspace-profile",
-]);
-
-const APPLY_SECTIONS = new Set<SettingsSectionId>(["model", "skills", "mcps"]);
-
-function isWorkspaceSection(section: SettingsSectionId) {
-  return WORKSPACE_SECTIONS.has(section);
-}
-
-function NavIcon({ name }: { name: IconName }) {
-  return (
-    <svg
-      className="settings-nav-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {ICONS[name]}
-    </svg>
-  );
-}
 
 function SectionHead({
   title,
@@ -240,91 +76,37 @@ export function SettingsDialog({
   const root = useAppContext();
   const [section, setSection] = useState<SettingsSectionId>(initialSection);
   const [navQuery, setNavQuery] = useState("");
-  const [mcps, setMcps] = useState<McpInfo[]>([]);
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
-  const [statuses, setStatuses] = useState<Record<string, string>>({});
-  const [reapplying, setReapplying] = useState(false);
-  const [selectedMcps, setSelectedMcps] = useState<Set<string>>(
-    () => new Set(workspace?.mcpNames ?? []),
-  );
-  const [selectedSkills, setSelectedSkills] = useState<Map<string, SkillRef>>(
-    () => new Map((workspace?.skills ?? []).map((skill) => [skill.id, skill])),
-  );
-  const [model, setModel] = useState(workspace?.model ?? "");
-  const [applying, setApplying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [applied, setApplied] = useState(false);
   const [notifications, setNotifications] = useState(() =>
     notificationsEnabled(root.preferences.get(prefKeys.notifications)),
   );
   const [notificationError, setNotificationError] = useState<string | null>(null);
-  const [budgetText, setBudgetText] = useState(() =>
-    workspace ? (root.preferences.get(prefKeys.budget(workspace.id)) ?? "") : "",
-  );
-  const [budgetError, setBudgetError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    root.library
-      .mcps()
-      .then((items) => {
-        if (alive) setMcps(items);
-      })
-      .catch(() => undefined);
-    if (workspace) {
-      root.library
-        .skills(workspace.projectPath)
-        .then((items) => {
-          if (alive) setSkills(items);
-        })
-        .catch(() => undefined);
-    } else {
-      setSkills([]);
-    }
-    return () => {
-      alive = false;
-    };
-  }, [root, workspace?.projectPath]);
-
-  useEffect(() => {
-    setSelectedMcps(new Set(workspace?.mcpNames ?? []));
-    setSelectedSkills(new Map((workspace?.skills ?? []).map((skill) => [skill.id, skill])));
-    setModel(workspace?.model ?? "");
-    setBudgetText(workspace ? (root.preferences.get(prefKeys.budget(workspace.id)) ?? "") : "");
-    setBudgetError(null);
-    setError(null);
-    setWarnings([]);
-    setApplied(false);
-  }, [root.preferences, workspace?.id]);
+  const {
+    mcps,
+    skills,
+    statuses,
+    selectedMcps,
+    selectedSkills,
+    model,
+    budgetText,
+    budgetError,
+    applying,
+    reapplying,
+    error,
+    warnings,
+    applied,
+    changeModel,
+    changeBudget,
+    toggleMcp,
+    toggleSkill,
+    clearFeedback,
+    apply,
+    reapply,
+  } = useWorkspaceSettingsForm({ workspace, client, onWorkspaceUpdated });
 
   useEffect(() => {
     if (!workspace && isWorkspaceSection(section)) setSection("appearance");
   }, [workspace, section]);
-
-  const skillList = useMemo(() => {
-    const map = new Map<string, SkillInfo>();
-    for (const skill of skills) map.set(skill.id, skill);
-    return [...map.values()].sort((a, b) => a.id.localeCompare(b.id));
-  }, [skills]);
-
-  async function refreshStatuses() {
-    if (!client || !workspace) return;
-    try {
-      const result = await client.mcp.list({
-        location: { directory: workspace.projectPath },
-      });
-      const next: Record<string, string> = {};
-      for (const item of result.data) next[item.name] = item.state;
-      setStatuses(next);
-    } catch {
-      // El servidor puede estar arrancando; se reintenta al aplicar.
-    }
-  }
-
-  useEffect(() => {
-    void refreshStatuses();
-  }, [workspace?.id, workspace?.projectPath, client]);
 
   async function toggleNotifications() {
     setNotificationError(null);
@@ -342,79 +124,6 @@ export function SettingsDialog({
     }
     root.preferences.set(prefKeys.notifications, NOTIFICATIONS_ON);
     setNotifications(true);
-  }
-
-  function changeBudget(value: string) {
-    if (!workspace) return;
-    setBudgetText(value);
-    const raw = value.trim();
-    if (!raw) {
-      root.preferences.remove(prefKeys.budget(workspace.id));
-      setBudgetError(null);
-      return;
-    }
-    const budget = parseBudgetUsd(raw);
-    if (budget === null) {
-      setBudgetError("Introduce un importe mayor que 0 o deja el campo vacío.");
-      return;
-    }
-    root.preferences.set(prefKeys.budget(workspace.id), String(budget));
-    setBudgetError(null);
-  }
-
-  function toggleMcp(name: string) {
-    setSelectedMcps((prev) => toggleSetValue(prev, name));
-    setApplied(false);
-  }
-  function toggleSkill(skill: SkillInfo) {
-    setSelectedSkills((prev) => toggleMapValue(prev, skill.id, { id: skill.id, path: skill.path }));
-    setApplied(false);
-  }
-  async function apply() {
-    if (!workspace) return;
-    setApplying(true);
-    setError(null);
-    setWarnings([]);
-    try {
-      const { outcome, mcpErrors } = await root
-        .provideApplyWorkspaceSettings(client ?? null)
-        .execute({
-          workspace,
-          mcpNames: [...selectedMcps],
-          skills: [...selectedSkills.values()],
-          model,
-          mcps,
-        });
-      setWarnings(outcome.warnings);
-      onWorkspaceUpdated?.(outcome.workspace, outcome.warnings);
-      if (mcpErrors.length > 0) setError(mcpErrors[mcpErrors.length - 1]);
-      await refreshStatuses();
-      setApplied(true);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setApplying(false);
-    }
-  }
-
-  async function reapply() {
-    if (!workspace) return;
-    setReapplying(true);
-    setError(null);
-    setWarnings([]);
-    try {
-      const outcome = await root.workspaces.reapplyProfile(workspace.id);
-      setSelectedMcps(new Set(outcome.workspace.mcpNames));
-      setSelectedSkills(new Map(outcome.workspace.skills.map((skill) => [skill.id, skill])));
-      setModel(outcome.workspace.model ?? "");
-      setWarnings(outcome.warnings);
-      onWorkspaceUpdated?.(outcome.workspace, outcome.warnings);
-      setApplied(true);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setReapplying(false);
-    }
   }
 
   const query = navQuery.trim().toLowerCase();
@@ -464,10 +173,7 @@ export function SettingsDialog({
                     aria-current={section === item.id ? "page" : undefined}
                     onClick={() => {
                       setSection(item.id);
-                      setError(null);
-                      setWarnings([]);
-                      setApplied(false);
-                      setBudgetError(null);
+                      clearFeedback();
                     }}
                   >
                     <NavIcon name={item.icon} />
@@ -529,14 +235,11 @@ export function SettingsDialog({
                   className="text-input"
                   value={model}
                   placeholder="provider/modelo (vacío = el de la config global)"
-                  onChange={(event) => {
-                    setModel(event.target.value);
-                    setApplied(false);
-                  }}
+                  onChange={(event) => changeModel(event.target.value)}
                 />
               </div>
             ) : section === "skills" ? (
-              <SkillsSection skills={skillList} selected={selectedSkills} onToggle={toggleSkill} />
+              <SkillsSection skills={skills} selected={selectedSkills} onToggle={toggleSkill} />
             ) : section === "mcps" ? (
               <McpsSection
                 mcps={mcps}
