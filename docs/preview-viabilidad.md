@@ -77,7 +77,8 @@ propio o sin cambiar el modelo de ventanas y renunciar a Wayland.
 2. **Sondeo en Rust** (`preview_probe`) en lugar de `fetch` del webview: sin
    CORS, con timeout, estado HTTP, título, detección de `X-Frame-Options` /
    `frame-ancestors` y mensajes de conexión concretos. Sin dependencias nuevas:
-   `std::net::TcpStream`. Para `https` solo se comprueba que el puerto acepta
+   `std::net::TcpStream`. Solo acepta hosts de loopback y no sigue redirecciones
+   fuera de loopback (#83); para `https` solo se comprueba que el puerto acepta
    conexión (no se inspecciona TLS).
 3. **Abrir en navegador** con un comando Tauri (`open_external`) que usa
    `xdg-open`/`open`/`rundll32` sin shell y sin esperar.
