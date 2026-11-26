@@ -1,8 +1,9 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::config;
 use crate::context;
@@ -19,7 +20,7 @@ use crate::preview::{self, PreviewProbe};
 use crate::profiles;
 use crate::runner::{self, Owner};
 use crate::server;
-use crate::state::{AppState, ensure_workspace_dir, expand_tilde};
+use crate::state::{AppState, SessionFileMode, ensure_workspace_dir, expand_tilde};
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -1558,57 +1559,213 @@ pub fn save_settings(
 // Ficheros de sesión
 // ---------------------------------------------------------------------------
 
-/// Tope de lectura: un export con muchas herramientas crece, pero no debe
-/// permitir cargar un fichero arbitrario en memoria.
+/// Tope de escritura y lectura: un export con muchas herramientas crece, pero
+/// no debe permitir cargar ni volcar un fichero arbitrario en memoria.
 const SESSION_FILE_MAX_BYTES: u64 = 32 * 1024 * 1024;
 
-/// Solo se leen y escriben ficheros `.json`; el diálogo nativo ya filtra, pero
-/// la ruta también puede llegar manipulada.
-fn session_file_path(raw: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(raw);
-    let is_json = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
-    if !is_json {
-        return Err("El archivo debe tener extensión .json".into());
-    }
-    Ok(path)
+/// Ticket devuelto al abrir el diálogo nativo. La ruta es la canónica y el
+/// token solo autoriza una operación sobre esa ruta exacta.
+#[derive(Debug, serde::Serialize)]
+pub struct SessionFileTicket {
+    path: String,
+    token: String,
 }
 
-/// Escribe un export de sesión. Devuelve `false` si el fichero ya existe y no
-/// se pidió sobrescribir: el frontend pregunta y reintenta con `overwrite`.
+fn session_file_extension_ok(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+}
+
+fn reject_symlink(path: &Path) -> Result<(), String> {
+    if fs::symlink_metadata(path)
+        .map(|meta| meta.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err("No se permiten enlaces simbólicos para los ficheros de sesión".into());
+    }
+    Ok(())
+}
+
+/// Valida la ruta cruda y devuelve la ruta canónica que se usará de verdad.
+///
+/// Se exige ruta absoluta, extensión `.json` y ningún componente `..`. Para
+/// lectura se resuelve el fichero completo (que debe existir y no ser un
+/// enlace simbólico); para escritura se resuelve la carpeta padre y se une el
+/// nombre, de modo que la ruta devuelta no pueda salirse de esa carpeta.
+fn resolve_session_file(raw: &str, mode: SessionFileMode) -> Result<PathBuf, String> {
+    if raw.trim().is_empty() {
+        return Err("La ruta del archivo está vacía".into());
+    }
+    let path = PathBuf::from(raw);
+    if !path.is_absolute() {
+        return Err("La ruta del archivo debe ser absoluta".into());
+    }
+    if path
+        .components()
+        .any(|component| component == Component::ParentDir)
+    {
+        return Err("La ruta del archivo no puede contener '..'".into());
+    }
+    if !session_file_extension_ok(&path) {
+        return Err("El archivo debe tener extensión .json".into());
+    }
+
+    match mode {
+        SessionFileMode::Read => {
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|e| format!("No se pudo leer {}: {e}", path.display()))?;
+            reject_symlink(&path)?;
+            if !metadata.file_type().is_file() {
+                return Err("El archivo de sesión no es un fichero regular".into());
+            }
+            fs::canonicalize(&path)
+                .map_err(|e| format!("No se pudo resolver {}: {e}", path.display()))
+        }
+        SessionFileMode::Write => {
+            let parent = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .ok_or_else(|| format!("La ruta {} no tiene carpeta padre", path.display()))?;
+            let name = path
+                .file_name()
+                .ok_or_else(|| format!("La ruta {} no tiene nombre de archivo", path.display()))?;
+            let canonical_parent = fs::canonicalize(parent)
+                .map_err(|e| format!("No se pudo resolver {}: {e}", parent.display()))?;
+            let target = canonical_parent.join(name);
+            match fs::symlink_metadata(&target) {
+                Ok(metadata) => {
+                    if metadata.file_type().is_symlink() {
+                        return Err(
+                            "No se permiten enlaces simbólicos para los ficheros de sesión".into(),
+                        );
+                    }
+                    if !metadata.file_type().is_file() {
+                        return Err("El archivo de sesión no es un fichero regular".into());
+                    }
+                    fs::canonicalize(&target)
+                        .map_err(|e| format!("No se pudo resolver {}: {e}", target.display()))
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(target),
+                Err(err) => Err(format!("No se pudo leer {}: {err}", target.display())),
+            }
+        }
+    }
+}
+
+/// Abre el diálogo nativo desde Rust y emite el ticket de un solo uso. El
+/// webview nunca elige la ruta: solo recibe la que el usuario confirmó.
 #[tauri::command]
-pub fn write_text_file(path: String, contents: String, overwrite: bool) -> Result<bool, String> {
-    let path = session_file_path(&path)?;
-    if path.exists() && !overwrite {
+pub async fn begin_session_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mode: String,
+    suggested_name: Option<String>,
+) -> Result<Option<SessionFileTicket>, String> {
+    let mode = SessionFileMode::parse(&mode)
+        .ok_or_else(|| "Modo de fichero de sesión desconocido".to_string())?;
+
+    let builder = app
+        .dialog()
+        .file()
+        .add_filter("Sesión de OpenTemplates", &["json"]);
+    let builder = match mode {
+        SessionFileMode::Read => builder.set_title("Importar sesión"),
+        SessionFileMode::Write => {
+            let builder = builder.set_title("Exportar sesión");
+            let suggested = suggested_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .and_then(|name| Path::new(name).file_name())
+                .map(|name| name.to_string_lossy().into_owned());
+            match suggested {
+                Some(name) => builder.set_file_name(name),
+                None => builder,
+            }
+        }
+    };
+
+    let picked = match mode {
+        SessionFileMode::Read => builder.blocking_pick_file(),
+        SessionFileMode::Write => builder.blocking_save_file(),
+    };
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let picked = picked
+        .into_path()
+        .map_err(|e| format!("Ruta no válida: {e}"))?;
+    let raw = picked.to_string_lossy();
+    let path = resolve_session_file(&raw, mode)?;
+    let token = state.issue_session_ticket(mode, path.clone())?;
+    Ok(Some(SessionFileTicket {
+        path: path.to_string_lossy().into_owned(),
+        token,
+    }))
+}
+
+fn write_session_file(
+    state: &AppState,
+    path: &str,
+    contents: &str,
+    overwrite: bool,
+    token: &str,
+) -> Result<bool, String> {
+    if contents.len() as u64 > SESSION_FILE_MAX_BYTES {
+        return Err(format!(
+            "El archivo supera el máximo de {} MiB",
+            SESSION_FILE_MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    let resolved = resolve_session_file(path, SessionFileMode::Write)?;
+    state.consume_session_ticket(token, SessionFileMode::Write, &resolved)?;
+    if resolved.exists() && !overwrite {
         return Ok(false);
     }
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("No se pudo crear {}: {e}", parent.display()))?;
-    }
-    fs::write(&path, contents)
-        .map_err(|e| format!("No se pudo escribir {}: {e}", path.display()))?;
+    fs::write(&resolved, contents)
+        .map_err(|e| format!("No se pudo escribir {}: {e}", resolved.display()))?;
     Ok(true)
 }
 
-/// Lee un export de sesión desde una ruta elegida en el diálogo nativo.
-#[tauri::command]
-pub fn read_text_file(path: String) -> Result<String, String> {
-    let path = session_file_path(&path)?;
-    let metadata =
-        fs::metadata(&path).map_err(|e| format!("No se pudo leer {}: {e}", path.display()))?;
+fn read_session_file(state: &AppState, path: &str, token: &str) -> Result<String, String> {
+    let resolved = resolve_session_file(path, SessionFileMode::Read)?;
+    state.consume_session_ticket(token, SessionFileMode::Read, &resolved)?;
+    let metadata = fs::metadata(&resolved)
+        .map_err(|e| format!("No se pudo leer {}: {e}", resolved.display()))?;
     if metadata.len() > SESSION_FILE_MAX_BYTES {
         return Err(format!(
             "El archivo supera el máximo de {} MiB",
             SESSION_FILE_MAX_BYTES / (1024 * 1024)
         ));
     }
-    fs::read_to_string(&path).map_err(|e| format!("No se pudo leer {}: {e}", path.display()))
+    fs::read_to_string(&resolved)
+        .map_err(|e| format!("No se pudo leer {}: {e}", resolved.display()))
+}
+
+/// Escribe un export de sesión. Devuelve `false` si el fichero ya existe y no
+/// se pidió sobrescribir: el frontend pregunta y reintenta con una nueva
+/// elección en el diálogo (y por tanto un nuevo token).
+#[tauri::command]
+pub fn write_text_file(
+    state: State<'_, AppState>,
+    path: String,
+    contents: String,
+    overwrite: bool,
+    token: String,
+) -> Result<bool, String> {
+    write_session_file(&state, &path, &contents, overwrite, &token)
+}
+
+/// Lee un export de sesión. La ruta y el token deben ser los que emitió Rust
+/// al abrir el diálogo nativo.
+#[tauri::command]
+pub fn read_text_file(
+    state: State<'_, AppState>,
+    path: String,
+    token: String,
+) -> Result<String, String> {
+    read_session_file(&state, &path, &token)
 }
 
 /// Comprueba la URL del preview desde Rust, sin CORS ni DOM del webview.
@@ -1705,35 +1862,61 @@ mod tests {
         ))
     }
 
-    #[test]
-    fn escribe_y_lee_un_json() {
-        let dir = temp_dir("escribe");
-        let path = dir.join("sesion.json");
-        let contents = "{\"hola\":\"mundo\"}\n".to_string();
+    fn session_state(label: &str) -> AppState {
+        AppState::load(temp_dir(label))
+    }
 
+    /// Emite un ticket igual que lo haría el diálogo nativo, pero sin abrirlo.
+    fn issue(state: &AppState, mode: SessionFileMode, raw: &str) -> (String, String) {
+        let canonical = resolve_session_file(raw, mode).unwrap();
+        let token = state.issue_session_ticket(mode, canonical.clone()).unwrap();
+        (canonical.to_string_lossy().into_owned(), token)
+    }
+
+    #[test]
+    fn escribe_y_lee_un_json_con_ticket() {
+        let dir = temp_dir("escribe");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sesion.json");
+        let raw = path.to_string_lossy().into_owned();
+        let contents = "{\"hola\":\"mundo\"}\n".to_string();
+        let state = session_state("escribe");
+
+        let (write_path, write_token) = issue(&state, SessionFileMode::Write, &raw);
         assert_eq!(
-            write_text_file(path.to_string_lossy().into(), contents.clone(), false),
+            write_session_file(&state, &write_path, &contents, false, &write_token),
             Ok(true)
         );
-        assert_eq!(read_text_file(path.to_string_lossy().into()), Ok(contents));
+
+        let (read_path, read_token) = issue(&state, SessionFileMode::Read, &raw);
+        assert_eq!(
+            read_session_file(&state, &read_path, &read_token),
+            Ok(contents)
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
-    fn no_sobrescribe_sin_permiso() {
+    fn no_sobrescribe_sin_permiso_y_el_token_es_de_un_solo_uso() {
         let dir = temp_dir("sobrescribe");
-        std::fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).unwrap();
         let path = dir.join("sesion.json");
         fs::write(&path, "previo").unwrap();
+        let raw = path.to_string_lossy().into_owned();
+        let state = session_state("sobrescribe");
 
+        let (write_path, write_token) = issue(&state, SessionFileMode::Write, &raw);
         assert_eq!(
-            write_text_file(path.to_string_lossy().into(), "nuevo".into(), false),
+            write_session_file(&state, &write_path, "nuevo", false, &write_token),
             Ok(false)
         );
         assert_eq!(fs::read_to_string(&path).unwrap(), "previo");
+        // El token ya se consumió, incluso sin haber escrito.
+        assert!(write_session_file(&state, &write_path, "nuevo", true, &write_token).is_err());
 
+        let (retry_path, retry_token) = issue(&state, SessionFileMode::Write, &raw);
         assert_eq!(
-            write_text_file(path.to_string_lossy().into(), "nuevo".into(), true),
+            write_session_file(&state, &retry_path, "nuevo", true, &retry_token),
             Ok(true)
         );
         assert_eq!(fs::read_to_string(&path).unwrap(), "nuevo");
@@ -1743,24 +1926,121 @@ mod tests {
     #[test]
     fn rechaza_extensiones_que_no_son_json() {
         let dir = temp_dir("extension");
-        let path = dir.join("sesion.txt");
+        fs::create_dir_all(&dir).unwrap();
+        let state = session_state("extension");
+        let raw = dir.join("sesion.txt").to_string_lossy().into_owned();
 
-        assert!(write_text_file(path.to_string_lossy().into(), "{}".into(), false).is_err());
-        assert!(read_text_file(path.to_string_lossy().into()).is_err());
+        assert!(resolve_session_file(&raw, SessionFileMode::Write).is_err());
+        assert!(resolve_session_file(&raw, SessionFileMode::Read).is_err());
+        assert!(write_session_file(&state, &raw, "{}", false, "token").is_err());
+        assert!(read_session_file(&state, &raw, "token").is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rechaza_token_ausente_invalido_o_de_otra_operacion() {
+        let dir = temp_dir("token");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sesion.json");
+        let raw = path.to_string_lossy().into_owned();
+        let state = session_state("token");
+
+        // Sin token o con uno inventado no se escribe nada.
+        assert!(write_session_file(&state, &raw, "{}", false, "").is_err());
+        assert!(write_session_file(&state, &raw, "{}", false, "inventado").is_err());
+        assert!(!path.exists());
+
+        // Un token de lectura no sirve para escribir.
+        fs::write(&path, "{}").unwrap();
+        let (_, read_token) = issue(&state, SessionFileMode::Read, &raw);
+        assert!(write_session_file(&state, &raw, "{}", true, &read_token).is_err());
+
+        // Escritura correcta y lectura posterior con el token de escritura.
+        let (write_path, write_token) = issue(&state, SessionFileMode::Write, &raw);
+        assert_eq!(
+            write_session_file(&state, &write_path, "{}", true, &write_token),
+            Ok(true)
+        );
+        assert!(read_session_file(&state, &write_path, &write_token).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rechaza_rutas_fuera_de_la_raiz_autorizada() {
+        let dir = temp_dir("fuera");
+        let root = dir.join("root");
+        fs::create_dir_all(&root).unwrap();
+        let state = session_state("fuera");
+        let allowed = root.join("permitido.json");
+        let (_, token) = issue(&state, SessionFileMode::Write, &allowed.to_string_lossy());
+
+        // Otra ruta con el mismo token.
+        let other = root.join("otro.json").to_string_lossy().into_owned();
+        assert!(write_session_file(&state, &other, "{}", false, &token).is_err());
+        assert!(!root.join("otro.json").exists());
+
+        // Intento de salir con `..`, aunque el fichero quede junto a la raíz.
+        let escape = root.join("../fuera.json").to_string_lossy().into_owned();
+        assert!(write_session_file(&state, &escape, "{}", false, "token").is_err());
+        assert!(resolve_session_file(&escape, SessionFileMode::Write).is_err());
+        assert!(!dir.join("fuera.json").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn rechaza_ficheros_que_superan_el_tope() {
+        let dir = temp_dir("tamano");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("grande.json");
+        fs::File::create(&path)
+            .unwrap()
+            .set_len(SESSION_FILE_MAX_BYTES + 1)
+            .unwrap();
+        let raw = path.to_string_lossy().into_owned();
+        let state = session_state("tamano");
+
+        let (read_path, token) = issue(&state, SessionFileMode::Read, &raw);
+        let err = read_session_file(&state, &read_path, &token).unwrap_err();
+        assert!(err.contains("máximo"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn lee_extension_en_mayusculas() {
         let dir = temp_dir("mayusculas");
+        fs::create_dir_all(&dir).unwrap();
         let path = dir.join("sesion.JSON");
+        let raw = path.to_string_lossy().into_owned();
+        let state = session_state("mayusculas");
+
+        let (write_path, write_token) = issue(&state, SessionFileMode::Write, &raw);
         assert_eq!(
-            write_text_file(path.to_string_lossy().into(), "{}".into(), false),
+            write_session_file(&state, &write_path, "{}", false, &write_token),
             Ok(true)
         );
+        let (read_path, read_token) = issue(&state, SessionFileMode::Read, &raw);
         assert_eq!(
-            read_text_file(path.to_string_lossy().into()),
+            read_session_file(&state, &read_path, &read_token),
             Ok("{}".to_string())
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rechaza_enlaces_simbolicos() {
+        use std::os::unix::fs::symlink;
+
+        let dir = temp_dir("symlink");
+        let real = dir.join("real");
+        fs::create_dir_all(&real).unwrap();
+        let outside = dir.join("fuera.json");
+        fs::write(&outside, "{}").unwrap();
+        let link = real.join("enlace.json");
+        symlink(&outside, &link).unwrap();
+
+        assert!(resolve_session_file(&link.to_string_lossy(), SessionFileMode::Read).is_err());
+        assert!(resolve_session_file(&link.to_string_lossy(), SessionFileMode::Write).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
