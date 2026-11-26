@@ -29,6 +29,9 @@ export function FilesPanel({ client, workspace }: Props) {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
+    // Se abre otro workspace: el árbol, la expansión y el fichero abierto son
+    // del directorio anterior y deben descartarse antes de listar el nuevo.
+    // oxlint-disable-next-line react/set-state-in-effect -- reset al cambiar de directorio
     setDirectories({});
     setExpanded(new Set());
     setOpenFile(null);
@@ -38,6 +41,7 @@ export function FilesPanel({ client, workspace }: Props) {
       .list({ location })
       .then((result) => {
         if (alive) setDirectories({ [ROOT]: sortFileEntries(result.data) });
+        return undefined;
       })
       .catch((err) => {
         if (alive) setError(errorText(err));

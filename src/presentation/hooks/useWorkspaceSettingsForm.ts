@@ -6,7 +6,7 @@
  * `ApplyWorkspaceSettings`. La navegación, el render de secciones y las
  * preferencias globales (notificaciones) siguen en la vista.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText, toggleMapValue, toggleSetValue } from "../../domain/shared";
 import { prefKeys } from "../../domain/repositories/Preferences";
@@ -46,51 +46,65 @@ export function useWorkspaceSettingsForm({
   );
   const [budgetError, setBudgetError] = useState<string | null>(null);
 
+  const workspaceId = workspace?.id ?? null;
+  const workspacePath = workspace?.projectPath ?? null;
+
   useEffect(() => {
     let alive = true;
-    root.library
-      .mcps()
-      .then((items) => {
+    void (async () => {
+      try {
+        const items = await root.library.mcps();
         if (alive) setMcps(items);
-      })
-      .catch(() => undefined);
-    if (workspace) {
-      root.library
-        .skills(workspace.projectPath)
-        .then((items) => {
-          if (alive) setSkills(items);
-        })
-        .catch(() => undefined);
-    } else {
-      setSkills([]);
-    }
+      } catch {
+        // El catálogo es opcional: el formulario sigue con el estado del workspace.
+      }
+      if (!workspacePath) return;
+      try {
+        const items = await root.library.skills(workspacePath);
+        if (alive) setSkills(items);
+      } catch {
+        // Igual que los MCPs, el catálogo puede no estar disponible todavía.
+      }
+    })();
     return () => {
       alive = false;
     };
-  }, [root, workspace?.projectPath]);
+  }, [root, workspacePath]);
 
   useEffect(() => {
+    // El formulario es un borrador con cambios sin aplicar: al cambiar de
+    // workspace se reinicia de golpe desde los valores guardados. No se puede
+    // derivar en render porque los campos son editables y deben conservar lo
+    // escrito hasta que cambie la fuente.
+    // oxlint-disable-next-line react/set-state-in-effect -- reinicio del borrador al cambiar de workspace
     setSelectedMcps(new Set(workspace?.mcpNames ?? []));
     setSelectedSkills(new Map((workspace?.skills ?? []).map((skill) => [skill.id, skill])));
     setModel(workspace?.model ?? "");
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- reset al cambiar de workspace
     setBudgetText(workspace ? (root.preferences.get(prefKeys.budget(workspace.id)) ?? "") : "");
     setBudgetError(null);
     setError(null);
     setWarnings([]);
     setApplied(false);
-  }, [root.preferences, workspace?.id]);
+    // La dependencia es el id del workspace: el resto de campos se leen en el
+    // reinicio y no deben disparar el efecto por identidad de objeto.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- reset al cambiar de workspace
+  }, [root.preferences, workspaceId]);
 
   const skillList = useMemo(() => {
     const map = new Map<string, SkillInfo>();
     for (const skill of skills) map.set(skill.id, skill);
     return [...map.values()].sort((a, b) => a.id.localeCompare(b.id));
   }, [skills]);
+  // Sin workspace no hay perfil que mostrar, aunque el catálogo cargado siga
+  // en memoria para el siguiente workspace.
+  const visibleSkills = workspace ? skillList : [];
 
-  async function refreshStatuses() {
-    if (!client || !workspace) return;
+  const refreshStatuses = useCallback(async () => {
+    if (!client || !workspacePath) return;
     try {
       const result = await client.mcp.list({
-        location: { directory: workspace.projectPath },
+        location: { directory: workspacePath },
       });
       const next: Record<string, string> = {};
       for (const item of result.data) next[item.name] = item.state;
@@ -98,11 +112,14 @@ export function useWorkspaceSettingsForm({
     } catch {
       // El servidor puede estar arrancando; se reintenta al aplicar.
     }
-  }
+  }, [client, workspacePath]);
 
   useEffect(() => {
+    // Lectura del estado de los MCPs del servidor del workspace. El setState
+    // ocurre tras el `await`; el analizador no distingue ese límite.
+    // oxlint-disable-next-line react/set-state-in-effect -- carga asíncrona del estado de MCPs
     void refreshStatuses();
-  }, [workspace?.id, workspace?.projectPath, client]);
+  }, [refreshStatuses]);
 
   function toggleMcp(name: string) {
     setSelectedMcps((prev) => toggleSetValue(prev, name));
@@ -193,7 +210,7 @@ export function useWorkspaceSettingsForm({
 
   return {
     mcps,
-    skills: skillList,
+    skills: visibleSkills,
     statuses,
     selectedMcps,
     selectedSkills,

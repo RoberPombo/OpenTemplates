@@ -86,7 +86,13 @@ export function PullRequestCard({
   }, [pullRequests, projectPath]);
 
   useEffect(() => {
+    // `load` consulta gh (sistema externo) y refleja el estado de carga; el
+    // setState ocurre antes del primer await a propósito.
+    // oxlint-disable-next-line react/set-state-in-effect -- recarga externa de la PR
     void load();
+    // `refreshKey` es un disparador externo (commit o publicación): no se lee
+    // dentro de `load`, pero debe volver a lanzarla.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- disparador externo
   }, [load, refreshKey]);
 
   const failed = failedChecks(checks);

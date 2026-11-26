@@ -51,8 +51,11 @@ export function useChatRequests({ client, sessionId }: UseChatRequestsInput) {
     [client],
   );
 
-  // Los pendientes son de la sesión anterior: se limpian al cambiarla.
+  // Los pendientes son de la sesión anterior: se limpian al cambiarla. El
+  // efecto es la herramienta correcta porque además lanza la carga de la nueva
+  // sesión y ambos pasos deben ocurrir en el mismo commit.
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- reset y carga al cambiar de sesión
     setPermissions([]);
     setForms([]);
     setRequestError(null);

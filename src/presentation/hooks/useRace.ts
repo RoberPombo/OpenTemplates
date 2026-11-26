@@ -264,6 +264,10 @@ export function useRace({
       alive = false;
       abort.abort();
     };
+    // Suscripción al stream de la carrera: se reabre cuando cambia el cliente o
+    // el contexto de la corrida. El analizador no ve las dependencias dentro de
+    // la IIFE async.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- falso positivo con IIFE async
   }, [client, hasRace, loadRunDetails, update]);
 
   // Al volver al workspace, reconcilia las corridas que siguieron sin nosotros.

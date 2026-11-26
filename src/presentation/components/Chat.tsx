@@ -172,7 +172,9 @@ export function Chat({
     element.focus();
     element.setSelectionRange(pendingCaret, pendingCaret);
     setPendingCaret(null);
-  }, [pendingCaret, input]);
+    // `input` y `pendingCaret` se actualizan juntos al elegir del menú: el
+    // efecto se dispara con `pendingCaret`, que es lo único que lee.
+  }, [pendingCaret]);
 
   const chooseMenuItem = useCallback(
     (item: ChatMenuItem) => {
@@ -230,7 +232,10 @@ export function Chat({
   }
 
   useEffect(() => {
+    // Sincroniza el scroll con el DOM; las dependencias son los disparadores
+    // (mensajes nuevos y cambios de streaming), no valores que el efecto lea.
     bottomRef.current?.scrollIntoView({ block: "end" });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- disparadores de scroll
   }, [messages, streaming, busy]);
 
   useEffect(() => {
@@ -238,6 +243,9 @@ export function Chat({
     if (!element) return;
     element.style.height = "auto";
     element.style.height = `${Math.min(element.scrollHeight, 180)}px`;
+    // Redimensiona el textarea cuando cambia el texto; `input` es el disparador
+    // y el alto se mide en el DOM, no en estado de React.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- disparador de resize
   }, [input]);
 
   const folder = projectName ?? folderName(workspace.projectPath);

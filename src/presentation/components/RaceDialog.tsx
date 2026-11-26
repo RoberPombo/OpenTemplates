@@ -3,7 +3,7 @@
  * workspace, agente opcional y worktree por corrida. Muestra el coste estimado
  * cuando el catálogo trae precios.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AgentOption, ModelOption } from "../../domain/chat/selection";
 import type { SelectOptionGroup } from "./ui/Select";
 import { estimateRaceCost, MAX_RACE_RUNS, MIN_RACE_RUNS } from "../../domain/race/races";
@@ -43,14 +43,12 @@ export function RaceDialog({
   const [prompt, setPrompt] = useState("");
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [agent, setAgent] = useState("");
-  const [useWorktrees, setUseWorktrees] = useState(worktreesAvailable);
+  // El catálogo puede resolverse después de abrir el diálogo. Mientras el
+  // usuario no toque la casilla, el valor deriva de la disponibilidad; en cuanto
+  // la toca, su elección manda (sin un efecto que la sobrescriba).
+  const [useWorktreesOverride, setUseWorktreesOverride] = useState<boolean | null>(null);
+  const useWorktrees = useWorktreesOverride ?? worktreesAvailable;
   const [formError, setFormError] = useState<string | null>(null);
-
-  // El catálogo puede resolverse después de abrir el diálogo: activa el
-  // worktree por defecto en cuanto se sabe que está disponible.
-  useEffect(() => {
-    if (worktreesAvailable) setUseWorktrees(true);
-  }, [worktreesAvailable]);
 
   const selected = useMemo(
     () =>
@@ -200,7 +198,8 @@ export function RaceDialog({
               type="checkbox"
               checked={useWorktrees && worktreesAvailable}
               disabled={!worktreesAvailable}
-              onChange={(event) => setUseWorktrees(event.target.checked)}
+              aria-label="Un worktree por corrida"
+              onChange={(event) => setUseWorktreesOverride(event.target.checked)}
             />
             <span className="check-main">
               <span className="check-title">Un worktree por corrida</span>

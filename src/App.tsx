@@ -75,12 +75,15 @@ function App() {
   const updater = useUpdater();
 
   const settingsServer = selected ? running[selected.id] : undefined;
-  // El gateway se recrea solo cuando cambian los datos del servidor, igual que
-  // en WorkspaceView, para no reiniciar efectos en cada render.
+  // El gateway se recrea solo cuando cambian los datos de conexión del servidor,
+  // igual que en WorkspaceView: `settingsServer` cambia de identidad en cada
+  // sondeo y recrearlo reiniciaría efectos del diálogo.
+  // oxlint-disable react-hooks/exhaustive-deps -- gateway estable por URL/contraseña
   const settingsClient = useMemo(
     () => (settingsServer ? root.provideChatGateway(settingsServer) : null),
     [root, settingsServer?.baseUrl, settingsServer?.password],
   );
+  // oxlint-enable react-hooks/exhaustive-deps
 
   const paletteCommands = useMemo(
     () =>
@@ -176,18 +179,21 @@ function App() {
       );
   }, [running, selected, workspaces]);
 
+  const selectedProfileId = selected?.profileId;
+  const selectedProfileVersion = selected?.profileVersion;
   const profileName = useMemo(() => {
-    if (!selected?.profileId) return null;
-    const profile = profiles.find((item) => item.id === selected.profileId);
+    if (!selectedProfileId) return null;
+    const profile = profiles.find((item) => item.id === selectedProfileId);
     return profile
-      ? `${profile.name} · v${selected.profileVersion ?? profile.version}`
-      : selected.profileId;
-  }, [selected?.profileId, selected?.profileVersion, profiles]);
+      ? `${profile.name} · v${selectedProfileVersion ?? profile.version}`
+      : selectedProfileId;
+  }, [selectedProfileId, selectedProfileVersion, profiles]);
 
+  const selectedRepoId = selected?.repoId;
   const selectedRepoPath = useMemo(() => {
-    if (!selected?.repoId) return null;
-    return repos.find((repo) => repo.id === selected.repoId)?.path ?? null;
-  }, [selected?.repoId, repos]);
+    if (!selectedRepoId) return null;
+    return repos.find((repo) => repo.id === selectedRepoId)?.path ?? null;
+  }, [selectedRepoId, repos]);
 
   if (fatal) {
     return (
@@ -289,6 +295,7 @@ function App() {
               className={`workspace-item ${
                 featuresState.selectedId === feature.id ? "active" : ""
               }`}
+              aria-label={feature.name}
               onClick={() => featuresState.select(feature.id)}
             >
               <span className={`dot status-${feature.status}`} />

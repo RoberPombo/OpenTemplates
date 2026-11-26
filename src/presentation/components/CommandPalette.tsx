@@ -32,11 +32,14 @@ function platformName(): string {
 
 export function CommandPalette({ commands, onRun, onClose }: Props) {
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState(() => Math.max(0, firstEnabledIndex(commands)));
+  const [activeIndex, setActive] = useState(() => Math.max(0, firstEnabledIndex(commands)));
   const inputRef = useRef<HTMLInputElement | null>(null);
   const optionRefs = useRef(new Map<string, HTMLDivElement>());
 
   const results = useMemo(() => filterPaletteCommands(commands, query), [commands, query]);
+  // El índice activo se ajusta en render: si el filtro deja fuera la opción
+  // actual se usa la primera habilitada, sin un efecto que vuelva a pintar.
+  const active = results[activeIndex]?.enabled ? activeIndex : firstEnabledIndex(results);
   const activeCommand = results[active];
   const platform = platformName();
 
@@ -47,13 +50,6 @@ export function CommandPalette({ commands, onRun, onClose }: Props) {
       if (previous instanceof HTMLElement) previous.focus();
     };
   }, []);
-
-  useEffect(() => {
-    setActive((current) => {
-      if (results[current]?.enabled) return current;
-      return firstEnabledIndex(results);
-    });
-  }, [results]);
 
   useEffect(() => {
     if (!activeCommand) return;
@@ -79,12 +75,12 @@ export function CommandPalette({ commands, onRun, onClose }: Props) {
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActive((current) => movePaletteSelection(results, current, 1));
+      setActive(movePaletteSelection(results, active, 1));
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActive((current) => movePaletteSelection(results, current, -1));
+      setActive(movePaletteSelection(results, active, -1));
       return;
     }
     if (event.key === "Home") {
@@ -104,7 +100,7 @@ export function CommandPalette({ commands, onRun, onClose }: Props) {
   }
 
   return (
-    <div className="palette-backdrop" onMouseDown={onClose}>
+    <div className="palette-backdrop" role="presentation" onMouseDown={onClose}>
       <div
         className="palette"
         role="dialog"

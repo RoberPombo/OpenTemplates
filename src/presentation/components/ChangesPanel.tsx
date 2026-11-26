@@ -222,7 +222,13 @@ export function ChangesPanel({ client, workspace, sessionId, git, pullRequests, 
   const [sessionChanges, setSessionChanges] = useState<FileChange[]>([]);
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
   const [workingPatches, setWorkingPatches] = useState<FileChange[] | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  // La selección se invalida cuando cambia `refresh` (fuente, sesión o
+  // directorio): se guarda junto al token y se deriva en render en vez de
+  // limpiarla desde un efecto.
+  const [selection, setSelection] = useState<{ token: unknown; value: string | null }>({
+    token: null,
+    value: null,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -261,8 +267,16 @@ export function ChangesPanel({ client, workspace, sessionId, git, pullRequests, 
     }
   }, [loadSession, loadWorking, source]);
 
+  const selected = selection.token === refresh ? selection.value : null;
+  function selectFile(file: string | null) {
+    setSelection({ token: refresh, value: file });
+  }
+
   useEffect(() => {
-    setSelected(null);
+    // `refresh` es la fuente de los datos; al cambiar se vuelve a cargar la
+    // vista. La selección obsoleta se ignora en render con el token. El
+    // setState de carga ocurre antes del await a propósito.
+    // oxlint-disable-next-line react/set-state-in-effect -- recarga de la fuente de datos
     void refresh();
   }, [refresh]);
 
@@ -295,6 +309,10 @@ export function ChangesPanel({ client, workspace, sessionId, git, pullRequests, 
       abort.abort();
       window.clearTimeout(timer);
     };
+    // Suscripción al stream de eventos para refrescar el diff tras un turno;
+    // es el efecto correcto para una fuente externa. El analizador no ve las
+    // dependencias detrás de la IIFE async.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- falso positivo con IIFE async
   }, [client, sessionId]);
 
   const files: readonly FileChangeSummary[] = source === "session" ? sessionChanges : [];
@@ -306,7 +324,7 @@ export function ChangesPanel({ client, workspace, sessionId, git, pullRequests, 
       : (workingPatches?.find((change) => change.file === selected) ?? null);
 
   async function selectWorking(change: GitFileEntry) {
-    setSelected(change.path);
+    selectFile(change.path);
     if (workingPatches) return;
     setLoading(true);
     setError(null);
@@ -322,7 +340,7 @@ export function ChangesPanel({ client, workspace, sessionId, git, pullRequests, 
 
   function chooseSource(next: Source) {
     setSource(next);
-    setSelected(null);
+    selectFile(null);
     setError(null);
     setNotice(null);
   }
@@ -397,7 +415,7 @@ export function ChangesPanel({ client, workspace, sessionId, git, pullRequests, 
     try {
       const result = await git.commit(workspace.projectPath, message.trim());
       setMessage("");
-      setSelected(null);
+      selectFile(null);
       setNotice(`Commit ${result.oid.slice(0, 7)} creado.`);
       await loadWorking();
       setPrRefreshKey((key) => key + 1);
@@ -494,7 +512,7 @@ export function ChangesPanel({ client, workspace, sessionId, git, pullRequests, 
                   key={`${change.status}:${change.file}`}
                   change={change}
                   selected={selected === change.file}
-                  onSelect={() => setSelected(change.file)}
+                  onSelect={() => selectFile(change.file)}
                 />
               ))}
             </ul>

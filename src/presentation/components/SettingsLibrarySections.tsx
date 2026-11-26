@@ -65,7 +65,12 @@ function AssetChecks({
         const checked = selected.includes(item.id);
         return (
           <label key={item.id} className={`check ${checked ? "on" : ""}`}>
-            <input type="checkbox" checked={checked} onChange={() => onToggle(item.id)} />
+            <input
+              type="checkbox"
+              checked={checked}
+              aria-label={item.name}
+              onChange={() => onToggle(item.id)}
+            />
             <span className="check-main">
               <span className="check-title">
                 {item.name}
@@ -165,6 +170,7 @@ export function ReposSection({
               key={repo.id}
               type="button"
               className={`settings-list-item ${current?.id === repo.id ? "selected" : ""}`}
+              aria-label={`${repo.name} · ${repo.path}`}
               onClick={() => setSelectedId(repo.id)}
             >
               <span className="settings-list-main">
@@ -231,7 +237,16 @@ export function ProfilesSection({
     profiles[0]?.id ?? null,
   );
   const [draft, setDraft] = useState<ProfileManifest>(() => profiles[0] ?? emptyProfile());
-  const [agentsMd, setAgentsMd] = useState("");
+  const [agentsMdState, setAgentsMdState] = useState<{ id: string | null; text: string }>({
+    id: null,
+    text: "",
+  });
+  // El texto pertenece al perfil del que se cargó: al cambiar de perfil se
+  // ignora en render hasta que llega el AGENTS.md del nuevo.
+  const agentsMd = agentsMdState.id === selectedProfileId ? agentsMdState.text : "";
+  function setAgentsMd(text: string) {
+    setAgentsMdState({ id: selectedProfileId, text });
+  }
   const [profileSaved, setProfileSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -306,18 +321,17 @@ export function ProfilesSection({
   }, [catalogIndex, catalogModels, draft.models, subscriptionFilter]);
 
   useEffect(() => {
-    if (!selectedProfileId) {
-      setAgentsMd("");
-      return;
-    }
+    if (!selectedProfileId) return;
     let alive = true;
     composition.profiles
       .agentsMd(selectedProfileId)
       .then((text) => {
-        if (alive) setAgentsMd(text);
+        if (alive) setAgentsMdState({ id: selectedProfileId, text });
+        return undefined;
       })
       .catch(() => {
-        if (alive) setAgentsMd("");
+        if (alive) setAgentsMdState({ id: selectedProfileId, text: "" });
+        return undefined;
       });
     return () => {
       alive = false;
@@ -430,6 +444,7 @@ export function ProfilesSection({
               key={profile.id}
               type="button"
               className={`settings-list-item ${selectedProfileId === profile.id ? "selected" : ""}`}
+              aria-label={`${profile.name} · ${profile.id}`}
               onClick={() => chooseProfile(profile)}
             >
               <span className="settings-list-main">
@@ -615,6 +630,7 @@ export function ProfilesSection({
                     <input
                       type="checkbox"
                       checked={checked}
+                      aria-label={skill.name}
                       onChange={() => toggle("skills", skill.id)}
                     />
                     <span className="check-main">
@@ -639,6 +655,7 @@ export function ProfilesSection({
                     <input
                       type="checkbox"
                       checked={checked}
+                      aria-label={mcp.name}
                       onChange={() => toggle("mcps", mcp.name)}
                     />
                     <span className="check-main">
