@@ -1,9 +1,7 @@
 /**
- * Comportamiento del chat de un workspace: sesión, catálogo de modelos/agentes,
- * streaming, envío y parada. La vista solo pinta el estado que devuelve este hook.
- *
- * El reducer de eventos es dominio (`domain/chat/stream`); aquí quedan los
- * efectos secundarios (I/O, preferencias y ciclo de vida de React).
+ * Chat de un workspace: sesión, catálogo, streaming, permisos, objetivos y
+ * transferencia. Los efectos secundarios (I/O, preferencias y ciclo de vida de
+ * React) viven aquí; la vista solo pinta el estado que devuelve el hook.
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useAppContext } from "../context/AppContext";
@@ -19,25 +17,6 @@ import {
 } from "../../domain/chat/commands";
 import { toChatMessages, type ChatMessage } from "../../domain/chat/messages";
 import {
-  advanceGoal,
-  conversationFingerprint,
-  createGoal,
-  describeGoalStop,
-  editGoal,
-  goalContinuation,
-  goalDecisionRequest,
-  goalLimitReason,
-  isGoalActive,
-  parseGoal,
-  pauseGoal,
-  pickDecisionModel,
-  resumeGoal,
-  serializeGoal,
-  type Goal,
-  type GoalDecisionResult,
-  type GoalStopReason,
-} from "../../domain/chat/goals";
-import {
   removeAgentForm,
   upsertAgentForm,
   type AgentForm,
@@ -50,7 +29,10 @@ import {
   type PermissionRequest,
 } from "../../domain/chat/permissions";
 import {
+  agentLabel,
   effectiveVariant as supportedVariant,
+  groupModelsByProvider,
+  modelLabel,
   parseModelRef,
   selectWorkspaceModels,
   toAgentOptions,
@@ -84,6 +66,7 @@ import {
   serializeSessionFile,
   suggestedSessionFileName,
 } from "../../domain/chat/transfer";
+import { useChatGoal } from "./useChatGoal";
 
 type UseChatInput = {
   client: ChatServer;
@@ -140,26 +123,10 @@ export function useChat({
   const [forms, setForms] = useState<AgentForm[]>([]);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestBusy, setRequestBusy] = useState<string | null>(null);
-  // Objetivo de sesión: estado persistido, modelo de decisión y fin de turno.
-  const [goal, setGoal] = useState<Goal | null>(null);
-  const [goalError, setGoalError] = useState<string | null>(null);
-  const [decisionModel, setDecisionModel] = useState<{ providerID: string; id: string } | null>(
-    null,
-  );
-  const [turnEnd, setTurnEnd] = useState<{ seq: number; failed: boolean } | null>(null);
-  const [loadedSession, setLoadedSession] = useState<string | null>(null);
   // Avisos: último turno avisado por sesión y permisos ya avisados (sin repetir).
   const lastNotifiedAt = useRef<Record<string, number>>({});
   const notifiedRequests = useRef<Set<string>>(new Set());
   const sessionsRef = useRef<SessionSummary[]>([]);
-  const goalRef = useRef<Goal | null>(null);
-  const messagesRef = useRef<ChatMessage[]>([]);
-  const goalGenerationRef = useRef(0);
-  const checkingGoalRef = useRef(false);
-  const processedTurnRef = useRef(0);
-  const pendingResumeRef = useRef(false);
-  const initialMountRef = useRef(true);
-  const turnSeqRef = useRef(0);
 
   const [stream, dispatch] = useReducer(chatStreamReducer, undefined, () =>
     initialChatStreamState({
@@ -175,57 +142,35 @@ export function useChat({
     () => models.find((model) => model.key === modelChoice) ?? null,
     [models, modelChoice],
   );
-  // El modelo del perfil se pasa a la sesión al crearla: el contexto ya no lo
-  // fija en la config para que dos perfiles puedan compartir servidor.
+  // El modelo del perfil se pasa al crear la sesión; no se fija en la config.
   const workspaceModelRef = useMemo(() => parseModelRef(workspace.model), [workspace.model]);
-  const modelGroups = useMemo(() => {
-    const groups = new Map<string, ModelOption[]>();
-    for (const model of models) {
-      const list = groups.get(model.providerID) ?? [];
-      list.push(model);
-      groups.set(model.providerID, list);
-    }
-    return [...groups.entries()];
-  }, [models]);
-  const effectiveVariant = useMemo(
-    () => supportedVariant(variant, selectedModel),
-    [selectedModel, variant],
-  );
+  const modelGroups = useMemo(() => groupModelsByProvider(models), [models]);
+  const effectiveVariant = supportedVariant(variant, selectedModel);
   const skills = useMemo(
     () => selectWorkspaceSkills(skillCatalog, workspace.skills, workspace.disabledSkills),
     [skillCatalog, workspace.skills, workspace.disabledSkills],
   );
-  /** Sesiones del panel con objetivo activo (para marcarlas). */
-  const goalSessionIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const session of sessions) {
-      const active =
-        session.id === sessionId
-          ? isGoalActive(goal)
-          : isGoalActive(parseGoal(root.preferences.get(prefKeys.goal(workspace.id, session.id))));
-      if (active) ids.add(session.id);
-    }
-    return ids;
-  }, [sessions, sessionId, goal, workspace.id, root]);
+
+  // Objetivo de la sesión: estado, evaluación al cerrar turno y acciones.
+  const { onTurnEnd, markSessionLoaded, pauseGoalIfActive, ...goalApi } = useChatGoal({
+    client,
+    sessionId,
+    workspace,
+    root,
+    sessions,
+    messages,
+    sessionsRef,
+    busy,
+    permissionsCount: permissions.length,
+    formsCount: forms.length,
+    dispatch,
+  });
 
   const modelName = useCallback(
-    (model: { providerID: string; id: string } | undefined) => {
-      if (!model) return "";
-      return (
-        models.find((item) => item.providerID === model.providerID && item.id === model.id)?.name ??
-        model.id
-      );
-    },
+    (model: { providerID: string; id: string } | undefined) => modelLabel(models, model),
     [models],
   );
-
-  const agentName = useCallback(
-    (id: string | undefined) => {
-      if (!id) return "";
-      return agents.find((agent) => agent.id === id)?.name ?? id;
-    },
-    [agents],
-  );
+  const agentName = useCallback((id: string | undefined) => agentLabel(agents, id), [agents]);
 
   useEffect(() => {
     onSessionChange?.(sessionId);
@@ -240,15 +185,15 @@ export function useChat({
         order: "asc",
       });
       setMessages(toChatMessages(response.data));
-      setLoadedSession(sessionId);
+      markSessionLoaded(sessionId);
     } catch (err) {
       root.preferences.remove(storageKey);
       setSessionId(null);
       setMessages([]);
-      setLoadedSession(null);
+      markSessionLoaded(null);
       dispatch({ kind: "error", error: errorTextOr(err) });
     }
-  }, [client, sessionId, storageKey, root]);
+  }, [client, sessionId, storageKey, root, markSessionLoaded]);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -270,29 +215,6 @@ export function useChat({
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
-  useEffect(() => {
-    goalRef.current = goal;
-  }, [goal]);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-  // Carga el objetivo de la sesión activa. La persistencia la hacen las
-  // acciones (guardar, pausar, reanudar, quitar y cada chequeo).
-  useEffect(() => {
-    goalGenerationRef.current += 1;
-    checkingGoalRef.current = false;
-    processedTurnRef.current = 0;
-    setGoalError(null);
-    setTurnEnd(null);
-    setLoadedSession(null);
-    const stored = sessionId
-      ? parseGoal(root.preferences.get(prefKeys.goal(workspace.id, sessionId)))
-      : null;
-    setGoal(stored);
-    // Solo al abrir la app: cambiar de sesión no dispara el bucle solo.
-    pendingResumeRef.current = initialMountRef.current && stored?.status === "active";
-    initialMountRef.current = false;
-  }, [sessionId, workspace.id, root]);
 
   const selectSession = useCallback(
     (id: string) => {
@@ -449,8 +371,7 @@ export function useChat({
     setForms([]);
     setRequestError(null);
     setRequestBusy(null);
-    // Los ids avisados son de la sesión anterior: al cambiarla se liberan para
-    // que el mapa no crezca sin límite durante una sesión larga.
+    // Los ids avisados son de la sesión anterior; se liberan al cambiarla.
     notifiedRequests.current.clear();
     if (!sessionId) return;
     void loadPendingRequests(sessionId);
@@ -514,8 +435,7 @@ export function useChat({
   useEffect(() => {
     let alive = true;
     (async () => {
-      // El servidor tarda en resolver proveedores al arrancar: reintentamos el
-      // catálogo para no dejar el selector en "Cargando…".
+      // Al arrancar el servidor tarda: reintentamos para no dejar "Cargando…".
       const loadCatalog = async () => {
         for (let attempt = 0; ; attempt++) {
           const response = await client.model.list({
@@ -529,14 +449,11 @@ export function useChat({
       };
 
       try {
-        const [catalog, agentResponse, defaultResponse, decisionResponse] = await Promise.all([
+        const [catalog, agentResponse, defaultResponse] = await Promise.all([
           loadCatalog(),
           client.agent.list({ location: { directory: workspace.projectPath } }),
           client.model
             .default({ location: { directory: workspace.projectPath } })
-            .catch(() => null),
-          client.model
-            .list({ location: { directory: workspace.projectPath }, types: ["decision"] })
             .catch(() => null),
         ]);
         if (!alive || !catalog) return;
@@ -546,7 +463,6 @@ export function useChat({
         setModels(nextModels);
         setAgents(nextAgents);
         setCatalogLoading(false);
-        setDecisionModel(pickDecisionModel(decisionResponse?.data ?? []));
 
         dispatch({
           kind: "catalogResolved",
@@ -577,8 +493,7 @@ export function useChat({
     root,
   ]);
 
-  // Catálogo de comandos y skills del servidor. Si falla, el composer sigue
-  // funcionando: sin comandos y con las skills seleccionadas por id.
+  // Comandos y skills del servidor; si fallan, el composer sigue funcionando.
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -598,16 +513,18 @@ export function useChat({
 
   useEffect(() => {
     if (modelChoice) root.preferences.set(modelStorageKey, modelChoice);
-  }, [modelChoice, modelStorageKey, root]);
-
-  useEffect(() => {
     if (agentChoice) root.preferences.set(agentStorageKey, agentChoice);
-  }, [agentChoice, agentStorageKey, root]);
-
-  useEffect(() => {
     if (effectiveVariant) root.preferences.set(variantStorageKey, effectiveVariant);
     else root.preferences.remove(variantStorageKey);
-  }, [effectiveVariant, variantStorageKey, root]);
+  }, [
+    modelChoice,
+    agentChoice,
+    effectiveVariant,
+    modelStorageKey,
+    agentStorageKey,
+    variantStorageKey,
+    root,
+  ]);
 
   // Rama de git del directorio de trabajo.
   useEffect(() => {
@@ -667,198 +584,6 @@ export function useChat({
     if (!sessionId) return;
     applySelection(sessionId).catch((err) => dispatch({ kind: "error", error: errorTextOr(err) }));
   }, [applySelection, sessionId]);
-  const commitGoal = useCallback(
-    (next: Goal | null) => {
-      goalGenerationRef.current += 1;
-      goalRef.current = next;
-      setGoal(next);
-      if (!sessionId) return;
-      const key = prefKeys.goal(workspace.id, sessionId);
-      if (next) root.preferences.set(key, serializeGoal(next));
-      else root.preferences.remove(key);
-    },
-    [sessionId, workspace.id, root],
-  );
-  const notifyGoal = useCallback(
-    (stopped: Goal, reason: GoalStopReason) => {
-      if (!notificationsEnabled(root.preferences.get(prefKeys.notifications))) return;
-      const notice = describeGoalStop(stopped, reason);
-      const title = sessionsRef.current.find((item) => item.id === sessionId)?.title;
-      void root.notifications.notify({
-        title: `${workspace.name} · ${notice.title}`,
-        body: title ? `${title} · ${notice.body}` : notice.body,
-        workspaceId: workspace.id,
-      });
-    },
-    [root, workspace.id, workspace.name, sessionId],
-  );
-  /**
-   * Cierra un turno del objetivo: pide la decisión al evaluador y continúa,
-   * espera o para. Todas las guardas viven en `advanceGoal`; aquí solo se
-   * resuelven las peticiones y el envío del prompt.
-   */
-  const runGoalCheck = useCallback(
-    async (turnFailed: boolean) => {
-      const current = goalRef.current;
-      if (!current || current.status !== "active" || !sessionId || checkingGoalRef.current) {
-        return;
-      }
-      checkingGoalRef.current = true;
-      pendingResumeRef.current = false;
-      const generation = goalGenerationRef.current;
-      try {
-        const [permissionResponse, formResponse, info] = await Promise.all([
-          client.permission.list({ sessionID: sessionId }),
-          client.form.list({ sessionID: sessionId }),
-          client.session.get({ sessionID: sessionId }).catch(() => null),
-        ]);
-        if (generation !== goalGenerationRef.current) return;
-        const pendingRequest = permissionResponse.data.length > 0 || formResponse.data.length > 0;
-        let decision: GoalDecisionResult | null = null;
-        if (!pendingRequest && !turnFailed) {
-          if (!decisionModel) {
-            setGoalError("Este workspace no tiene un modelo de decisión disponible.");
-            commitGoal(pauseGoal(current, Date.now()));
-            notifyGoal(current, "no-decision");
-            return;
-          }
-          const response = await client.generate.decisions(
-            goalDecisionRequest(current, messagesRef.current, decisionModel),
-          );
-          if (generation !== goalGenerationRef.current) return;
-          decision = response.data;
-          setGoalError(decision.error);
-        }
-        const step = advanceGoal(current, {
-          decision,
-          sessionCost: info?.cost ?? 0,
-          pendingRequest,
-          userStopped: false,
-          turnFailed,
-          fingerprint: conversationFingerprint(messagesRef.current),
-          now: Date.now(),
-        });
-        commitGoal(step.goal);
-        if (step.action.kind === "continue") {
-          if (goalRef.current?.status !== "active") return;
-          await client.session.prompt({ sessionID: sessionId, text: step.action.prompt });
-          dispatch({ kind: "executionStarted" });
-        } else if (step.action.kind === "stop") {
-          notifyGoal(step.goal, step.action.reason);
-        }
-      } catch (err) {
-        if (generation === goalGenerationRef.current) {
-          setGoalError(errorTextOr(err));
-          const latest = goalRef.current ?? current;
-          commitGoal(pauseGoal(latest, Date.now()));
-          notifyGoal(latest, "no-decision");
-        }
-      } finally {
-        checkingGoalRef.current = false;
-      }
-    },
-    [client, sessionId, decisionModel, commitGoal, notifyGoal],
-  );
-  // Un turno recién cerrado se evalúa una sola vez aunque lleguen varios eventos.
-  useEffect(() => {
-    if (!turnEnd || !sessionId) return;
-    if (processedTurnRef.current === turnEnd.seq) return;
-    processedTurnRef.current = turnEnd.seq;
-    if (!isGoalActive(goalRef.current)) return;
-    void runGoalCheck(turnEnd.failed);
-  }, [turnEnd, sessionId, runGoalCheck]);
-  // Reanudación al abrir la app: solo si el objetivo estaba activo y la sesión
-  // no está ocupada ni esperando un permiso o una pregunta.
-  useEffect(() => {
-    if (!pendingResumeRef.current) return;
-    if (!sessionId || loadedSession !== sessionId) return;
-    if (!goal || goal.status !== "active") return;
-    if (busy || permissions.length > 0 || forms.length > 0) return;
-    if (!decisionModel) {
-      pendingResumeRef.current = false;
-      setGoalError("Este workspace no tiene un modelo de decisión disponible.");
-      commitGoal(pauseGoal(goal, Date.now()));
-      return;
-    }
-    const limit = goalLimitReason(goal);
-    if (limit) {
-      pendingResumeRef.current = false;
-      commitGoal({ ...goal, status: "exhausted", updatedAt: Date.now() });
-      notifyGoal(goal, limit);
-      return;
-    }
-    const generation = goalGenerationRef.current;
-    void (async () => {
-      const [permissionResponse, formResponse] = await Promise.all([
-        client.permission.list({ sessionID: sessionId }),
-        client.form.list({ sessionID: sessionId }),
-      ]);
-      // Si hay algo pendiente, el objetivo sigue activo pero no se reanuda
-      // hasta que el usuario responda (los estados cambian y reevalúan).
-      if (permissionResponse.data.length > 0 || formResponse.data.length > 0) return;
-      if (generation !== goalGenerationRef.current) return;
-      pendingResumeRef.current = false;
-      try {
-        await client.session.prompt({ sessionID: sessionId, text: goalContinuation(goal) });
-        if (generation === goalGenerationRef.current) dispatch({ kind: "executionStarted" });
-      } catch (err) {
-        setGoalError(errorTextOr(err));
-        commitGoal(pauseGoal(goal, Date.now()));
-      }
-    })();
-  }, [
-    sessionId,
-    loadedSession,
-    goal,
-    busy,
-    permissions.length,
-    forms.length,
-    decisionModel,
-    client,
-    commitGoal,
-    notifyGoal,
-  ]);
-  const saveGoal = useCallback(
-    async (form: { text: string; maxTurns: number; maxCost: number | null }) => {
-      if (!sessionId) return;
-      const info = await client.session.get({ sessionID: sessionId }).catch(() => null);
-      const now = Date.now();
-      const previous = goalRef.current;
-      const next = previous
-        ? editGoal(previous, { ...form, now })
-        : createGoal({
-            text: form.text,
-            maxTurns: form.maxTurns,
-            maxCost: form.maxCost,
-            now,
-            sessionCost: info?.cost,
-          });
-      goalGenerationRef.current += 1;
-      checkingGoalRef.current = false;
-      commitGoal(next);
-      setGoalError(null);
-    },
-    [client, sessionId, commitGoal],
-  );
-  const pauseGoalAction = useCallback(() => {
-    const current = goalRef.current;
-    if (!current) return;
-    pendingResumeRef.current = false;
-    commitGoal(pauseGoal(current, Date.now()));
-  }, [commitGoal]);
-  const resumeGoalAction = useCallback(() => {
-    const current = goalRef.current;
-    if (!current) return;
-    const next = resumeGoal(current, Date.now());
-    commitGoal(next);
-    if (next.status === "active") pendingResumeRef.current = true;
-  }, [commitGoal]);
-  const removeGoalAction = useCallback(() => {
-    pendingResumeRef.current = false;
-    setGoalError(null);
-    commitGoal(null);
-  }, [commitGoal]);
-
   useEffect(() => {
     let alive = true;
     const abort = new AbortController();
@@ -923,11 +648,7 @@ export function useChat({
           if (eventRequestsReload(event, sessionId)) {
             void reload().finally(() => {
               dispatch({ kind: "streamCleared" });
-              turnSeqRef.current += 1;
-              setTurnEnd({
-                seq: turnSeqRef.current,
-                failed: event.type === "session.execution.failed",
-              });
+              onTurnEnd(event.type === "session.execution.failed");
             });
           }
           if (eventTouchesSessionList(event)) {
@@ -953,6 +674,7 @@ export function useChat({
     workspace.id,
     workspace.name,
     onWorkspaceActivity,
+    onTurnEnd,
   ]);
 
   const chooseModel = useCallback(
@@ -1043,11 +765,7 @@ export function useChat({
 
   async function stop() {
     if (!sessionId) return;
-    const current = goalRef.current;
-    if (current?.status === "active") {
-      pendingResumeRef.current = false;
-      commitGoal(pauseGoal(current, Date.now()));
-    }
+    pauseGoalIfActive();
     try {
       await client.session.interrupt({ sessionID: sessionId });
     } catch (err) {
@@ -1125,6 +843,7 @@ export function useChat({
   );
 
   return {
+    ...goalApi,
     sessionId,
     messages,
     sessions,
@@ -1134,10 +853,6 @@ export function useChat({
     forms,
     requestError,
     requestBusy,
-    goal,
-    goalError,
-    decisionModel,
-    goalSessionIds,
     input,
     setInput,
     sending,
@@ -1180,9 +895,5 @@ export function useChat({
     replyPermission,
     replyForm,
     cancelForm,
-    saveGoal,
-    pauseGoal: pauseGoalAction,
-    resumeGoal: resumeGoalAction,
-    removeGoal: removeGoalAction,
   };
 }
