@@ -114,6 +114,7 @@ pub fn run() {
             commands::save_settings,
             commands::write_text_file,
             commands::read_text_file,
+            commands::begin_session_file,
             commands::preview_probe,
             commands::open_external,
         ])

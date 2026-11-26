@@ -27,6 +27,9 @@ import type {
   WorktreeStatus,
 } from "../types";
 
+/** Ruta canónica elegida en el diálogo nativo y token de un solo uso. */
+export type SessionFileTicket = { path: string; token: string };
+
 export const api = {
   bootstrap: () => invoke<Bootstrap>("bootstrap"),
   listLibrary: () => invoke<Library>("list_library"),
@@ -123,8 +126,14 @@ export const api = {
   getSettings: () => invoke<AppSettings>("get_settings"),
   saveSettings: (settings: AppSettings) => invoke<AppSettings>("save_settings", { settings }),
 
-  /** Escribe texto en una ruta elegida por el diálogo; `false` si ya existía. */
-  writeTextFile: (path: string, contents: string, overwrite: boolean) =>
-    invoke<boolean>("write_text_file", { path, contents, overwrite }),
-  readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
+  /**
+   * Abre el diálogo nativo desde Rust y devuelve la ruta elegida junto a un
+   * token de un solo uso; `null` si el usuario cancela.
+   */
+  beginSessionFile: (mode: "read" | "write", suggestedName?: string) =>
+    invoke<SessionFileTicket | null>("begin_session_file", { mode, suggestedName }),
+  /** Escribe en la ruta del ticket; `false` si ya existía y no se pidió pisar. */
+  writeTextFile: (path: string, contents: string, overwrite: boolean, token: string) =>
+    invoke<boolean>("write_text_file", { path, contents, overwrite, token }),
+  readTextFile: (path: string, token: string) => invoke<string>("read_text_file", { path, token }),
 };

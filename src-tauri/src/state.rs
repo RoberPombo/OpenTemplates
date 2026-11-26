@@ -2,10 +2,39 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, SystemTime};
 
 use crate::model::{AppSettings, Feature, ProfileManifest, Repo, Workspace};
 use crate::server::ServerHandle;
 use crate::store;
+
+/// Un ticket de sesión solo sirve para la operación y la ruta exactas que el
+/// usuario eligió en el diálogo nativo. Caduca para no dejar autorizaciones
+/// vivas si la UI se queda a medias.
+pub const SESSION_TICKET_TTL: Duration = Duration::from_secs(5 * 60);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionFileMode {
+    Read,
+    Write,
+}
+
+impl SessionFileMode {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "read" => Some(Self::Read),
+            "write" => Some(Self::Write),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SessionFileTicket {
+    mode: SessionFileMode,
+    path: PathBuf,
+    expires_at: SystemTime,
+}
 
 pub struct AppState {
     pub data_dir: PathBuf,
@@ -16,6 +45,7 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub servers: Mutex<HashMap<String, ServerHandle>>,
     pub notices: Mutex<Vec<String>>,
+    session_tickets: Mutex<HashMap<String, SessionFileTicket>>,
 }
 
 impl AppState {
@@ -36,7 +66,61 @@ impl AppState {
             settings: Mutex::new(settings),
             servers: Mutex::new(HashMap::new()),
             notices: Mutex::new(notices),
+            session_tickets: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Emite un token de un solo uso para la ruta canónica elegida en el
+    /// diálogo nativo. Se guarda en memoria y no se persiste en disco.
+    pub fn issue_session_ticket(
+        &self,
+        mode: SessionFileMode,
+        path: PathBuf,
+    ) -> Result<String, String> {
+        let now = SystemTime::now();
+        let mut tickets = self
+            .session_tickets
+            .lock()
+            .map_err(|_| "estado bloqueado")?;
+        tickets.retain(|_, ticket| ticket.expires_at > now);
+        let token = uuid::Uuid::new_v4().simple().to_string();
+        tickets.insert(
+            token.clone(),
+            SessionFileTicket {
+                mode,
+                path,
+                expires_at: now + SESSION_TICKET_TTL,
+            },
+        );
+        Ok(token)
+    }
+
+    /// Consume el token y comprueba que corresponde a esta operación y a la
+    /// misma ruta canónica. Se elimina siempre, incluso si no valida, para que
+    /// un token no se pueda reintentar.
+    pub fn consume_session_ticket(
+        &self,
+        token: &str,
+        mode: SessionFileMode,
+        path: &Path,
+    ) -> Result<(), String> {
+        let mut tickets = self
+            .session_tickets
+            .lock()
+            .map_err(|_| "estado bloqueado")?;
+        let Some(ticket) = tickets.remove(token) else {
+            return Err("Token de sesión inválido o ya usado".into());
+        };
+        if ticket.expires_at <= SystemTime::now() {
+            return Err("El token de sesión ha caducado".into());
+        }
+        if ticket.mode != mode {
+            return Err("El token no autoriza esta operación".into());
+        }
+        if ticket.path != path {
+            return Err("La ruta no coincide con la elegida en el diálogo".into());
+        }
+        Ok(())
     }
 
     pub fn profiles_root(&self) -> PathBuf {
