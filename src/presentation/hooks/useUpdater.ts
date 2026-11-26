@@ -15,12 +15,9 @@ export function useUpdater() {
 
   useEffect(() => {
     let active = true;
-    void root
-      .provideCheckForUpdate()
-      .execute()
-      .then((info) => {
-        if (active && info) setUpdate(info);
-      });
+    void root.updates.check().then((info) => {
+      if (active && info) setUpdate(info);
+    });
     return () => {
       active = false;
     };
@@ -29,7 +26,7 @@ export function useUpdater() {
   async function install() {
     setInstalling(true);
     setError(null);
-    const result = await root.provideInstallUpdate().execute();
+    const result = await root.updates.install();
     setInstalling(false);
     if (result.ok) setInstalled(true);
     else setError(result.error);

@@ -118,7 +118,7 @@ export function useFeatures() {
       setError(null);
       setNotice(null);
       try {
-        const outcome = await root.provideProvisionFeature().execute(id);
+        const outcome = await root.features.provision(id);
         upsert(outcome.feature);
         await reloadArtifacts(id);
         if (outcome.blocked) {
@@ -231,7 +231,7 @@ export function useFeatures() {
       );
       if (!ok) return;
       setError(null);
-      await root.provideDeleteFeature().execute(id);
+      await root.features.remove(id);
       setFeatures((prev) => prev.filter((item) => item.id !== id));
       if (selectedId === id) setSelectedId(null);
     },

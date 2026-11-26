@@ -28,11 +28,6 @@ import { createTerminalGateway } from "./data/TerminalGateway";
 import { DeleteWorkspace } from "./domain/usecases/DeleteWorkspace";
 import { CreateWorkspace } from "./domain/usecases/CreateWorkspace";
 import { ApplyWorkspaceSettings } from "./domain/usecases/ApplyWorkspaceSettings";
-import { CheckForUpdate } from "./domain/usecases/CheckForUpdate";
-import { InstallUpdate } from "./domain/usecases/InstallUpdate";
-import { DeleteFeature } from "./domain/usecases/DeleteFeature";
-import { ProvisionFeature } from "./domain/usecases/ProvisionFeature";
-import { SaveFeature } from "./domain/usecases/SaveFeature";
 import { StartFeature } from "./domain/usecases/StartFeature";
 import { ApproveDecomposition } from "./domain/usecases/ApproveDecomposition";
 import { LaunchCoordinator } from "./domain/usecases/LaunchCoordinator";
@@ -135,20 +130,8 @@ export class CompositionRoot {
     return new CreateWorkspace(this.workspaces);
   }
 
-  provideSaveFeature(): SaveFeature {
-    return new SaveFeature(this.features);
-  }
-
   provideStartFeature(): StartFeature {
     return new StartFeature(this.features);
-  }
-
-  provideDeleteFeature(): DeleteFeature {
-    return new DeleteFeature(this.features);
-  }
-
-  provideProvisionFeature(): ProvisionFeature {
-    return new ProvisionFeature(this.features);
   }
 
   provideLaunchCoordinator(): LaunchCoordinator {
@@ -161,14 +144,6 @@ export class CompositionRoot {
 
   provideApplyWorkspaceSettings(server: ChatGateway | null): ApplyWorkspaceSettings {
     return new ApplyWorkspaceSettings(this.workspaces, server);
-  }
-
-  provideCheckForUpdate(): CheckForUpdate {
-    return new CheckForUpdate(this.updates);
-  }
-
-  provideInstallUpdate(): InstallUpdate {
-    return new InstallUpdate(this.updates);
   }
 
   provideChatGateway(server: ServerInfo): ChatServer {
