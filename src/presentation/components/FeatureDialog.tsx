@@ -1,5 +1,7 @@
 /** Alta de una feature: nombre, tipo, objetivo, metarepo opcional y repos. */
+// oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-interactions -- el modal conserva la estructura visual del resto de diálogos; Escape se gestiona en el contenedor.
 import { useMemo, useState } from "react";
+import { useDialogDismiss } from "../hooks/useDialogDismiss";
 import { toggleSetValue } from "../../domain/shared";
 import {
   createFeatureDraft,
@@ -41,6 +43,7 @@ function newId(): string {
 }
 
 export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
+  const dismiss = useDialogDismiss(onClose);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<FeatureKind>("feature");
   const [brief, setBrief] = useState("");
@@ -107,12 +110,15 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <div
         className="modal feature-dialog"
-        role="presentation"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="feature-dialog-title"
         onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={dismiss}
       >
         <header className="modal-head">
           <div>
-            <h2>Nueva feature</h2>
+            <h2 id="feature-dialog-title">Nueva feature</h2>
             <p className="muted small-text">
               Un objetivo y los repos que toca. El worktree se crea al confirmar.
             </p>
@@ -123,9 +129,11 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
         </header>
 
         <div className="modal-body">
-          <label className="field">
+          <label className="field" htmlFor="feature-name">
             <span>Nombre</span>
             <input
+              id="feature-name"
+              autoFocus
               className="text-input"
               value={name}
               placeholder="Checkout con Stripe"
@@ -137,9 +145,10 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
           </label>
 
           <div className="row feature-form-row">
-            <label className="field">
+            <label className="field" htmlFor="feature-kind">
               <span>Tipo</span>
               <select
+                id="feature-kind"
                 className="text-input"
                 value={kind}
                 onChange={(event) => setKind(event.target.value as FeatureKind)}
@@ -151,9 +160,10 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
                 ))}
               </select>
             </label>
-            <label className="field">
+            <label className="field" htmlFor="feature-root">
               <span>Metarepo (opcional)</span>
               <select
+                id="feature-root"
                 className="text-input"
                 value={rootId}
                 onChange={(event) => {
@@ -178,9 +188,10 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
             </label>
           </div>
 
-          <label className="field">
+          <label className="field" htmlFor="feature-brief">
             <span>Objetivo</span>
             <textarea
+              id="feature-brief"
               className="text-input feature-brief"
               value={brief}
               placeholder="Qué hay que conseguir y cómo se sabrá que está hecho."
@@ -192,26 +203,29 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
           </label>
 
           <div className="row feature-form-row">
-            <label className="field">
+            <label className="field" htmlFor="feature-base-root">
               <span>Base del metarepo</span>
               <input
+                id="feature-base-root"
                 className="text-input"
                 value={baseRoot}
                 onChange={(event) => setBaseRoot(event.target.value)}
               />
             </label>
-            <label className="field">
+            <label className="field" htmlFor="feature-base-target">
               <span>Base de los repos</span>
               <input
+                id="feature-base-target"
                 className="text-input"
                 value={baseTarget}
                 placeholder="main"
                 onChange={(event) => setBaseTarget(event.target.value)}
               />
             </label>
-            <label className="field">
+            <label className="field" htmlFor="feature-scopes">
               <span>Scopes</span>
               <input
+                id="feature-scopes"
                 className="text-input"
                 value={scopes}
                 placeholder="front, back"

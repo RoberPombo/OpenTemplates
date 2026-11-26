@@ -51,9 +51,10 @@ export function NameStep({
 }: Props) {
   return (
     <section className="wizard-pane">
-      <label className="field">
-        <span>Nombre del workspace</span>
+      <div className="field">
+        <label htmlFor="wizard-name">Nombre del workspace</label>
         <input
+          id="wizard-name"
           autoFocus
           className="text-input"
           value={name}
@@ -61,7 +62,7 @@ export function NameStep({
           onChange={(event) => onNameChange(event.target.value)}
         />
         {name.trim() && <span className="field-hint">id de rama y carpeta: {slug || "—"}</span>}
-      </label>
+      </div>
 
       {loose ? (
         <div className="callout info">
@@ -105,6 +106,7 @@ export function NameStep({
           {mode === "worktree" && (
             <div className="form-grid">
               <SearchField
+                id="wizard-branch"
                 label="Rama"
                 value={branch}
                 onChange={onBranchChange}
@@ -112,6 +114,7 @@ export function NameStep({
                 hint="Vacío = el id del nombre."
               />
               <SearchField
+                id="wizard-base"
                 label="Base"
                 value={base}
                 onChange={onBaseChange}
@@ -119,6 +122,7 @@ export function NameStep({
                 hint="Vacío = origin/rama principal si existe."
               />
               <SearchField
+                id="wizard-worktree-path"
                 label="Ruta del worktree"
                 value={worktreePath}
                 onChange={onWorktreePathChange}

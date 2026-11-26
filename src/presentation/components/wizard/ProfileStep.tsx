@@ -56,18 +56,20 @@ export function ProfileStep({
 
       {quickOpen && (
         <div className="quick-profile">
-          <label className="field">
+          <label className="field" htmlFor="wizard-quick-name">
             <span>Nombre</span>
             <input
+              id="wizard-quick-name"
               className="text-input"
               value={quickName}
               placeholder="Backend, revisión, observabilidad…"
               onChange={(event) => onQuickNameChange(event.target.value)}
             />
           </label>
-          <label className="field">
+          <label className="field" htmlFor="wizard-quick-description">
             <span>Descripción</span>
             <input
+              id="wizard-quick-description"
               className="text-input"
               value={quickDescription}
               placeholder="API, tests y revisión"

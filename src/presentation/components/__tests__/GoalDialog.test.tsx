@@ -25,7 +25,7 @@ describe("GoalDialog — crear", () => {
     await user.type(screen.getByLabelText("Criterio de fin"), "  deja los tests en verde  ");
     await user.clear(screen.getByLabelText("Límite de turnos"));
     await user.type(screen.getByLabelText("Límite de turnos"), "7");
-    await user.type(screen.getByLabelText("Límite de coste"), "1.5");
+    await user.type(screen.getByLabelText(/Límite de coste/), "1.5");
     await user.click(screen.getByRole("button", { name: "Crear objetivo" }));
     expect(props.onSave).toHaveBeenCalledWith({
       text: "deja los tests en verde",
@@ -44,6 +44,18 @@ describe("GoalDialog — crear", () => {
   test("avisa si no hay modelo de decisión", () => {
     render(<GoalDialog goal={null} {...baseProps()} decisionModel={null} />);
     expect(screen.getByText(/no tiene un modelo con capacidad de decisión/)).toBeInTheDocument();
+  });
+  test("Escape cierra sin guardar", async () => {
+    const user = userEvent.setup();
+    const props = baseProps();
+    render(<GoalDialog goal={null} {...props} />);
+    expect(screen.getByRole("dialog", { name: "Nuevo objetivo" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Criterio de fin")).toHaveFocus();
+    await user.tab();
+    expect(screen.getByLabelText("Límite de turnos")).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(props.onClose).toHaveBeenCalled();
+    expect(props.onSave).not.toHaveBeenCalled();
   });
 });
 describe("GoalDialog — editar", () => {

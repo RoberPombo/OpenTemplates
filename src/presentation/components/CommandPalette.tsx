@@ -21,6 +21,7 @@ type Props = {
 };
 
 const LIST_ID = "command-palette-list";
+const HELP_ID = "command-palette-help";
 
 function optionId(id: string): string {
   return `palette-option-${id.replace(/[^a-z0-9]+/gi, "-")}`;
@@ -106,6 +107,7 @@ export function CommandPalette({ commands, onRun, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="Paleta de comandos"
+        aria-describedby={HELP_ID}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="palette-search">
@@ -183,7 +185,7 @@ export function CommandPalette({ commands, onRun, onClose }: Props) {
           })}
         </div>
 
-        <footer className="palette-footer">
+        <footer className="palette-footer" id={HELP_ID}>
           <span>↑↓ navegar</span>
           <span>Enter ejecutar</span>
           <span>Esc cerrar</span>

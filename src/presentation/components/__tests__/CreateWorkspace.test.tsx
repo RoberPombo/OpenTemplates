@@ -51,6 +51,7 @@ function setup(workspaces: Workspace[] = []) {
     folderPicker: { pickDirectory: vi.fn(async () => "/carpeta") },
   });
   const onCreated = vi.fn();
+  const onClose = vi.fn();
   render(
     <AppProvider root={root}>
       <CreateWorkspace
@@ -59,14 +60,14 @@ function setup(workspaces: Workspace[] = []) {
         library={library}
         workspaces={workspaces}
         worktreesRoot="/wt"
-        onClose={vi.fn()}
+        onClose={onClose}
         onRepoAdded={vi.fn()}
         onProfileSaved={vi.fn()}
         onCreated={onCreated}
       />
     </AppProvider>,
   );
-  return { create, saveProfile, onCreated };
+  return { create, saveProfile, onCreated, onClose };
 }
 
 async function goToNameStep(user: ReturnType<typeof userEvent.setup>) {
@@ -137,6 +138,37 @@ describe("CreateWorkspace — wizard", () => {
     await user.click(screen.getByText("Checkout principal"));
     expect(screen.getByText(/Ya hay un workspace sobre el checkout principal/)).toBeInTheDocument();
     expect(screen.getByText(/Ocupado/)).toBeInTheDocument();
+  });
+
+  test("asocia etiquetas a los campos y Escape cierra el diálogo", async () => {
+    const user = userEvent.setup();
+    const { onClose } = setup();
+
+    expect(screen.getByRole("dialog", { name: "Nuevo workspace" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Cerrar" })).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await user.click(screen.getByRole("button", { name: "Crear perfil" }));
+    expect(screen.getByLabelText("Nombre")).toBeInTheDocument();
+    expect(screen.getByLabelText("Descripción")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    expect(screen.getByLabelText("Nombre del workspace")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Rama/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Base/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Ruta del worktree/)).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test("la carpeta suelta tiene una etiqueta asociada", async () => {
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(screen.getByRole("button", { name: /Carpeta suelta/ }));
+    expect(screen.getByLabelText("Carpeta")).toBeInTheDocument();
   });
 
   test("perfil rápido con id colisionado muestra error y no guarda", async () => {

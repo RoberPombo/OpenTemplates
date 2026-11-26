@@ -465,17 +465,19 @@ export function ProfilesSection({
 
       <div className="settings-detail profile-editor">
         <div className="form-grid two">
-          <label className="field">
+          <label className="field" htmlFor="profile-name">
             <span>Nombre</span>
             <input
+              id="profile-name"
               className="text-input"
               value={draft.name}
               onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
             />
           </label>
-          <label className="field">
+          <label className="field" htmlFor="profile-id">
             <span>Id</span>
             <input
+              id="profile-id"
               className="text-input"
               value={draft.id}
               placeholder="se deriva del nombre"
@@ -483,9 +485,10 @@ export function ProfilesSection({
               onChange={(event) => setDraft((prev) => ({ ...prev, id: event.target.value }))}
             />
           </label>
-          <label className="field">
+          <label className="field" htmlFor="profile-description">
             <span>Descripción</span>
             <input
+              id="profile-description"
               className="text-input"
               value={draft.description}
               onChange={(event) =>
@@ -496,9 +499,10 @@ export function ProfilesSection({
               }
             />
           </label>
-          <label className="field">
+          <label className="field" htmlFor="profile-version">
             <span>Versión</span>
             <input
+              id="profile-version"
               className="text-input"
               type="number"
               min={1}
@@ -691,9 +695,10 @@ export function ProfilesSection({
           </section>
         </div>
 
-        <label className="field">
+        <label className="field" htmlFor="profile-agents-md">
           <span>AGENTS.md del perfil</span>
           <textarea
+            id="profile-agents-md"
             className="text-area"
             rows={6}
             value={agentsMd}
@@ -774,10 +779,11 @@ export function SystemSection({
           Raíz donde se crean las carpetas de worktree. Por defecto, <code>{worktreesRoot}</code>.
         </p>
       </div>
-      <label className="field">
-        <span>Raíz de worktrees</span>
+      <div className="field">
+        <label htmlFor="system-worktrees-root">Raíz de worktrees</label>
         <div className="row">
           <input
+            id="system-worktrees-root"
             className="text-input"
             value={worktreesDraft}
             placeholder={worktreesRoot}
@@ -788,7 +794,7 @@ export function SystemSection({
           />
         </div>
         <span className="field-hint">Ruta absoluta. Vacío = valor por defecto en app data.</span>
-      </label>
+      </div>
       {defaultProfileId && (
         <p className="muted small-text">
           Perfil por defecto de los workspaces nuevos: <code>{defaultProfileId}</code>.
