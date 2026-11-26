@@ -1,7 +1,8 @@
 /**
- * Chat de un workspace: sesión, catálogo, streaming, permisos, objetivos y
- * transferencia. Los efectos secundarios (I/O, preferencias y ciclo de vida de
- * React) viven aquí; la vista solo pinta el estado que devuelve el hook.
+ * Chat de un workspace como composición: sesión, historial y lista
+ * (`useChatSessions`), catálogo y streaming, solicitudes del agente
+ * (`useChatRequests`), objetivos (`useChatGoal`) y transferencia. Los efectos
+ * secundarios viven en los hooks; aquí solo se encadenan.
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useAppContext } from "../context/AppContext";
@@ -15,13 +16,11 @@ import {
   type ChatCommand,
   type ChatSkill,
 } from "../../domain/chat/commands";
-import { toChatMessages, type ChatMessage } from "../../domain/chat/messages";
 import {
   agentLabel,
   effectiveVariant as supportedVariant,
   groupModelsByProvider,
   modelLabel,
-  parseModelRef,
   selectWorkspaceModels,
   toAgentOptions,
   toModelOptions,
@@ -40,12 +39,7 @@ import {
   isThrottledKind,
   notificationsEnabled,
 } from "../../domain/chat/notifications";
-import {
-  eventTouchesSessionList,
-  sortSessionsByRecent,
-  toSessionSummaries,
-  type SessionSummary,
-} from "../../domain/chat/sessions";
+import { eventTouchesSessionList } from "../../domain/chat/sessions";
 import {
   createSessionFile,
   importErrorMessage,
@@ -56,6 +50,7 @@ import {
 } from "../../domain/chat/transfer";
 import { useChatGoal } from "./useChatGoal";
 import { useChatRequests } from "./useChatRequests";
+import { useChatSessions } from "./useChatSessions";
 
 type UseChatInput = {
   client: ChatServer;
@@ -87,18 +82,10 @@ export function useChat({
   initialSessionId,
 }: UseChatInput) {
   const root = useAppContext();
-  const storageKey = prefKeys.session(workspace.id, scope);
   const modelStorageKey = prefKeys.model(workspace.id, scope);
   const agentStorageKey = prefKeys.agent(workspace.id, scope);
   const variantStorageKey = prefKeys.variant(workspace.id, scope);
 
-  const [sessionId, setSessionId] = useState<string | null>(
-    () => initialSessionId ?? root.preferences.get(storageKey),
-  );
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [sessionsError, setSessionsError] = useState<string | null>(null);
-  const [sessionsNotice, setSessionsNotice] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -111,7 +98,6 @@ export function useChat({
   // Avisos: último turno avisado por sesión y permisos ya avisados (sin repetir).
   const lastNotifiedAt = useRef<Record<string, number>>({});
   const notifiedRequests = useRef<Set<string>>(new Set());
-  const sessionsRef = useRef<SessionSummary[]>([]);
 
   const [stream, dispatch] = useReducer(chatStreamReducer, undefined, () =>
     initialChatStreamState({
@@ -123,12 +109,48 @@ export function useChat({
   );
   const { streaming, busy, liveTools, branch, modelChoice, agentChoice, variant, error } = stream;
 
+  const reportSessionError = useCallback((message: string) => {
+    dispatch({ kind: "error", error: message });
+  }, []);
+  const resetSessionState = useCallback(() => {
+    dispatch({ kind: "reset" });
+  }, []);
+
+  // Sesión activa, historial y lista: toda la persistencia de sesión.
+  const {
+    sessionId,
+    messages,
+    setMessages,
+    sessions,
+    sessionsRef,
+    sessionsError,
+    sessionsNotice,
+    setSessionsError,
+    setSessionsNotice,
+    loadedSession,
+    reload,
+    refreshSessions,
+    selectSession,
+    renameSession,
+    deleteSession,
+    newConversation,
+  } = useChatSessions({
+    client,
+    workspace,
+    root,
+    scope,
+    openSessionId,
+    onSessionOpened,
+    onSessionChange,
+    initialSessionId,
+    onError: reportSessionError,
+    onSessionReset: resetSessionState,
+  });
+
   const selectedModel = useMemo(
     () => models.find((model) => model.key === modelChoice) ?? null,
     [models, modelChoice],
   );
-  // El modelo del perfil se pasa al crear la sesión; no se fija en la config.
-  const workspaceModelRef = useMemo(() => parseModelRef(workspace.model), [workspace.model]);
   const modelGroups = useMemo(() => groupModelsByProvider(models), [models]);
   const effectiveVariant = supportedVariant(variant, selectedModel);
   const skills = useMemo(
@@ -153,7 +175,7 @@ export function useChat({
   } = useChatRequests({ client, sessionId });
 
   // Objetivo de la sesión: estado, evaluación al cerrar turno y acciones.
-  const { onTurnEnd, markSessionLoaded, pauseGoalIfActive, ...goalApi } = useChatGoal({
+  const { onTurnEnd, pauseGoalIfActive, ...goalApi } = useChatGoal({
     client,
     sessionId,
     workspace,
@@ -161,6 +183,7 @@ export function useChat({
     sessions,
     messages,
     sessionsRef,
+    loadedSession,
     busy,
     permissionsCount: permissions.length,
     formsCount: forms.length,
@@ -172,106 +195,6 @@ export function useChat({
     [models],
   );
   const agentName = useCallback((id: string | undefined) => agentLabel(agents, id), [agents]);
-
-  useEffect(() => {
-    onSessionChange?.(sessionId);
-  }, [onSessionChange, sessionId]);
-
-  const reload = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const response = await client.message.list({
-        sessionID: sessionId,
-        limit: 200,
-        order: "asc",
-      });
-      setMessages(toChatMessages(response.data));
-      markSessionLoaded(sessionId);
-    } catch (err) {
-      root.preferences.remove(storageKey);
-      setSessionId(null);
-      setMessages([]);
-      markSessionLoaded(null);
-      dispatch({ kind: "error", error: errorTextOr(err) });
-    }
-  }, [client, sessionId, storageKey, root, markSessionLoaded]);
-
-  const refreshSessions = useCallback(async () => {
-    try {
-      const response = await client.session.list({
-        directory: workspace.projectPath,
-        limit: 100,
-      });
-      setSessions(sortSessionsByRecent(toSessionSummaries(response.data)));
-      setSessionsError(null);
-    } catch (err) {
-      setSessionsError(errorTextOr(err));
-    }
-  }, [client, workspace.projectPath]);
-
-  useEffect(() => {
-    void refreshSessions();
-  }, [refreshSessions]);
-
-  useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
-
-  const selectSession = useCallback(
-    (id: string) => {
-      if (id === sessionId) return;
-      setSessionsNotice(null);
-      root.preferences.set(storageKey, id);
-      setSessionId(id);
-      setMessages([]);
-      dispatch({ kind: "reset" });
-    },
-    [sessionId, storageKey, root],
-  );
-
-  const openedSessionRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!openSessionId) {
-      openedSessionRef.current = null;
-      return;
-    }
-    if (openedSessionRef.current === openSessionId) return;
-    openedSessionRef.current = openSessionId;
-    if (openSessionId !== sessionId) selectSession(openSessionId);
-    onSessionOpened?.();
-  }, [openSessionId, sessionId, selectSession, onSessionOpened]);
-
-  const renameSession = useCallback(
-    async (id: string, title: string) => {
-      const next = title.trim();
-      if (!next) return;
-      try {
-        await client.session.update({ sessionID: id, title: next });
-        await refreshSessions();
-      } catch (err) {
-        setSessionsError(errorTextOr(err));
-      }
-    },
-    [client, refreshSessions],
-  );
-
-  const deleteSession = useCallback(
-    async (id: string) => {
-      try {
-        await client.session.remove({ sessionID: id });
-        if (id === sessionId) {
-          root.preferences.remove(storageKey);
-          setSessionId(null);
-          setMessages([]);
-          dispatch({ kind: "reset" });
-        }
-        await refreshSessions();
-      } catch (err) {
-        setSessionsError(errorTextOr(err));
-      }
-    },
-    [client, sessionId, storageKey, root, refreshSessions],
-  );
 
   const exportSession = useCallback(
     async (id: string, sanitize: boolean) => {
@@ -297,7 +220,7 @@ export function useChat({
         setSessionsError(errorTextOr(err));
       }
     },
-    [client, root],
+    [client, root, sessionsRef, setSessionsError, setSessionsNotice],
   );
 
   const importSession = useCallback(async () => {
@@ -326,7 +249,16 @@ export function useChat({
     } catch (err) {
       setSessionsError(errorTextOr(err));
     }
-  }, [client, root, refreshSessions, selectSession, workspace.name, workspace.projectPath]);
+  }, [
+    client,
+    root,
+    refreshSessions,
+    selectSession,
+    setSessionsError,
+    setSessionsNotice,
+    workspace.name,
+    workspace.projectPath,
+  ]);
 
   const forkSession = useCallback(
     async (id: string, before?: string) => {
@@ -345,7 +277,7 @@ export function useChat({
         setSessionsError(errorTextOr(err));
       }
     },
-    [busy, client, refreshSessions, selectSession],
+    [busy, client, refreshSessions, selectSession, setSessionsError, setSessionsNotice],
   );
 
   useEffect(() => {
@@ -354,8 +286,6 @@ export function useChat({
   }, [sessionId]);
 
   useEffect(() => {
-    setSessionId(initialSessionId ?? root.preferences.get(storageKey));
-    setMessages([]);
     setCommand(null);
     setSelectedSkills([]);
     dispatch({
@@ -364,48 +294,7 @@ export function useChat({
       agentChoice: root.preferences.get(agentStorageKey) ?? "",
       variant: root.preferences.get(variantStorageKey) ?? "",
     });
-  }, [storageKey, modelStorageKey, agentStorageKey, variantStorageKey, initialSessionId, root]);
-
-  useEffect(() => {
-    if (!sessionId) {
-      setMessages([]);
-      return;
-    }
-    void reload();
-  }, [sessionId, reload]);
-
-  useEffect(() => {
-    if (sessionId || initialSessionId) return;
-    let alive = true;
-    (async () => {
-      try {
-        const session = await client.session.create({
-          location: { directory: workspace.projectPath },
-          title: `Chat · ${workspace.name}`,
-          ...(workspaceModelRef ? { model: workspaceModelRef } : {}),
-        });
-        if (!alive) return;
-        setSessionId(session.id);
-        root.preferences.set(storageKey, session.id);
-        void refreshSessions();
-      } catch (err) {
-        if (alive) dispatch({ kind: "error", error: errorTextOr(err) });
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [
-    client,
-    sessionId,
-    initialSessionId,
-    storageKey,
-    workspace.name,
-    workspace.projectPath,
-    workspaceModelRef,
-    root,
-    refreshSessions,
-  ]);
+  }, [modelStorageKey, agentStorageKey, variantStorageKey, initialSessionId, root]);
 
   // Catálogo de modelos y agentes del workspace.
   useEffect(() => {
@@ -646,6 +535,7 @@ export function useChat({
     sessionId,
     reload,
     refreshSessions,
+    sessionsRef,
     root,
     workspace.id,
     workspace.name,
@@ -753,14 +643,6 @@ export function useChat({
     } finally {
       dispatch({ kind: "executionStopped" });
     }
-  }
-
-  function newConversation() {
-    root.preferences.remove(storageKey);
-    setSessionId(null);
-    setMessages([]);
-    setSessionsNotice(null);
-    dispatch({ kind: "reset" });
   }
 
   return {
