@@ -51,6 +51,7 @@ import {
 } from "../../domain/chat/permissions";
 import {
   effectiveVariant as supportedVariant,
+  selectWorkspaceModels,
   toAgentOptions,
   toModelOptions,
   type AgentOption,
@@ -103,6 +104,10 @@ function errorText(error: unknown): string {
   return baseErrorText(error);
 }
 
+/** El catálogo puede tardar en calentar; reintentos antes de darlo por vacío. */
+const CATALOG_RETRIES = 8;
+const CATALOG_RETRY_MS = 1500;
+
 export function useChat({
   client,
   workspace,
@@ -129,6 +134,7 @@ export function useChat({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [commands, setCommands] = useState<ChatCommand[]>([]);
   const [skillCatalog, setSkillCatalog] = useState<ChatSkill[]>([]);
@@ -515,28 +521,38 @@ export function useChat({
   useEffect(() => {
     let alive = true;
     (async () => {
-      try {
-        const [modelResponse, agentResponse, defaultResponse, decisionResponse] = await Promise.all(
-          [
-            client.model.list({ location: { directory: workspace.projectPath } }),
-            client.agent.list({ location: { directory: workspace.projectPath } }),
-            client.model
-              .default({ location: { directory: workspace.projectPath } })
-              .catch(() => null),
-            client.model
-              .list({ location: { directory: workspace.projectPath }, types: ["decision"] })
-              .catch(() => null),
-          ],
-        );
-        if (!alive) return;
+      // El servidor tarda en resolver proveedores al arrancar: reintentamos el
+      // catálogo para no dejar el selector en "Cargando…".
+      const loadCatalog = async () => {
+        for (let attempt = 0; ; attempt++) {
+          const response = await client.model.list({
+            location: { directory: workspace.projectPath },
+          });
+          const options = toModelOptions(response.data);
+          if (options.length > 0 || attempt >= CATALOG_RETRIES) return options;
+          await new Promise((resolve) => setTimeout(resolve, CATALOG_RETRY_MS));
+          if (!alive) return null;
+        }
+      };
 
-        const allowedModels = new Set(workspace.models ?? []);
-        const nextModels = toModelOptions(modelResponse.data).filter(
-          (model) => allowedModels.size === 0 || allowedModels.has(model.key),
-        );
+      try {
+        const [catalog, agentResponse, defaultResponse, decisionResponse] = await Promise.all([
+          loadCatalog(),
+          client.agent.list({ location: { directory: workspace.projectPath } }),
+          client.model
+            .default({ location: { directory: workspace.projectPath } })
+            .catch(() => null),
+          client.model
+            .list({ location: { directory: workspace.projectPath }, types: ["decision"] })
+            .catch(() => null),
+        ]);
+        if (!alive || !catalog) return;
+
+        const nextModels = selectWorkspaceModels(catalog, workspace.models);
         const nextAgents = toAgentOptions(agentResponse.data);
         setModels(nextModels);
         setAgents(nextAgents);
+        setCatalogLoading(false);
         setDecisionModel(pickDecisionModel(decisionResponse?.data ?? []));
 
         dispatch({
@@ -549,7 +565,10 @@ export function useChat({
           serverDefault: defaultResponse?.data ?? null,
         });
       } catch (err) {
-        if (alive) dispatch({ kind: "error", error: errorText(err) });
+        if (alive) {
+          setCatalogLoading(false);
+          dispatch({ kind: "error", error: errorText(err) });
+        }
       }
     })();
     return () => {
@@ -1130,6 +1149,7 @@ export function useChat({
     setInput,
     sending,
     models,
+    catalogLoading,
     agents,
     commands,
     skills,

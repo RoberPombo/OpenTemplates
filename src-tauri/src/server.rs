@@ -2,7 +2,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::oneshot;
 
@@ -45,6 +45,57 @@ fn write_log(path: &Path, line: &str) {
     }
 }
 
+/// opencode v2 guarda las credenciales en su DB, no en `auth.json`. Cada
+/// contexto usa una DB propia (sesiones aisladas), así que hay que copiar ahí
+/// las del usuario; `auth import` omite las que ya están.
+async fn sync_credentials(bin: &Path, context_dir: &Path) -> Result<(), String> {
+    let export = tokio::process::Command::new(bin)
+        .args(["auth", "export", "--standalone"])
+        .env_remove("OPENCODE_DB")
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .map_err(|error| format!("auth export no arrancó: {error}"))?;
+    if !export.status.success() {
+        return Err(format!("auth export falló ({})", export.status));
+    }
+    if export.stdout.iter().all(u8::is_ascii_whitespace) {
+        return Ok(());
+    }
+
+    let mut import = tokio::process::Command::new(bin)
+        .args(["auth", "import", "--standalone"])
+        .env("OPENCODE_DB", context_dir.join("opencode.db"))
+        .env("XDG_CONFIG_HOME", context_dir.join("xdg"))
+        .env("OPENCODE_DISABLE_PROJECT_CONFIG", "1")
+        .env("OPENCODE_DISABLE_AUTOUPDATE", "1")
+        .env_remove("OPENCODE_CONFIG")
+        .env_remove("OPENCODE_CONFIG_CONTENT")
+        .env_remove("OPENCODE_CONFIG_DIR")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("auth import no arrancó: {error}"))?;
+    if let Some(mut stdin) = import.stdin.take() {
+        stdin
+            .write_all(&export.stdout)
+            .await
+            .map_err(|error| format!("no se pudieron enviar las credenciales: {error}"))?;
+    }
+    let output = import
+        .wait_with_output()
+        .await
+        .map_err(|error| format!("auth import falló: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "auth import falló ({})",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
 pub async fn spawn(
     workspace: &Workspace,
     context_dir: &Path,
@@ -55,6 +106,17 @@ pub async fn spawn(
     std::fs::create_dir_all(&log_dir)
         .map_err(|e| format!("No se pudo crear {}: {e}", log_dir.display()))?;
     let log_path = log_dir.join("server.log");
+
+    // Sin credenciales el servidor solo ofrece proveedores sin auth (los
+    // gratuitos y los locales), así que los modelos del perfil desaparecen.
+    match tokio::time::timeout(Duration::from_secs(20), sync_credentials(bin, context_dir)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => write_log(&log_path, &format!("aviso: credenciales: {error}")),
+        Err(_) => write_log(
+            &log_path,
+            "aviso: las credenciales tardaron más de 20 s en sincronizarse",
+        ),
+    }
 
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0))
         .map_err(|e| format!("No hay puerto libre: {e}"))?;

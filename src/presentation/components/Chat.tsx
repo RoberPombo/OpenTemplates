@@ -25,6 +25,8 @@ import { AsyncSearchableSelect, Select } from "./ui";
 type Props = {
   client: ChatServer;
   workspace: Workspace;
+  /** Nombre del repo; el chip de proyecto no debe mostrar la carpeta del worktree. */
+  projectName?: string;
   /** Ámbito de sesiones (huella del contexto/perfil). */
   scope?: string;
   onSessionChange?: (sessionId: string | null) => void;
@@ -56,6 +58,7 @@ function effortLabel(id: string) {
 export function Chat({
   client,
   workspace,
+  projectName,
   scope,
   onSessionChange,
   sessionsOpen,
@@ -82,6 +85,7 @@ export function Chat({
     input,
     setInput,
     models,
+    catalogLoading,
     agents,
     commands,
     skills,
@@ -236,7 +240,7 @@ export function Chat({
     element.style.height = `${Math.min(element.scrollHeight, 180)}px`;
   }, [input]);
 
-  const folder = folderName(workspace.projectPath);
+  const folder = projectName ?? folderName(workspace.projectPath);
   const variants = selectedModel?.variants ?? [];
   const modelSelectOptions = useMemo(
     () =>
@@ -525,7 +529,13 @@ export function Chat({
                   <AsyncSearchableSelect
                     aria-label="Modelo"
                     value={modelChoice}
-                    placeholder={models.length === 0 ? "Cargando modelos…" : "Buscar modelo…"}
+                    placeholder={
+                      models.length === 0
+                        ? catalogLoading
+                          ? "Cargando modelos…"
+                          : "Sin modelos disponibles"
+                        : "Buscar modelo…"
+                    }
                     disabled={models.length === 0 || busy}
                     options={modelSelectOptions}
                     variant="chip"
