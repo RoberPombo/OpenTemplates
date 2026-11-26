@@ -42,6 +42,32 @@ export type CatalogAgent = {
 export function modelKey(model: { providerID: string; id: string }): string {
   return `${model.providerID}/${model.id}`;
 }
+/** Nombre visible de un modelo del catálogo; cae al id si ya no está. */
+export function modelLabel(
+  models: ModelOption[],
+  model: { providerID: string; id: string } | undefined,
+): string {
+  if (!model) return "";
+  return (
+    models.find((item) => item.providerID === model.providerID && item.id === model.id)?.name ??
+    model.id
+  );
+}
+/** Nombre visible de un agente del catálogo; cae al id si ya no está. */
+export function agentLabel(agents: AgentOption[], id: string | undefined): string {
+  if (!id) return "";
+  return agents.find((agent) => agent.id === id)?.name ?? id;
+}
+/** Agrupa el catálogo por proveedor conservando el orden de llegada. */
+export function groupModelsByProvider(models: ModelOption[]): Array<[string, ModelOption[]]> {
+  const groups = new Map<string, ModelOption[]>();
+  for (const model of models) {
+    const list = groups.get(model.providerID) ?? [];
+    list.push(model);
+    groups.set(model.providerID, list);
+  }
+  return [...groups.entries()];
+}
 /**
  * `providerID/modelID` → referencia. Devuelve `null` si falta el separador o
  * alguna de las dos partes; es la misma regla para perfil, feature y sesión.
