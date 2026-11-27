@@ -4,8 +4,6 @@ import { prefKeys } from "./domain/repositories/Preferences";
 import { useWorkspaces } from "./presentation/hooks/useWorkspaces";
 import { useFeatures } from "./presentation/hooks/useFeatures";
 import { CreateWorkspace } from "./presentation/components/CreateWorkspace";
-import { FeatureDialog } from "./presentation/components/FeatureDialog";
-import { FeatureView } from "./presentation/components/FeatureView";
 import type { SettingsSectionId } from "./presentation/components/SettingsDialog";
 import { UpdateDialog } from "./presentation/components/UpdateDialog";
 import { WorkspaceView } from "./presentation/components/WorkspaceView";
@@ -26,6 +24,18 @@ const PALETTE_SHORTCUT = shortcutFor("palette.open");
 const SettingsDialog = lazy(() =>
   import("./presentation/components/SettingsDialog").then((module) => ({
     default: module.SettingsDialog,
+  })),
+);
+/** La vista de feature solo se carga al abrir una. */
+const FeatureView = lazy(() =>
+  import("./presentation/components/FeatureView").then((module) => ({
+    default: module.FeatureView,
+  })),
+);
+/** El alta de una feature solo se monta al abrir su diálogo. */
+const FeatureDialog = lazy(() =>
+  import("./presentation/components/FeatureDialog").then((module) => ({
+    default: module.FeatureDialog,
   })),
 );
 /** La lista de sesiones solo se monta al desplegar un workspace en marcha. */
@@ -505,43 +515,47 @@ function App() {
         )}
 
         {featuresState.selected ? (
-          <FeatureView
-            key={featuresState.selected.id}
-            feature={featuresState.selected}
-            artifacts={featuresState.artifacts}
-            profiles={profiles}
-            defaultProfileId={boot.settings.defaultProfileId}
-            runner={featuresState.coordinator}
-            coordinatorBusy={featuresState.coordinatorBusy}
-            busy={featuresState.busyId === featuresState.selected.id}
-            notice={featuresState.notice}
-            error={featuresState.error}
-            stepRunner={featuresState.stepSession?.open ? featuresState.stepSession.runner : null}
-            openStepId={featuresState.stepSession?.open ? featuresState.stepSession.stepId : null}
-            stepBusyId={featuresState.stepBusyId}
-            onProvision={() =>
-              void featuresState.provision(featuresState.selected!.id).catch(() => undefined)
-            }
-            onSaveArtifact={featuresState.saveArtifact}
-            onReloadArtifacts={featuresState.reloadArtifacts}
-            onLaunchCoordinator={(profileId) =>
-              featuresState.launchCoordinator(featuresState.selected!.id, profileId)
-            }
-            onStopCoordinator={() => featuresState.stopCoordinator(featuresState.selected!.id)}
-            onApproveDecomposition={(content) =>
-              featuresState.approveDecomposition(featuresState.selected!.id, content)
-            }
-            onLaunchStep={(stepId, profileId) =>
-              featuresState.launchStep(featuresState.selected!.id, stepId, profileId)
-            }
-            onFinishStep={(stepId) => featuresState.finishStep(featuresState.selected!.id, stepId)}
-            onApproveStep={(stepId) =>
-              featuresState.approveStep(featuresState.selected!.id, stepId)
-            }
-            onCloseStepChat={featuresState.closeStepChat}
-            onDelete={() => void featuresState.remove(featuresState.selected!.id)}
-            onBack={() => featuresState.clearSelection()}
-          />
+          <Suspense fallback={<p className="muted">Cargando feature…</p>}>
+            <FeatureView
+              key={featuresState.selected.id}
+              feature={featuresState.selected}
+              artifacts={featuresState.artifacts}
+              profiles={profiles}
+              defaultProfileId={boot.settings.defaultProfileId}
+              runner={featuresState.coordinator}
+              coordinatorBusy={featuresState.coordinatorBusy}
+              busy={featuresState.busyId === featuresState.selected.id}
+              notice={featuresState.notice}
+              error={featuresState.error}
+              stepRunner={featuresState.stepSession?.open ? featuresState.stepSession.runner : null}
+              openStepId={featuresState.stepSession?.open ? featuresState.stepSession.stepId : null}
+              stepBusyId={featuresState.stepBusyId}
+              onProvision={() =>
+                void featuresState.provision(featuresState.selected!.id).catch(() => undefined)
+              }
+              onSaveArtifact={featuresState.saveArtifact}
+              onReloadArtifacts={featuresState.reloadArtifacts}
+              onLaunchCoordinator={(profileId) =>
+                featuresState.launchCoordinator(featuresState.selected!.id, profileId)
+              }
+              onStopCoordinator={() => featuresState.stopCoordinator(featuresState.selected!.id)}
+              onApproveDecomposition={(content) =>
+                featuresState.approveDecomposition(featuresState.selected!.id, content)
+              }
+              onLaunchStep={(stepId, profileId) =>
+                featuresState.launchStep(featuresState.selected!.id, stepId, profileId)
+              }
+              onFinishStep={(stepId) =>
+                featuresState.finishStep(featuresState.selected!.id, stepId)
+              }
+              onApproveStep={(stepId) =>
+                featuresState.approveStep(featuresState.selected!.id, stepId)
+              }
+              onCloseStepChat={featuresState.closeStepChat}
+              onDelete={() => void featuresState.remove(featuresState.selected!.id)}
+              onBack={() => featuresState.clearSelection()}
+            />
+          </Suspense>
         ) : selected ? (
           <WorkspaceView
             key={selected.id}
@@ -606,15 +620,19 @@ function App() {
       )}
 
       {creatingFeature && (
-        <FeatureDialog
-          repos={repos}
-          dataDir={boot.dataDir}
-          onClose={() => setCreatingFeature(false)}
-          onCreated={(draft) => {
-            setCreatingFeature(false);
-            void featuresState.start(draft).catch((err) => featuresState.setError(errorText(err)));
-          }}
-        />
+        <Suspense fallback={null}>
+          <FeatureDialog
+            repos={repos}
+            dataDir={boot.dataDir}
+            onClose={() => setCreatingFeature(false)}
+            onCreated={(draft) => {
+              setCreatingFeature(false);
+              void featuresState
+                .start(draft)
+                .catch((err) => featuresState.setError(errorText(err)));
+            }}
+          />
+        </Suspense>
       )}
 
       {settings && (

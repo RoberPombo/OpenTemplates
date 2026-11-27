@@ -671,12 +671,14 @@ el coordinador, la descomposición, la provisión y las carreras se conservan.
 - **Flujo rápido.** `start_feature_step_runner` admite `fast`; el coordinador
   sigue rechazándolo. En `fast` el paso `implement` recibe un encargo sin plan.
 
-Verificación: `pnpm check` en verde (782 tests), `pnpm build` en verde y
-`cargo test` con 76 tests pasando y 2 ignorados (incluye pruebas nuevas de
-rutas y locks de pasos). También se estabilizó la prueba de preview que
-reservaba un puerto libre y podía fallar si otro proceso lo reutilizaba antes
-del sondeo. No se levantó la app contra worktrees reales en esta entrega: el
-flujo de UI se validó con dobles y el runner con tests puros.
+Verificación: `pnpm check` en verde (782 tests), `pnpm build` en verde,
+`pnpm check:bundle` con 495.61 kB de 500 kB y `cargo test` con 76 tests
+pasando y 2 ignorados (incluye pruebas nuevas de rutas y locks de pasos).
+`FeatureView` y `FeatureDialog` pasan a chunks perezosos para no engordar el
+bundle inicial. También se estabilizó la prueba de preview que reservaba un
+puerto libre y podía fallar si otro proceso lo reutilizaba antes del sondeo.
+No se levantó la app contra worktrees reales en esta entrega: el flujo de UI se
+validó con dobles y el runner con tests puros.
 
 Limitaciones conocidas:
 
