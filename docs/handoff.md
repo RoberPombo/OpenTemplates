@@ -628,3 +628,64 @@ multiwebview con soporte Wayland), screenshot/consola y captura de una región.
 - Limitaciones: no fusiona carreras sin worktrees, no resuelve conflictos ni
   aplica parches parciales, no crea el commit y conserva el worktree y la sesión
   de la ganadora.
+
+## Estado tras sesiones por step
+
+Implementado el lanzamiento y el avance de las sesiones del grafo de features;
+el coordinador, la descomposición, la provisión y las carreras se conservan.
+
+- **Perfil y agente por tipo de paso.** `domain/features/steps.ts` centraliza la
+  resolución: `coordinate` (coordinador), `recon` (explorador), `plan`
+  (planificador), `implement` (implementador), `verify` (verificador) e
+  `integrate` (integrador). Manda la elección explícita antes de crear la
+  sesión, luego el `profileId` guardado, el perfil cuyo id o nombre coincide con
+  el rol, el perfil por defecto y, por último, el primero. El agente se toma de
+  `agentId` si existe en el perfil, luego por rol y, si no, el del servidor.
+  `coordinatorProfileId` reutiliza el mismo resolutor.
+- **Worktree correcto.** `coordinate` e `integrate` usan la raíz de la feature;
+  `recon`, `plan`, `implement` y `verify` usan el worktree de su target. El
+  scope no cambia el `cwd`: va en el encargo.
+- **Runner por paso.** Nuevo comando `start_feature_step_runner(featureId,
+  stepId, profileId)` en `feature_runner.rs`. Reutiliza el motor de contextos y
+  el dueño `Feature`, así que comparte servidor con el coordinador cuando el
+  perfil produce la misma huella y arranca otro cuando no. Cada paso escribe su
+  lock en `.runner/steps/<id-saneado>/profile.lock.json`; el coordinador sigue
+  con `.runner/profile.lock.json`.
+- **Coordinador sin ambigüedad.** Al arrancar el coordinador se guarda
+  `.runner/runner.json` con su `contextHash`; `feature_runner_status` filtra por
+  ese hash para no devolver el servidor de un paso.
+- **Sesión y reanudación.** `LaunchStep` resuelve perfil y agente, crea la
+  sesión en el directorio del paso, guarda `sessionId`, `profileId`, `agentId` y
+  `contextHash` antes de enviar el encargo y reutiliza la sesión al reabrir. Si
+  falla el guardado, intenta borrar la sesión recién creada. El hook bloquea
+  lanzamientos duplicados por `stepId`.
+- **Grafo y gates.** Solo se lanza un paso pendiente con dependencias `done`.
+  `Terminar paso` pasa a `awaiting-review`; `Aprobar y continuar` lo cierra y
+  libera a sus dependientes. `plan` y `verify` bloquean implementación e
+  integración hasta aprobarse. Al aprobar el último paso la feature queda
+  `done`. No hay avance automático al recibir `session.idle`.
+- **UI.** `StepSessions` sustituye la lista estática de pasos: muestra perfil,
+  agente, sesión y acciones; permite elegir perfil antes de lanzar y abre el
+  chat del paso con `StepChat` sobre un workspace sintético. `CoordinatorChat`
+  comparte ahora `FeatureSessionChat` con los pasos.
+- **Flujo rápido.** `start_feature_step_runner` admite `fast`; el coordinador
+  sigue rechazándolo. En `fast` el paso `implement` recibe un encargo sin plan.
+
+Verificación: `pnpm check` en verde (782 tests), `pnpm build` en verde y
+`cargo test` con 76 tests pasando y 2 ignorados (incluye pruebas nuevas de
+rutas y locks de pasos). También se estabilizó la prueba de preview que
+reservaba un puerto libre y podía fallar si otro proceso lo reutilizaba antes
+del sondeo. No se levantó la app contra worktrees reales en esta entrega: el
+flujo de UI se validó con dobles y el runner con tests puros.
+
+Limitaciones conocidas:
+
+- El avance es manual; falta reaccionar a `session.idle` para pasar a revisión
+  automáticamente sin saltarse los gates.
+- `stop_feature_runner` para todos los servidores del dueño `Feature`, así que
+  parar el coordinador también para los runners de paso vivos. Las sesiones
+  quedan guardadas.
+- Si cambia el perfil y con él la huella del contexto, la sesión guardada puede
+  no existir en el servidor nuevo; se avisa, pero no se reasocia.
+- No hay reintento, resolución de conflictos ni reasociación de sesiones
+  perdidas.

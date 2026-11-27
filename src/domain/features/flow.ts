@@ -56,6 +56,7 @@ export function expandSteps(feature: Feature): FeatureStep[] {
       dependsOn,
       status: "pending",
       sessionId: null,
+      contextHash: null,
     });
   };
 

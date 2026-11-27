@@ -5287,6 +5287,47 @@ p {
   color: var(--success-text-strong);
 }
 
+.step-session-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 220px;
+}
+
+.step-profile {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-session-id {
+  color: var(--muted);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 10px;
+}
+
+.step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.step-profile-select {
+  max-width: 190px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.step-chat-wrap {
+  margin-top: 12px;
+}
+
 .feature-dialog {
   width: min(760px, 100%);
 }

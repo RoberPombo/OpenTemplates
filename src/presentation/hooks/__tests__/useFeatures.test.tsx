@@ -7,6 +7,9 @@ import { useFeatures } from "../useFeatures";
 import type { FeatureGateway } from "../../../domain/repositories/FeatureGateway";
 import type { FeatureProvisionOutcome } from "../../../domain/features/provision";
 import type { Feature } from "../../../domain/features/model";
+import type { ProfileGateway } from "../../../domain/repositories/ProfileGateway";
+import type { ChatServer } from "../../../domain/repositories/ChatGateway";
+import type { ProfileManifest } from "../../../types";
 import { makeFeature, makeRunner, makeStartedFeature } from "../../../tests/fixtures";
 
 function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
@@ -25,6 +28,9 @@ function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
     artifacts: vi.fn(async () => []),
     writeArtifact: vi.fn(async (_id, name, content) => ({ name, content })),
     startRunner: vi.fn(async (id, profileId) => makeRunner(id, { profileId })),
+    startStepRunner: vi.fn(async (id, stepId) =>
+      makeRunner(id, { directory: `/data/features/${id}/${stepId}` }),
+    ),
     runnerStatus: vi.fn(async () => null),
     stopRunner: vi.fn(async () => undefined),
     ...overrides,
@@ -53,10 +59,40 @@ const DECOMPOSITION_WITHOUT_TARGETS = `\`\`\`feature-decomposition
 { "requestTargets": [], "proposeSteps": [] }
 \`\`\``;
 
-function setup(gateway: FeatureGateway = fakeGateway()) {
+function fakeProfiles(): ProfileGateway {
+  const manifest: ProfileManifest = {
+    id: "implementador",
+    name: "Implementador",
+    description: "",
+    version: 1,
+    agents: ["implementer"],
+    skills: [],
+    mcps: [],
+    commands: [],
+    plugins: [],
+    models: [],
+    permissions: [],
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  return {
+    list: vi.fn(async () => [manifest]),
+    save: vi.fn(async (profile) => profile),
+    delete: vi.fn(async () => undefined),
+    agentsMd: vi.fn(async () => ""),
+    saveAgentsMd: vi.fn(async (_id, content) => content),
+  };
+}
+
+function setup(
+  gateway: FeatureGateway = fakeGateway(),
+  options: { profiles?: ProfileGateway; chat?: ChatServer } = {},
+) {
   const root = new CompositionRoot({
     features: gateway,
     confirm: { confirm: () => true },
+    ...(options.profiles ? { profiles: options.profiles } : {}),
+    ...(options.chat ? { createChatServer: () => options.chat! } : {}),
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <AppProvider root={root}>{children}</AppProvider>
@@ -331,5 +367,106 @@ describe("useFeatures", () => {
     expect(result.current.coordinator).toBeNull();
     expect(result.current.coordinatorBusy).toBe(false);
     expect(result.current.selectedId).toBe(feature.id);
+  });
+
+  test("lanza un paso, guarda su sesión y abre su chat", async () => {
+    const feature = makeStartedFeature({ kind: "chore" });
+    const implement = feature.steps.find((step) => step.type === "implement")!;
+    const runner = makeRunner(feature.id, {
+      profileId: "implementador",
+      directory: "/data/features/feat-1/web",
+      server: { ...makeRunner().server, model: "provider/model" },
+    });
+    const chat = {
+      session: {
+        create: vi.fn(async () => ({ id: "ses-step" })),
+        prompt: vi.fn(async () => undefined),
+        remove: vi.fn(async () => undefined),
+      },
+    } as unknown as ChatServer;
+    const gateway = fakeGateway({
+      list: vi.fn(async () => [feature]),
+      startStepRunner: vi.fn(async () => runner),
+    });
+    const { result } = setup(gateway, { profiles: fakeProfiles(), chat });
+    await waitFor(() => expect(result.current.features).toHaveLength(1));
+
+    await act(async () => {
+      result.current.select(feature.id);
+    });
+    await act(async () => {
+      await result.current.launchStep(feature.id, implement.id, null);
+    });
+
+    const saved = result.current.features[0]?.steps.find((step) => step.id === implement.id);
+    expect(saved).toMatchObject({ sessionId: "ses-step", status: "running" });
+    expect(result.current.stepSession).toMatchObject({
+      featureId: feature.id,
+      stepId: implement.id,
+      runner,
+      open: true,
+    });
+    expect(result.current.notice).toBe("Paso lanzado.");
+    expect(result.current.stepBusyId).toBeNull();
+  });
+
+  test("dos pasos seguidos conservan la sesión de cada uno", async () => {
+    const feature = makeStartedFeature({
+      kind: "chore",
+      targets: [{ repoId: null, name: "Web", repoPath: "/repos/web", scopes: ["front", "back"] }],
+    });
+    const implementSteps = feature.steps.filter((step) => step.type === "implement");
+    const chat = {
+      session: {
+        create: vi
+          .fn()
+          .mockResolvedValueOnce({ id: "ses-front" })
+          .mockResolvedValueOnce({ id: "ses-back" }),
+        prompt: vi.fn(async () => undefined),
+        remove: vi.fn(async () => undefined),
+      },
+    } as unknown as ChatServer;
+    const gateway = fakeGateway({
+      list: vi.fn(async () => [feature]),
+      startStepRunner: vi.fn(async () => makeRunner(feature.id)),
+    });
+    const { result } = setup(gateway, { profiles: fakeProfiles(), chat });
+    await waitFor(() => expect(result.current.features).toHaveLength(1));
+
+    await act(async () => {
+      result.current.select(feature.id);
+    });
+    await act(async () => {
+      await result.current.launchStep(feature.id, implementSteps[0].id, null);
+    });
+    await act(async () => {
+      await result.current.launchStep(feature.id, implementSteps[1].id, null);
+    });
+
+    const saved = result.current.features[0]?.steps.filter((step) => step.type === "implement");
+    expect(saved?.map((step) => step.sessionId)).toEqual(["ses-front", "ses-back"]);
+  });
+
+  test("terminar un paso lo deja en revisión", async () => {
+    const feature = makeStartedFeature({ kind: "chore" });
+    const implement = feature.steps.find((step) => step.type === "implement")!;
+    const running: Feature = {
+      ...feature,
+      steps: feature.steps.map((step) =>
+        step.id === implement.id ? { ...step, status: "running", sessionId: "ses-step" } : step,
+      ),
+    };
+    const gateway = fakeGateway({ list: vi.fn(async () => [running]) });
+    const { result } = setup(gateway);
+    await waitFor(() => expect(result.current.features).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.finishStep(feature.id, implement.id);
+    });
+
+    expect(result.current.features[0]?.steps.find((step) => step.id === implement.id)?.status).toBe(
+      "awaiting-review",
+    );
+    expect(result.current.notice).toBe("Paso en revisión.");
   });
 });

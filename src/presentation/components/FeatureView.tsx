@@ -1,10 +1,10 @@
 /** Detalle de una feature: alcance, worktrees y grafo de pasos. */
-import type { Feature, FeatureStatus, StepStatus } from "../../domain/features/model";
+import type { Feature, FeatureStatus } from "../../domain/features/model";
 import { featureProgress } from "../../domain/features/model";
 import type { FeatureArtifact, FeatureRunnerInfo } from "../../domain/features/coordinator";
-import { readySteps, stepLabel } from "../../domain/features/flow";
 import type { ProfileManifest } from "../../types";
 import { CoordinatorPanel } from "./CoordinatorPanel";
+import { StepSessions } from "./StepSessions";
 
 type Props = {
   feature: Feature;
@@ -16,12 +16,19 @@ type Props = {
   busy: boolean;
   notice: string | null;
   error: string | null;
+  stepRunner: FeatureRunnerInfo | null;
+  openStepId: string | null;
+  stepBusyId: string | null;
   onProvision: () => void;
   onSaveArtifact: (name: string, content: string) => Promise<unknown>;
   onReloadArtifacts: () => Promise<unknown>;
   onLaunchCoordinator: (profileId: string | null) => Promise<unknown>;
   onStopCoordinator: () => Promise<unknown>;
   onApproveDecomposition: (content: string) => Promise<unknown>;
+  onLaunchStep: (stepId: string, profileId: string | null) => Promise<unknown>;
+  onFinishStep: (stepId: string) => Promise<unknown>;
+  onApproveStep: (stepId: string) => Promise<unknown>;
+  onCloseStepChat: () => void;
   onDelete: () => void;
   onBack: () => void;
 };
@@ -34,15 +41,6 @@ const FEATURE_STATUS: Record<FeatureStatus, string> = {
   done: "Terminada",
   failed: "Fallida",
   cancelled: "Cancelada",
-};
-
-const STEP_STATUS: Record<StepStatus, string> = {
-  pending: "Pendiente",
-  running: "En marcha",
-  "awaiting-review": "Revisión",
-  done: "Hecho",
-  failed: "Fallido",
-  skipped: "Omitido",
 };
 
 const KIND_LABEL: Record<Feature["kind"], string> = {
@@ -62,17 +60,23 @@ export function FeatureView({
   busy,
   notice,
   error,
+  stepRunner,
+  openStepId,
+  stepBusyId,
   onProvision,
   onSaveArtifact,
   onReloadArtifacts,
   onLaunchCoordinator,
   onStopCoordinator,
   onApproveDecomposition,
+  onLaunchStep,
+  onFinishStep,
+  onApproveStep,
+  onCloseStepChat,
   onDelete,
   onBack,
 }: Props) {
   const progress = featureProgress(feature);
-  const ready = new Set(readySteps(feature).map((step) => step.id));
   const canProvision = feature.status !== "draft" && feature.status !== "done";
 
   return (
@@ -165,19 +169,18 @@ export function FeatureView({
         {feature.steps.length === 0 ? (
           <p className="muted">Aún no hay pasos: el flujo se genera al confirmar el alcance.</p>
         ) : (
-          <ol className="feature-steps">
-            {feature.steps.map((step) => (
-              <li
-                key={step.id}
-                className={`feature-step ${step.status} ${ready.has(step.id) ? "ready" : ""}`}
-              >
-                <span className={`step-dot ${step.status}`} />
-                <span className="step-label">{stepLabel(feature, step)}</span>
-                {ready.has(step.id) && <span className="step-ready">siguiente</span>}
-                <span className={`step-status ${step.status}`}>{STEP_STATUS[step.status]}</span>
-              </li>
-            ))}
-          </ol>
+          <StepSessions
+            feature={feature}
+            profiles={profiles}
+            defaultProfileId={defaultProfileId}
+            runner={stepRunner}
+            openStepId={openStepId}
+            busyStepId={stepBusyId}
+            onLaunch={onLaunchStep}
+            onFinish={onFinishStep}
+            onApprove={onApproveStep}
+            onCloseChat={onCloseStepChat}
+          />
         )}
       </section>
     </div>

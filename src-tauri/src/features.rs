@@ -32,7 +32,7 @@ pub struct ProvisionReport {
     pub applied: Vec<String>,
 }
 
-fn safe_join(base: &Path, relative: &str) -> Result<PathBuf, String> {
+pub(crate) fn safe_join(base: &Path, relative: &str) -> Result<PathBuf, String> {
     let rel = Path::new(relative);
     if relative.trim().is_empty() {
         return Err("Una ruta de worktree está vacía.".into());

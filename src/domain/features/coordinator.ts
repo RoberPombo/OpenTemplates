@@ -6,6 +6,7 @@
 import type { Feature } from "./model";
 import type { ServerInfo } from "../../types";
 import { DECOMPOSITION_BLOCK } from "./decomposition";
+import { resolveStepProfile } from "./steps";
 
 export type FeatureArtifact = {
   name: string;
@@ -44,9 +45,9 @@ export function coordinatorProfileId(
   defaultProfileId?: string | null,
 ): string | null {
   const coordinate = feature.steps.find((step) => step.type === "coordinate");
+  if (coordinate) return resolveStepProfile(coordinate, profiles, defaultProfileId);
   const exists = (id: string | null | undefined) =>
     Boolean(id && profiles.some((profile) => profile.id === id));
-  if (exists(coordinate?.profileId)) return coordinate!.profileId!;
   const named = profiles.find((profile) =>
     /coordinador|coordinator/i.test(`${profile.id} ${profile.name}`),
   );

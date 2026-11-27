@@ -75,7 +75,7 @@ function App() {
     setProfiles,
     setWorktreesRoot,
   } = useWorkspaces();
-  const featuresState = useFeatures();
+  const featuresState = useFeatures(boot?.settings.defaultProfileId ?? null);
   const root = useAppContext();
   const [creating, setCreating] = useState(false);
   const [creatingFeature, setCreatingFeature] = useState(false);
@@ -516,6 +516,9 @@ function App() {
             busy={featuresState.busyId === featuresState.selected.id}
             notice={featuresState.notice}
             error={featuresState.error}
+            stepRunner={featuresState.stepSession?.open ? featuresState.stepSession.runner : null}
+            openStepId={featuresState.stepSession?.open ? featuresState.stepSession.stepId : null}
+            stepBusyId={featuresState.stepBusyId}
             onProvision={() =>
               void featuresState.provision(featuresState.selected!.id).catch(() => undefined)
             }
@@ -528,6 +531,14 @@ function App() {
             onApproveDecomposition={(content) =>
               featuresState.approveDecomposition(featuresState.selected!.id, content)
             }
+            onLaunchStep={(stepId, profileId) =>
+              featuresState.launchStep(featuresState.selected!.id, stepId, profileId)
+            }
+            onFinishStep={(stepId) => featuresState.finishStep(featuresState.selected!.id, stepId)}
+            onApproveStep={(stepId) =>
+              featuresState.approveStep(featuresState.selected!.id, stepId)
+            }
+            onCloseStepChat={featuresState.closeStepChat}
             onDelete={() => void featuresState.remove(featuresState.selected!.id)}
             onBack={() => featuresState.clearSelection()}
           />

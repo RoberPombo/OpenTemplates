@@ -14,6 +14,8 @@ export interface FeatureGateway {
   writeArtifact(id: string, name: string, content: string): Promise<FeatureArtifact>;
   /** Materializa el contexto de la feature y arranca su servidor. */
   startRunner(id: string, profileId: string | null): Promise<FeatureRunnerInfo>;
+  /** Arranca el servidor del worktree de un paso y devuelve su contexto. */
+  startStepRunner(id: string, stepId: string, profileId: string | null): Promise<FeatureRunnerInfo>;
   /** `null` si el coordinador no tiene servidor vivo. */
   runnerStatus(id: string): Promise<FeatureRunnerInfo | null>;
   stopRunner(id: string): Promise<void>;

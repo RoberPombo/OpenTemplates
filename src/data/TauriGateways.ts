@@ -295,6 +295,14 @@ export class TauriFeatureGateway implements FeatureGateway {
     return call(api.startFeatureRunner(id, profileId));
   }
 
+  startStepRunner(
+    id: string,
+    stepId: string,
+    profileId: string | null,
+  ): Promise<FeatureRunnerInfo> {
+    return call(api.startFeatureStepRunner(id, stepId, profileId));
+  }
+
   runnerStatus(id: string): Promise<FeatureRunnerInfo | null> {
     return call(api.featureRunnerStatus(id));
   }

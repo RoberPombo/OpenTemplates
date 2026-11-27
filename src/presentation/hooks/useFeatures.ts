@@ -2,16 +2,19 @@
  * Estado de features en la UI: carga, selección, arranque y provisioning.
  * El dominio decide el flujo; el hook solo orquesta los casos de uso.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { errorText } from "../../domain/shared";
 import type { Feature } from "../../domain/features/model";
 import type { FeatureArtifact, FeatureRunnerInfo } from "../../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../../domain/features/provision";
 
-export function useFeatures() {
+export function useFeatures(defaultProfileId: string | null = null) {
   const root = useAppContext();
   const [features, setFeatures] = useState<Feature[]>([]);
+  // Ref con la última lista confirmada por el backend: dos acciones de pasos
+  // seguidas no deben guardar una versión vieja de la feature.
+  const featuresRef = useRef<Feature[]>([]);
   const [artifactsState, setArtifactsState] = useState<{
     id: string;
     items: FeatureArtifact[];
@@ -23,6 +26,14 @@ export function useFeatures() {
     info: FeatureRunnerInfo | null;
   } | null>(null);
   const [coordinatorBusy, setCoordinatorBusy] = useState(false);
+  const [stepBusyId, setStepBusyId] = useState<string | null>(null);
+  const [stepSessionState, setStepSessionState] = useState<{
+    featureId: string;
+    stepId: string;
+    runner: FeatureRunnerInfo;
+    open: boolean;
+  } | null>(null);
+  const stepLaunches = useRef(new Set<string>());
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +42,10 @@ export function useFeatures() {
     void (async () => {
       try {
         const items = await root.features.list();
-        if (alive) setFeatures(items);
+        if (alive) {
+          featuresRef.current = items;
+          setFeatures(items);
+        }
       } catch (err) {
         if (alive) setError(errorText(err));
       }
@@ -51,6 +65,8 @@ export function useFeatures() {
   const coordinator =
     coordinatorState && coordinatorState.id === selectedId ? coordinatorState.info : null;
   const artifacts = artifactsState && artifactsState.id === selectedId ? artifactsState.items : [];
+  const stepSession =
+    stepSessionState && stepSessionState.featureId === selectedId ? stepSessionState : null;
 
   useEffect(() => {
     if (!selectedId) return;
@@ -104,13 +120,14 @@ export function useFeatures() {
   }, [selectedId, reloadArtifacts]);
 
   const upsert = useCallback((feature: Feature) => {
-    setFeatures((prev) => {
-      const index = prev.findIndex((item) => item.id === feature.id);
-      if (index < 0) return [...prev, feature];
-      const next = [...prev];
-      next[index] = feature;
-      return next;
-    });
+    const prev = featuresRef.current;
+    const index = prev.findIndex((item) => item.id === feature.id);
+    const next =
+      index < 0
+        ? [...prev, feature]
+        : prev.map((item) => (item.id === feature.id ? feature : item));
+    featuresRef.current = next;
+    setFeatures(next);
   }, []);
 
   const start = useCallback(
@@ -153,7 +170,7 @@ export function useFeatures() {
 
   const launchCoordinator = useCallback(
     async (id: string, profileId: string | null) => {
-      const feature = features.find((item) => item.id === id);
+      const feature = featuresRef.current.find((item) => item.id === id);
       if (!feature) throw new Error("La feature no existe.");
       setCoordinatorBusy(true);
       setError(null);
@@ -175,7 +192,7 @@ export function useFeatures() {
         setCoordinatorBusy(false);
       }
     },
-    [root, features, upsert],
+    [root, upsert],
   );
 
   const stopCoordinator = useCallback(
@@ -197,7 +214,7 @@ export function useFeatures() {
 
   const approveDecomposition = useCallback(
     async (id: string, content: string) => {
-      const feature = features.find((item) => item.id === id);
+      const feature = featuresRef.current.find((item) => item.id === id);
       if (!feature) throw new Error("La feature no existe.");
       setError(null);
       setNotice(null);
@@ -216,8 +233,97 @@ export function useFeatures() {
         throw err;
       }
     },
-    [root, features, upsert, reloadArtifacts],
+    [root, upsert, reloadArtifacts],
   );
+
+  const launchStep = useCallback(
+    async (id: string, stepId: string, profileId: string | null = null) => {
+      const feature = featuresRef.current.find((item) => item.id === id);
+      if (!feature) throw new Error("La feature no existe.");
+      const inFlight = `${id}:${stepId}`;
+      if (stepLaunches.current.has(inFlight)) return null;
+      stepLaunches.current.add(inFlight);
+      setStepBusyId(stepId);
+      setError(null);
+      setNotice(null);
+      try {
+        const existed = Boolean(feature.steps.find((step) => step.id === stepId)?.sessionId);
+        const result = await root
+          .provideLaunchStep()
+          .execute(feature, stepId, profileId, defaultProfileId);
+        upsert(result.feature);
+        setStepSessionState({
+          featureId: id,
+          stepId,
+          runner: result.runner,
+          open: true,
+        });
+        setNotice(
+          existed
+            ? result.runner.warnings.length > 0
+              ? `Sesión abierta · ${result.runner.warnings[0]}`
+              : "Sesión del paso abierta."
+            : "Paso lanzado.",
+        );
+        return result;
+      } catch (err: unknown) {
+        setError(errorText(err));
+        throw err;
+      } finally {
+        stepLaunches.current.delete(inFlight);
+        setStepBusyId(null);
+      }
+    },
+    [root, upsert, defaultProfileId],
+  );
+
+  const finishStep = useCallback(
+    async (id: string, stepId: string) => {
+      const feature = featuresRef.current.find((item) => item.id === id);
+      if (!feature) throw new Error("La feature no existe.");
+      setStepBusyId(stepId);
+      setError(null);
+      setNotice(null);
+      try {
+        const saved = await root.provideAdvanceStep().execute(feature, stepId, "finish");
+        upsert(saved);
+        setNotice("Paso en revisión.");
+        return saved;
+      } catch (err: unknown) {
+        setError(errorText(err));
+        throw err;
+      } finally {
+        setStepBusyId(null);
+      }
+    },
+    [root, upsert],
+  );
+
+  const approveStep = useCallback(
+    async (id: string, stepId: string) => {
+      const feature = featuresRef.current.find((item) => item.id === id);
+      if (!feature) throw new Error("La feature no existe.");
+      setStepBusyId(stepId);
+      setError(null);
+      setNotice(null);
+      try {
+        const saved = await root.provideAdvanceStep().execute(feature, stepId, "approve");
+        upsert(saved);
+        setNotice("Paso aprobado.");
+        return saved;
+      } catch (err: unknown) {
+        setError(errorText(err));
+        throw err;
+      } finally {
+        setStepBusyId(null);
+      }
+    },
+    [root, upsert],
+  );
+
+  const closeStepChat = useCallback(() => {
+    setStepSessionState((current) => (current ? { ...current, open: false } : current));
+  }, []);
 
   const saveArtifact = useCallback(
     async (name: string, content: string): Promise<FeatureArtifact> => {
@@ -237,17 +343,19 @@ export function useFeatures() {
 
   const remove = useCallback(
     async (id: string): Promise<void> => {
-      const feature = features.find((item) => item.id === id);
+      const feature = featuresRef.current.find((item) => item.id === id);
       const ok = root.confirm.confirm(
         `¿Quitar la feature «${feature?.name ?? id}» del listado? Los worktrees no se tocan todavía.`,
       );
       if (!ok) return;
       setError(null);
       await root.features.remove(id);
-      setFeatures((prev) => prev.filter((item) => item.id !== id));
+      const next = featuresRef.current.filter((item) => item.id !== id);
+      featuresRef.current = next;
+      setFeatures(next);
       if (selectedId === id) setSelectedId(null);
     },
-    [root, features, selectedId],
+    [root, selectedId],
   );
 
   return {
@@ -265,6 +373,12 @@ export function useFeatures() {
     approveDecomposition,
     coordinator,
     coordinatorBusy,
+    stepBusyId,
+    stepSession,
+    launchStep,
+    finishStep,
+    approveStep,
+    closeStepChat,
     saveArtifact,
     remove,
     busyId,
