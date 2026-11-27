@@ -44,13 +44,17 @@ export function RaceControls({
     projectID,
     catalogError,
     launchError,
+    merging,
+    mergeError,
     hasLiveRace,
     startRace,
     keepWinner,
+    retryMerge,
     discard,
     clearRace,
   } = useRace({
     client,
+    git: root.git,
     workspace,
     worktreesRoot,
     repoPath,
@@ -158,12 +162,15 @@ export function RaceControls({
       {viewOpen && race && (
         <RaceView
           race={race}
-          busy={busy}
+          busy={busy || merging}
+          merging={merging}
+          mergeError={mergeError}
           onClose={() => setViewOpen(false)}
           onNewRace={newRace}
           onOpenSession={openSession}
           onOpenDiff={openDiff}
           onKeepWinner={(run) => void keep(run)}
+          onRetryMerge={() => void retryMerge()}
           onDiscard={(run) => void discardRun(run)}
         />
       )}

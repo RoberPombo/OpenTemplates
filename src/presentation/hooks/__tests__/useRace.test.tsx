@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vitest";
 import { useRace } from "../useRace";
-import { makeFakeClient, makeWorkspace } from "../../../tests/fakes";
+import { makeFakeClient, makeGitGateway, makeWorkspace } from "../../../tests/fakes";
 import type { Preferences } from "../../../domain/repositories/Preferences";
 import type { ChatServer } from "../../../domain/repositories/ChatGateway";
 
@@ -19,12 +19,17 @@ function makePreferences(): Preferences & { store: Map<string, string> } {
   };
 }
 
-function setup(options: Parameters<typeof makeFakeClient>[0] = {}) {
+function setup(
+  options: Parameters<typeof makeFakeClient>[0] = {},
+  gitOptions: Parameters<typeof makeGitGateway>[0] = {},
+) {
   const { client, hub } = makeFakeClient({ branch: "main", ...options });
+  const git = makeGitGateway(gitOptions);
   const preferences = makePreferences();
   const view = renderHook(() =>
     useRace({
       client: client as unknown as ChatServer,
+      git: git.gateway,
       workspace: makeWorkspace(),
       worktreesRoot: "/wt",
       repoPath: "/tmp/demo",
@@ -32,7 +37,7 @@ function setup(options: Parameters<typeof makeFakeClient>[0] = {}) {
       preferences,
     }),
   );
-  return { client, hub, preferences, ...view };
+  return { client, hub, git, preferences, ...view };
 }
 
 async function ready(result: ReturnType<typeof setup>["result"]) {
@@ -165,8 +170,8 @@ describe("useRace — ejecución", () => {
     }
   });
 
-  test("los eventos cierran la corrida y elegir ganadora limpia la perdedora", async () => {
-    const { client, hub, result, unmount } = setup();
+  test("los eventos cierran la corrida y elegir ganadora fusiona y limpia la perdedora", async () => {
+    const { client, hub, git, result, unmount } = setup();
     await ready(result);
     act(() => {
       result.current.startRace({
@@ -196,12 +201,156 @@ describe("useRace — ejecución", () => {
     await result.current.keepWinner(winner!.id);
     await waitFor(() => expect(result.current.race?.winnerRunId).toBe(winner!.id));
 
+    expect(git.mergeWorktree).toHaveBeenCalledWith("/tmp/demo", winner!.worktree, "main");
+    expect(result.current.race?.merge).toMatchObject({
+      runId: winner!.id,
+      status: "merged",
+      files: 1,
+    });
     expect(client.session.remove).toHaveBeenCalledWith({ sessionID: "s2" });
     expect(client.worktree.remove).toHaveBeenCalledWith(
       expect.objectContaining({ projectID: "p1", directory: loser!.directory, force: true }),
     );
     await waitFor(() => expect(result.current.race?.runs[1].cleanedAt).not.toBeNull());
 
+    unmount();
+  });
+
+  async function finishBoth(
+    client: ReturnType<typeof makeFakeClient>["client"],
+    hub: ReturnType<typeof makeFakeClient>["hub"],
+    result: ReturnType<typeof setup>["result"],
+  ) {
+    await waitFor(() => expect(client.session.prompt).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hub.active).toBeGreaterThan(0));
+    act(() => {
+      hub.push({ type: "session.idle", data: { sessionID: "s1" } });
+      hub.push({ type: "session.idle", data: { sessionID: "s2" } });
+    });
+    await waitFor(() =>
+      expect(result.current.race?.runs.map((run) => run.status)).toEqual([
+        "succeeded",
+        "succeeded",
+      ]),
+    );
+  }
+
+  test("un conflicto no limpia las perdedoras y permite reintentar", async () => {
+    const { client, hub, git, result, unmount } = setup();
+    await ready(result);
+    git.mergeWorktree.mockResolvedValueOnce({
+      status: "conflict",
+      files: 1,
+      additions: 0,
+      deletions: 0,
+      conflicts: ["src/a.ts"],
+      message: "no aplica",
+    });
+    act(() => {
+      result.current.startRace({
+        prompt: "Hazlo",
+        modelKeys: ["anthropic/claude", "openai/gpt"],
+        agent: null,
+        useWorktrees: true,
+      });
+    });
+    await finishBoth(client, hub, result);
+
+    const winner = result.current.race?.runs[0];
+    expect(winner?.status).toBe("succeeded");
+    expect(winner?.worktree).not.toBeNull();
+    await result.current.keepWinner(winner!.id);
+
+    await waitFor(() =>
+      expect(result.current.race?.merge).toMatchObject({
+        status: "conflict",
+        conflicts: ["src/a.ts"],
+        message: "no aplica",
+      }),
+    );
+    expect(client.session.remove).not.toHaveBeenCalled();
+    expect(client.worktree.remove).not.toHaveBeenCalled();
+
+    await result.current.retryMerge();
+    expect(git.mergeWorktree).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.race?.merge?.status).toBe("merged"));
+    await waitFor(() => expect(client.session.remove).toHaveBeenCalledWith({ sessionID: "s2" }));
+    unmount();
+  });
+
+  test("un fallo de git deja la fusión fallida y conserva las perdedoras", async () => {
+    const { client, hub, result, unmount } = setup({}, { mergeError: new Error("git roto") });
+    await ready(result);
+    act(() => {
+      result.current.startRace({
+        prompt: "Hazlo",
+        modelKeys: ["anthropic/claude", "openai/gpt"],
+        agent: null,
+        useWorktrees: true,
+      });
+    });
+    await finishBoth(client, hub, result);
+
+    await result.current.keepWinner(result.current.race!.runs[0].id);
+
+    await waitFor(() =>
+      expect(result.current.race?.merge).toMatchObject({ status: "failed", message: "git roto" }),
+    );
+    expect(result.current.mergeError).toBe("git roto");
+    expect(client.session.remove).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  test("una fusión vacía también limpia las perdedoras", async () => {
+    const { client, hub, result, unmount } = setup(
+      {},
+      {
+        mergeResult: {
+          status: "empty",
+          files: 0,
+          additions: 0,
+          deletions: 0,
+          conflicts: [],
+          message: null,
+        },
+      },
+    );
+    await ready(result);
+    act(() => {
+      result.current.startRace({
+        prompt: "Hazlo",
+        modelKeys: ["anthropic/claude", "openai/gpt"],
+        agent: null,
+        useWorktrees: true,
+      });
+    });
+    await finishBoth(client, hub, result);
+
+    await result.current.keepWinner(result.current.race!.runs[0].id);
+
+    await waitFor(() => expect(result.current.race?.merge?.status).toBe("empty"));
+    await waitFor(() => expect(client.session.remove).toHaveBeenCalledWith({ sessionID: "s2" }));
+    unmount();
+  });
+
+  test("sin worktrees no intenta fusionar y limpia la perdedora", async () => {
+    const { client, hub, git, result, unmount } = setup();
+    await ready(result);
+    act(() => {
+      result.current.startRace({
+        prompt: "Hazlo",
+        modelKeys: ["anthropic/claude", "openai/gpt"],
+        agent: null,
+        useWorktrees: false,
+      });
+    });
+    await finishBoth(client, hub, result);
+
+    await result.current.keepWinner(result.current.race!.runs[0].id);
+
+    expect(git.mergeWorktree).not.toHaveBeenCalled();
+    expect(result.current.race?.merge).toBeNull();
+    expect(client.session.remove).toHaveBeenCalledWith({ sessionID: "s2" });
     unmount();
   });
 });

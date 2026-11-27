@@ -372,10 +372,11 @@ Implementado (fases 1-4 + wizard básico):
   vista de comparación tiene una tarjeta por corrida con modelo, estado, coste,
   duración, tokens, cambios, resumen o error, y acciones «Abrir sesión» (el chat
   la abre y se puede seguir como cualquier otra), «Ver diff» (panel de cambios),
-  «Quedarse con esta» y «Descartar». Elegir ganadora pide confirmación, cierra y
-  elimina las sesiones y worktrees de las perdedoras (con `force: true`, sin
-  tocar la rama base) y deja intacta la ganadora. Descartar una corrida hace lo
-  mismo solo con ella. Al parar o eliminar un workspace con carrera viva se
+  «Quedarse con esta» y «Descartar». Elegir ganadora pide confirmación, aplica
+  sus cambios al workspace (si tiene worktree propio), cierra y elimina las
+  sesiones y worktrees de las perdedoras (con `force: true`, sin tocar la rama
+  base) y deja intacta la ganadora. Descartar una corrida hace lo mismo solo con
+  ella. Al parar o eliminar un workspace con carrera viva se
   avisa; al volver a un workspace la carrera se reconcilia con `session.get`, y
   si la app se cerró, las corridas activas se marcan como fallidas. Estado
   puro en `domain/race/races.ts` (máquina de estados, ganadora, limpieza,
@@ -390,8 +391,8 @@ Implementado (fases 1-4 + wizard básico):
   worktree en HEAD separado (no crea rama por corrida, así que no hay rama que
   conservar más allá de la base); las sesiones de corridas en worktree no salen
   en el panel de sesiones porque este lista el directorio del workspace, se
-  abren desde la carrera; la fusión automática del resultado ganador queda para
-  el siguiente paso (`Race.merge` reservado y siempre `null`).
+  abren desde la carrera. La fusión del resultado ganador se añadió después; el
+  detalle está en «Estado tras fusionar la ganadora de una carrera».
 
 - **Paleta de comandos, atajos y temas**: `Ctrl/Cmd+K` o el botón discreto
   «Comandos» del sidebar abren una paleta con búsqueda incremental. El catálogo
@@ -433,8 +434,6 @@ Implementado (fases 1-4 + wizard básico):
 
 Pendiente de las fases 5-8:
 
-- Fusionar el resultado ganador de una carrera (`Race.merge` ya reservado): hoy
-  se elige la ganadora y se descartan las perdedoras, sin integrar su rama.
 - Issues de GitHub con `gh` (`ISSUE.md` ya se materializa si llega un `IssueRef`).
 - Archivar sesiones (la lista ya no muestra archivadas; falta el gesto).
 - Reparar workspaces `missing` recreando su worktree.
@@ -481,8 +480,8 @@ Implementado sobre el panel de cambios existente (no hay panel nuevo):
   creación y los checks se validaron con mocks; la PR de esta entrega se abrió
   con `gh` desde la terminal.
 
-Pendiente relacionado: fusionar la ganadora de una carrera, issues de GitHub y
-las acciones de worktree que ya estaban en la lista anterior.
+Pendiente relacionado: issues de GitHub y las acciones de worktree que ya
+estaban en la lista anterior.
 
 ## Estado tras #13: preview de la app en marcha
 
@@ -598,3 +597,34 @@ multiwebview con soporte Wayland), screenshot/consola y captura de una región.
   619 tests en verde (nuevo de selector de perfil y de modelo al crear sesión).
 - Pendiente: dar de alta perfiles desde el selector, marcar el perfil en la lista
   de sesiones y GC de contextos sin uso.
+
+## Estado tras fusionar la ganadora de una carrera
+
+- Rust: `git::merge_worktree(destination, source)` y el comando
+  `git_merge_worktree`. Valida que ambos checkouts compartan `git-common-dir`,
+  prepara todo en el worktree de la corrida con `git add -A`, obtiene un parche
+  binario desde el ancestro común con su rama base (incluye commits que hiciera
+  el agente) y lo comprueba en el workspace con `git apply --check`. Si encaja, aplica el parche y prepara en el índice solo
+  las rutas tocadas. No crea commits ni ramas. Si no encaja, devuelve `conflict`
+  con las rutas afectadas y no escribe nada.
+- Resultado `GitMergeResult`: `merged`, `empty` o `conflict`, con ficheros,
+  líneas añadidas/borradas, conflictos y mensaje de git.
+- Dominio: `Race.merge` pasa de `null` reservado a `RaceMerge` persistido
+  (`merged`, `empty`, `conflict`, `failed`). `mergeableWinner` decide si la
+  ganadora tiene worktree y no se fusionó ya; `recordMerge` guarda el resultado.
+  El parseo antiguo de carreras sin `merge` sigue funcionando.
+- Hook: `keepWinner` elige, intenta la fusión y solo limpia las perdedoras si el
+  resultado es `merged` o `empty`. En `conflict` o `failed` conserva perdedoras
+  y worktrees, muestra el error y ofrece «Reintentar fusión». Sin worktrees no
+  intenta fusionar: las corridas compartieron la carpeta y no hay cambios
+  atribuibles.
+- UI: resumen de la fusión en la cabecera, rutas en conflicto con `role=alert` y
+  botón de reintento en la tarjeta de la ganadora. La confirmación explica que
+  los cambios quedan preparados sin commit.
+- Verificación: `pnpm check` en verde (756 tests), `pnpm build` en verde y
+  `cargo test` con 72 tests pasando y 2 ignorados. Tests nuevos de Rust para
+  altas/modificaciones/borrados, vacío, conflicto sin tocar el destino y
+  rechazo de repos distintos; tests TS de dominio, serialización, hook y vista.
+- Limitaciones: no fusiona carreras sin worktrees, no resuelve conflictos ni
+  aplica parches parciales, no crea el commit y conserva el worktree y la sesión
+  de la ganadora.

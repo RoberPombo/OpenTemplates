@@ -8,6 +8,7 @@ import {
   failRun,
   finishRun,
   prepareRun,
+  recordMerge,
   startRun,
   waitRun,
   type Race,
@@ -51,11 +52,14 @@ function setup(race: Race, overrides: Partial<React.ComponentProps<typeof RaceVi
   const props = {
     race,
     busy: false,
+    merging: false,
+    mergeError: null,
     onClose: vi.fn(),
     onNewRace: vi.fn(),
     onOpenSession: vi.fn(),
     onOpenDiff: vi.fn(),
     onKeepWinner: vi.fn(),
+    onRetryMerge: vi.fn(),
     onDiscard: vi.fn(),
     ...overrides,
   };
@@ -202,6 +206,54 @@ describe("RaceView", () => {
     expect(within(winner).queryByRole("button", { name: "Descartar" })).toBeNull();
     expect(within(winner).getByRole("button", { name: "Abrir sesión" })).toBeEnabled();
     expect(within(winner).getByRole("button", { name: "Ver diff" })).toBeEnabled();
+  });
+
+  test("muestra la fusión, los conflictos y permite reintentar", async () => {
+    const user = userEvent.setup();
+    let race = makeRace();
+    race = finishRun(race, race.runs[0].id, {}, 3000);
+    race = finishRun(race, race.runs[1].id, {}, 3000);
+    race = chooseWinner(race, race.runs[0].id, 4000);
+    race = recordMerge(
+      race,
+      {
+        status: "conflict",
+        files: 1,
+        additions: 0,
+        deletions: 0,
+        conflicts: ["src/a.ts"],
+        message: "no aplica",
+      },
+      5000,
+    );
+    const props = setup(race);
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("La fusión chocó con cambios del workspace");
+    expect(alert).toHaveTextContent("src/a.ts");
+
+    const winner = screen.getByRole("article", { name: "Corrida de Claude" });
+    await user.click(within(winner).getByRole("button", { name: "Reintentar fusión" }));
+    expect(props.onRetryMerge).toHaveBeenCalled();
+  });
+
+  test("resume los cambios fusionados sin crear un commit", () => {
+    let race = makeRace();
+    race = finishRun(race, race.runs[0].id, {}, 3000);
+    race = finishRun(race, race.runs[1].id, {}, 3000);
+    race = chooseWinner(race, race.runs[0].id, 4000);
+    race = recordMerge(
+      race,
+      { status: "merged", files: 3, additions: 8, deletions: 2, conflicts: [], message: null },
+      5000,
+    );
+    setup(race);
+
+    expect(screen.getByText(/Ganadora fusionada en el workspace/)).toHaveTextContent(
+      "3 fichero(s) +8 −2, preparados sin commit",
+    );
+    const winner = screen.getByRole("article", { name: "Corrida de Claude" });
+    expect(within(winner).queryByRole("button", { name: "Reintentar fusión" })).toBeNull();
   });
 
   test("una carrera viva no permite lanzar otra y muestra el total de terminadas", () => {

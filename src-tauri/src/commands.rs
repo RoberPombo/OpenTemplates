@@ -12,7 +12,7 @@ use crate::library;
 use crate::model::{
     AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, Feature,
     FeatureArtifact, FeatureProvisionOutcome, GhStatus, GitCommitResult, GitCommitSummary,
-    GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost, ModelDetail, ModelLimit,
+    GitMergeResult, GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost, ModelDetail, ModelLimit,
     ProfileManifest, PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo, SkillRef,
     Workspace, WorkspaceMode, WorktreeStatus,
 };
@@ -1806,6 +1806,20 @@ pub fn git_unstage(project_path: String, paths: Vec<String>) -> Result<GitStatus
 #[tauri::command]
 pub fn git_diff(project_path: String, staged: bool) -> Result<String, String> {
     git::diff(Path::new(&project_path), staged)
+}
+
+/// Aplica los cambios del worktree de una corrida sobre el workspace.
+#[tauri::command]
+pub fn git_merge_worktree(
+    destination: String,
+    source: String,
+    base: Option<String>,
+) -> Result<GitMergeResult, String> {
+    git::merge_worktree(
+        Path::new(&destination),
+        Path::new(&source),
+        base.as_deref(),
+    )
 }
 
 #[tauri::command]

@@ -102,6 +102,7 @@ pub fn run() {
             commands::git_stage,
             commands::git_unstage,
             commands::git_diff,
+            commands::git_merge_worktree,
             commands::git_commit,
             commands::git_push,
             commands::git_commits,

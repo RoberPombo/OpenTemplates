@@ -4040,6 +4040,22 @@ p {
   max-width: 720px;
 }
 
+.race-merge {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.race-merge.merged,
+.race-merge.empty {
+  color: var(--accent);
+}
+
+.race-merge.conflict,
+.race-merge.failed {
+  color: var(--danger);
+}
+
 .race-status {
   padding: 2px 8px;
   border-radius: 999px;

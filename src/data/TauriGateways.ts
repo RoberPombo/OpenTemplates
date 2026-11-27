@@ -13,7 +13,13 @@ import type { GitGateway } from "../domain/repositories/GitGateway";
 import type { PullRequestGateway } from "../domain/repositories/PullRequestGateway";
 import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
 import type { PreviewProbe } from "../domain/preview/preview";
-import type { GitCommit, GitCommitResult, GitPushResult, GitStatus } from "../domain/workspace/git";
+import type {
+  GitCommit,
+  GitCommitResult,
+  GitMergeResult,
+  GitPushResult,
+  GitStatus,
+} from "../domain/workspace/git";
 import { buildGitStatus } from "../domain/workspace/git";
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
 import type { ResourcesGateway } from "../domain/repositories/ResourcesGateway";
@@ -159,6 +165,14 @@ export class TauriGitGateway implements GitGateway {
 
   commits(projectPath: string, base: string, limit?: number): Promise<GitCommit[]> {
     return call(api.gitCommits(projectPath, base, limit));
+  }
+
+  mergeWorktree(
+    destination: string,
+    source: string,
+    base?: string | null,
+  ): Promise<GitMergeResult> {
+    return call(api.gitMergeWorktree(destination, source, base ?? null));
   }
 }
 

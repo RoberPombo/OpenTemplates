@@ -3,7 +3,15 @@
  * recuperar corridas vivas tras reabrir la app. El formato y su tolerancia no
  * dependen de la UI.
  */
-import { isActiveRun, raceStatus, type Race, type RaceRun, type RaceRunStatus } from "./state";
+import {
+  isActiveRun,
+  raceStatus,
+  type Race,
+  type RaceMerge,
+  type RaceMergeStatus,
+  type RaceRun,
+  type RaceRunStatus,
+} from "./state";
 
 const SERIAL_VERSION = 1;
 
@@ -68,6 +76,28 @@ function normalizeRun(value: unknown): RaceRun | null {
   };
 }
 
+function normalizeMerge(value: unknown): RaceMerge | null {
+  if (!value || typeof value !== "object") return null;
+  const merge = value as Record<string, unknown>;
+  if (typeof merge.runId !== "string") return null;
+  const status = merge.status;
+  if (status !== "merged" && status !== "empty" && status !== "conflict" && status !== "failed") {
+    return null;
+  }
+  return {
+    runId: merge.runId,
+    status: status as RaceMergeStatus,
+    files: numberOr(merge.files, 0),
+    additions: numberOr(merge.additions, 0),
+    deletions: numberOr(merge.deletions, 0),
+    conflicts: Array.isArray(merge.conflicts)
+      ? merge.conflicts.filter((path): path is string => typeof path === "string")
+      : [],
+    message: stringOrNull(merge.message),
+    at: numberOr(merge.at, 0),
+  };
+}
+
 /** Lee una carrera persistida; `null` si el JSON no tiene la forma esperada. */
 export function parseRace(raw: string | null): Race | null {
   if (!raw) return null;
@@ -107,7 +137,7 @@ export function parseRace(raw: string | null): Race | null {
     createdAt: numberOr(race.createdAt, 0),
     updatedAt: numberOr(race.updatedAt, 0),
     bootId: stringOrNull(race.bootId),
-    merge: null,
+    merge: normalizeMerge(race.merge),
   };
   return { ...normalized, status: raceStatus(normalized) };
 }

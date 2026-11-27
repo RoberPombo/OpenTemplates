@@ -2,12 +2,13 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::model::{
-    GitCommitResult, GitCommitSummary, GitPushResult, GitStatusOutput, GitUntrackedStat,
+    GitCommitResult, GitCommitSummary, GitMergeResult, GitPushResult, GitStatusOutput,
+    GitUntrackedStat,
 };
-use crate::process::{Output, execute};
+use crate::process::{execute, Output};
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(180);
 const MAX_OUTPUT: usize = 12_000;
@@ -400,6 +401,163 @@ pub fn diff(repo: &Path, staged: bool) -> Result<String, String> {
     run_raw(repo, &args)
 }
 
+fn common_dir(repo: &Path) -> Result<PathBuf, String> {
+    let raw = run(
+        repo,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .or_else(|_| run(repo, &["rev-parse", "--git-common-dir"]))?;
+    let path = PathBuf::from(raw.trim());
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        repo.join(path)
+    };
+    std::fs::canonicalize(&absolute)
+        .map_err(|e| format!("No se pudo resolver {}: {e}", absolute.display()))
+}
+
+/// Cuenta ficheros y líneas de la salida `--numstat -z` y devuelve sus rutas.
+fn parse_numstat(raw: &[u8]) -> (u64, u64, u64, Vec<String>) {
+    let mut files = 0_u64;
+    let mut additions = 0_u64;
+    let mut deletions = 0_u64;
+    let mut paths = Vec::new();
+    for record in raw.split(|byte| *byte == 0) {
+        if record.is_empty() {
+            continue;
+        }
+        let text = String::from_utf8_lossy(record);
+        let mut parts = text.splitn(3, '\t');
+        let added = parts.next().unwrap_or_default();
+        let removed = parts.next().unwrap_or_default();
+        let path = parts.next().unwrap_or_default();
+        if path.is_empty() {
+            continue;
+        }
+        files += 1;
+        additions += added.parse::<u64>().unwrap_or(0);
+        deletions += removed.parse::<u64>().unwrap_or(0);
+        paths.push(path.to_string());
+    }
+    (files, additions, deletions, paths)
+}
+
+/// Rutas del parche que `git apply` señala como no aplicables. No depende del
+/// idioma configurado en git: cruza la salida con las rutas que ya conocemos.
+fn conflict_paths(stderr: &str, touched: &[String]) -> Vec<String> {
+    touched
+        .iter()
+        .filter(|path| stderr.contains(path.as_str()))
+        .cloned()
+        .collect()
+}
+
+fn temporal_patch(payload: &[u8]) -> Result<PathBuf, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "opentemplates-merge-{}-{stamp}.patch",
+        std::process::id()
+    ));
+    std::fs::write(&path, payload)
+        .map_err(|e| format!("No se pudo escribir el parche temporal: {e}"))?;
+    Ok(path)
+}
+
+/// Aplica los cambios sin commitear de `source` sobre `destination`.
+///
+/// Prepara todo en el worktree de origen y aplica un parche binario en el
+/// destino. Antes de escribir comprueba que el parche encaja; si no, devuelve
+/// `conflict` sin tocar el destino. Los cambios aplicados se preparan en el
+/// índice del destino y no se crea ningún commit. `base` es la rama de la que
+/// salió el worktree: si el agente hizo commits, se incluyen comparando desde
+/// el ancestro común.
+pub fn merge_worktree(
+    destination: &Path,
+    source: &Path,
+    base: Option<&str>,
+) -> Result<GitMergeResult, String> {
+    let destination = toplevel(destination)?;
+    let source = toplevel(source)?;
+    if destination == source {
+        return Err("El worktree de origen y el destino son la misma carpeta.".into());
+    }
+    if common_dir(&destination)? != common_dir(&source)? {
+        return Err("El worktree de origen no pertenece al mismo repositorio.".into());
+    }
+
+    run(&source, &["add", "-A"])?;
+    let base = base
+        .map(str::trim)
+        .filter(|branch| !branch.is_empty())
+        .and_then(|branch| run(&source, &["merge-base", "HEAD", branch]).ok())
+        .filter(|commit| !commit.is_empty())
+        .unwrap_or_else(|| "HEAD".to_string());
+    let raw_stat = run_raw(&source, &["diff", "--cached", "--numstat", "-z", &base])?;
+    let (files, additions, deletions, paths) = parse_numstat(raw_stat.as_bytes());
+    if files == 0 {
+        return Ok(GitMergeResult {
+            status: "empty".into(),
+            files: 0,
+            additions: 0,
+            deletions: 0,
+            conflicts: Vec::new(),
+            message: None,
+        });
+    }
+
+    let patch = git_output(
+        &source,
+        &[
+            "diff",
+            "--cached",
+            "--binary",
+            "--no-color",
+            "--no-ext-diff",
+            &base,
+        ],
+    )?;
+    if !patch.status.success() {
+        return Err(failure_detail(&patch, &["diff", "--cached", &base]));
+    }
+    let patch_path = temporal_patch(&patch.stdout)?;
+    let patch_arg = patch_path.to_string_lossy().to_string();
+    let result = (|| {
+        let check = git_output(&destination, &["apply", "--check", "--binary", &patch_arg])?;
+        if !check.status.success() {
+            let detail = failure_detail(&check, &["apply", "--check"]);
+            return Ok(GitMergeResult {
+                status: "conflict".into(),
+                files,
+                additions,
+                deletions,
+                conflicts: conflict_paths(&String::from_utf8_lossy(&check.stderr), &paths),
+                message: Some(truncate(&detail, 4_000)),
+            });
+        }
+        let applied = git_output(&destination, &["apply", "--binary", &patch_arg])?;
+        if !applied.status.success() {
+            return Err(failure_detail(&applied, &["apply", "--binary"]));
+        }
+        let mut args: Vec<&str> = vec!["add", "--"];
+        args.extend(paths.iter().map(String::as_str));
+        run(&destination, &args)?;
+        Ok(GitMergeResult {
+            status: "merged".into(),
+            files,
+            additions,
+            deletions,
+            conflicts: Vec::new(),
+            message: None,
+        })
+    })();
+    let _ = std::fs::remove_file(&patch_path);
+    result
+}
+
 const COMMIT_FORMAT: &str = "--format=%H%x1f%s%x1f%b%x1e";
 
 fn parse_commit_log(raw: &str) -> Vec<GitCommitSummary> {
@@ -649,5 +807,145 @@ mod tests {
         // Se conserva la rama al borrar el worktree.
         assert!(local_branch_exists(&repo, "feature/login"));
         fs::remove_dir_all(root).ok();
+    }
+
+    fn race_worktree(repo: &Path, label: &str) -> PathBuf {
+        let base = current_branch(repo).expect("rama actual");
+        let worktree = repo
+            .parent()
+            .expect("raíz temporal")
+            .join(format!("worktrees/{label}"));
+        worktree_add(repo, &worktree, &format!("carrera/{label}"), &base, false).unwrap();
+        worktree
+    }
+
+    #[test]
+    fn fusiona_altas_modificaciones_y_borrados_sin_commit() {
+        let repo = init_repo("merge");
+        fs::write(repo.join("borrar.txt"), "fuera\n").unwrap();
+        run_git(&repo, &["add", "."]);
+        run_git(&repo, &["commit", "-q", "-m", "base"]);
+        let before = run(&repo, &["rev-parse", "HEAD"]).unwrap();
+        let worktree = race_worktree(&repo, "merge-1");
+
+        fs::write(worktree.join("readme.md"), "hola mundo\n").unwrap();
+        fs::write(worktree.join("nuevo.txt"), "nuevo\n").unwrap();
+        fs::remove_file(worktree.join("borrar.txt")).unwrap();
+
+        let result = merge_worktree(&repo, &worktree, None).unwrap();
+        assert_eq!(result.status, "merged");
+        assert_eq!(result.files, 3);
+        assert_eq!(result.additions, 2);
+        assert_eq!(result.deletions, 2);
+        assert!(result.conflicts.is_empty(), "{:?}", result.conflicts);
+        assert_eq!(
+            fs::read_to_string(repo.join("readme.md")).unwrap(),
+            "hola mundo\n"
+        );
+        assert_eq!(
+            fs::read_to_string(repo.join("nuevo.txt")).unwrap(),
+            "nuevo\n"
+        );
+        assert!(!repo.join("borrar.txt").exists());
+        assert_eq!(run(&repo, &["rev-parse", "HEAD"]).unwrap(), before);
+
+        let state = status(&repo).unwrap();
+        assert!(
+            state.porcelain.contains("M  readme.md"),
+            "{}",
+            state.porcelain
+        );
+        assert!(
+            state.porcelain.contains("A  nuevo.txt"),
+            "{}",
+            state.porcelain
+        );
+        assert!(
+            state.porcelain.contains("D  borrar.txt"),
+            "{}",
+            state.porcelain
+        );
+        fs::remove_dir_all(repo.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn incluye_los_commits_hechos_en_el_worktree() {
+        let repo = init_repo("merge-commits");
+        let base = current_branch(&repo).expect("rama actual");
+        let worktree = race_worktree(&repo, "merge-commits-1");
+        fs::write(worktree.join("readme.md"), "commit desde la carrera\n").unwrap();
+        run_git(&worktree, &["add", "."]);
+        run_git(&worktree, &["commit", "-q", "-m", "carrera"]);
+
+        let result = merge_worktree(&repo, &worktree, Some(&base)).unwrap();
+        assert_eq!(result.status, "merged");
+        assert_eq!(
+            fs::read_to_string(repo.join("readme.md")).unwrap(),
+            "commit desde la carrera\n"
+        );
+        assert!(status(&repo).unwrap().porcelain.contains("M  readme.md"));
+        fs::remove_dir_all(repo.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn una_corrida_sin_cambios_no_toca_el_destino() {
+        let repo = init_repo("merge-empty");
+        let before = run(&repo, &["rev-parse", "HEAD"]).unwrap();
+        let worktree = race_worktree(&repo, "merge-empty-1");
+
+        let result = merge_worktree(&repo, &worktree, None).unwrap();
+        assert_eq!(result.status, "empty");
+        assert_eq!(result.files, 0);
+        assert!(result.message.is_none());
+        assert_eq!(status(&repo).unwrap().porcelain.trim(), "");
+        assert_eq!(run(&repo, &["rev-parse", "HEAD"]).unwrap(), before);
+        fs::remove_dir_all(repo.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn un_conflicto_deja_el_destino_intacto() {
+        let repo = init_repo("merge-conflict");
+        let worktree = race_worktree(&repo, "merge-conflict-1");
+        fs::write(worktree.join("readme.md"), "hola desde la carrera\n").unwrap();
+        fs::write(repo.join("readme.md"), "adios desde el workspace\n").unwrap();
+        let before = run(&repo, &["rev-parse", "HEAD"]).unwrap();
+
+        let result = merge_worktree(&repo, &worktree, None).unwrap();
+        assert_eq!(result.status, "conflict");
+        assert_eq!(result.files, 1);
+        assert!(
+            result.conflicts.iter().any(|path| path == "readme.md"),
+            "{:?}",
+            result.conflicts
+        );
+        assert!(result
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("readme.md"));
+        assert_eq!(
+            fs::read_to_string(repo.join("readme.md")).unwrap(),
+            "adios desde el workspace\n"
+        );
+        assert_eq!(run(&repo, &["rev-parse", "HEAD"]).unwrap(), before);
+        let state = status(&repo).unwrap();
+        assert!(
+            state.porcelain.contains(" M readme.md"),
+            "{}",
+            state.porcelain
+        );
+        fs::remove_dir_all(repo.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn solo_fusiona_worktrees_del_mismo_repositorio() {
+        let repo = init_repo("merge-scope");
+        let other = init_repo("merge-other");
+        let error = merge_worktree(&repo, &other, None).unwrap_err();
+        assert!(error.contains("mismo repositorio"), "{error}");
+        let error = merge_worktree(&repo, &repo, None).unwrap_err();
+        assert!(error.contains("misma carpeta"), "{error}");
+        fs::remove_dir_all(repo.parent().unwrap()).ok();
+        fs::remove_dir_all(other.parent().unwrap()).ok();
     }
 }

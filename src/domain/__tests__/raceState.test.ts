@@ -10,8 +10,10 @@ import {
   failRun,
   finishRun,
   markCleaned,
+  mergeableWinner,
   prepareRun,
   projectIdFor,
+  recordMerge,
   raceIsLive,
   raceStatus,
   raceTotals,
@@ -257,6 +259,60 @@ describe("elección de ganadora y limpieza", () => {
     const cleaned = markCleaned(chosen, race.runs[1].id, null, 5000);
     expect(runsNeedingCleanup(cleaned)).toEqual([]);
     expect(cleaned.runs[1].cleanedAt).toBe(5000);
+  });
+
+  test("solo la ganadora con worktree y sin fusión previa se puede fusionar", () => {
+    const finished = finishedRace();
+    expect(mergeableWinner(finished)).toBeNull();
+    const chosen = chooseWinner(finished, finished.runs[0].id, 4000);
+    expect(mergeableWinner(chosen)?.id).toBe(finished.runs[0].id);
+
+    const merged = recordMerge(
+      chosen,
+      { status: "merged", files: 2, additions: 3, deletions: 1, conflicts: [], message: null },
+      5000,
+    );
+    expect(merged.merge).toMatchObject({
+      runId: finished.runs[0].id,
+      status: "merged",
+      files: 2,
+      additions: 3,
+      deletions: 1,
+    });
+    expect(mergeableWinner(merged)).toBeNull();
+    expect(recordMerge(merged, { ...merged.merge!, status: "conflict" }, 6000)).toBe(merged);
+  });
+
+  test("un fallo de fusión se guarda y permite reintentar", () => {
+    const race = chooseWinner(finishedRace(), "race-1-run-2", 4000);
+    const failed = recordMerge(
+      race,
+      { status: "failed", files: 0, additions: 0, deletions: 0, conflicts: [], message: "roto" },
+      5000,
+    );
+    expect(failed.merge?.status).toBe("failed");
+    expect(failed.merge?.message).toBe("roto");
+    expect(mergeableWinner(failed)?.id).toBe("race-1-run-2");
+    expect(
+      recordMerge(
+        failed,
+        {
+          status: "conflict",
+          files: 1,
+          additions: 0,
+          deletions: 0,
+          conflicts: ["a.ts"],
+          message: null,
+        },
+        6000,
+      ).merge,
+    ).toMatchObject({ status: "conflict", conflicts: ["a.ts"] });
+  });
+
+  test("una ganadora sin worktree no se fusiona", () => {
+    const race = chooseWinner(finishedRace(), "race-1-run-2", 4000);
+    const shared = { ...race, runs: race.runs.map((run) => ({ ...run, worktree: null })) };
+    expect(mergeableWinner(shared)).toBeNull();
   });
 
   test("descartar no permite quitar la ganadora", () => {

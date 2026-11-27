@@ -79,6 +79,16 @@ export type GitCommit = { hash: string; subject: string; body: string };
 
 export type GitCommitResult = { oid: string };
 
+/** Resultado de aplicar los cambios de un worktree sobre el workspace. */
+export type GitMergeResult = {
+  status: "merged" | "empty" | "conflict";
+  files: number;
+  additions: number;
+  deletions: number;
+  conflicts: string[];
+  message: string | null;
+};
+
 export type GitPushResult = { branch: string; remote: string; upstream: string | null };
 
 export type GitPushTarget = {

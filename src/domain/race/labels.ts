@@ -2,7 +2,7 @@
  * Etiquetas y textos de confirmación de la carrera. Solo formatea estado ya
  * resuelto; no lo modifica ni depende de React.
  */
-import type { Race, RaceRun, RaceRunStatus, RaceStatus } from "./state";
+import type { Race, RaceMerge, RaceRun, RaceRunStatus, RaceStatus } from "./state";
 
 const RUN_STATUS_LABELS: Record<RaceRunStatus, string> = {
   preparing: "preparando",
@@ -32,13 +32,29 @@ export function winnerConfirmText(race: Race, run: RaceRun): string {
   const parts = [
     `¿Quedarte con ${run.model.name} y descartar las otras ${losers.length} corridas?`,
   ];
-  if (sessions > 0) parts.push(`Se cerrarán ${sessions} sesión(es).`);
-  if (worktrees > 0) {
+  if (run.worktree) {
     parts.push(
-      `Se eliminarán ${worktrees} worktree(s) conservando su rama base; los cambios sin commitear de las perdedoras se perderán.`,
+      "Sus cambios se aplicarán al workspace y quedarán preparados para que los revises y commitees; no se creará ningún commit.",
     );
   }
-  return `${parts.join(" ")} La ganadora se conserva intacta.`;
+  if (sessions > 0) parts.push(`Se cerrarán ${sessions} sesión(es) de las perdedoras.`);
+  if (worktrees > 0) {
+    parts.push(
+      `Se eliminarán ${worktrees} worktree(s) de las perdedoras conservando su rama base; sus cambios sin commitear se perderán.`,
+    );
+  }
+  return `${parts.join(" ")} El worktree y la sesión de la ganadora se conservan.`;
+}
+
+const MERGE_STATUS_LABELS: Record<RaceMerge["status"], string> = {
+  merged: "Ganadora fusionada en el workspace",
+  empty: "La ganadora no tenía cambios que fusionar",
+  conflict: "La fusión chocó con cambios del workspace",
+  failed: "La fusión falló",
+};
+
+export function mergeStatusLabel(merge: RaceMerge): string {
+  return MERGE_STATUS_LABELS[merge.status];
 }
 
 export function discardConfirmText(run: RaceRun): string {
