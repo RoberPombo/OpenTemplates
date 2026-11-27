@@ -6,6 +6,7 @@ import { CompositionRoot } from "../../../CompositionRoot";
 import { useFeatures } from "../useFeatures";
 import type { FeatureGateway } from "../../../domain/repositories/FeatureGateway";
 import type { FeatureProvisionOutcome } from "../../../domain/features/provision";
+import type { FeatureDeletePreview } from "../../../domain/features/deletion";
 import type { Feature } from "../../../domain/features/model";
 import type { ProfileGateway } from "../../../domain/repositories/ProfileGateway";
 import type { ChatServer } from "../../../domain/repositories/ChatGateway";
@@ -16,7 +17,21 @@ function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
   return {
     list: vi.fn(async () => [makeFeature()]),
     save: vi.fn(async (feature) => feature),
-    remove: vi.fn(async () => undefined),
+    deletePreview: vi.fn(async (id: string) => ({
+      featureId: id,
+      name: "Demo",
+      directory: `/data/features/${id}`,
+      worktrees: [],
+      warnings: [],
+    })),
+    delete: vi.fn(async () => ({
+      featureDeleted: true,
+      removedWorktrees: ["/data/features/feat-1/meta"],
+      removedBranches: ["feature/demo"],
+      keptBranches: [],
+      errors: [],
+      warnings: [],
+    })),
     provision: vi.fn(async (): Promise<FeatureProvisionOutcome> => ({
       feature: makeStartedFeature(),
       worktrees: [],
@@ -33,6 +48,32 @@ function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
     ),
     runnerStatus: vi.fn(async () => null),
     stopRunner: vi.fn(async () => undefined),
+    ...overrides,
+  };
+}
+
+function deletePreview(overrides: Partial<FeatureDeletePreview> = {}): FeatureDeletePreview {
+  return {
+    featureId: "feat-1",
+    name: "Demo",
+    directory: "/data/features/feat-1",
+    worktrees: [
+      {
+        role: "root",
+        name: "Meta",
+        repoPath: "/repos/meta",
+        path: "/data/features/feat-1/meta",
+        branch: "feature/demo",
+        baseBranch: "main",
+        exists: true,
+        dirty: false,
+        branchExists: true,
+        branchPublished: false,
+        branchInUse: null,
+        protectReason: null,
+      },
+    ],
+    warnings: [],
     ...overrides,
   };
 }
@@ -163,19 +204,99 @@ describe("useFeatures", () => {
     expect(result.current.notice).toBeNull();
   });
 
-  test("sin confirmación no borra la feature", async () => {
-    const gateway = fakeGateway();
-    const root = new CompositionRoot({ features: gateway, confirm: { confirm: () => false } });
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <AppProvider root={root}>{children}</AppProvider>
-    );
-    const { result } = renderHook(() => useFeatures(), { wrapper });
+  test("pedir borrar abre la preview sin limpiar nada y se puede cancelar", async () => {
+    const p = deletePreview();
+    const gateway = fakeGateway({ deletePreview: vi.fn(async () => p) });
+    const { result } = setup(gateway);
     await waitFor(() => expect(result.current.features).toHaveLength(1));
+
     await act(async () => {
-      await result.current.remove("feat-1");
+      await result.current.requestDelete("feat-1");
     });
-    expect(gateway.remove).not.toHaveBeenCalled();
+    expect(gateway.deletePreview).toHaveBeenCalledWith("feat-1");
+    expect(result.current.deletion?.preview).toEqual(p);
+    expect(gateway.delete).not.toHaveBeenCalled();
+
+    act(() => result.current.cancelDelete());
+    expect(result.current.deletion).toBeNull();
     expect(result.current.features).toHaveLength(1);
+  });
+
+  test("confirmar el borrado limpia la feature y avisa", async () => {
+    const gateway = fakeGateway();
+    const { result } = setup(gateway);
+    await waitFor(() => expect(result.current.features).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.requestDelete("feat-1");
+    });
+    await act(async () => {
+      await result.current.confirmDelete(false);
+    });
+
+    expect(gateway.delete).toHaveBeenCalledWith("feat-1", false);
+    expect(result.current.features).toHaveLength(0);
+    expect(result.current.deletion).toBeNull();
+    expect(result.current.notice).toContain("Feature eliminada");
+  });
+
+  test("un fallo parcial conserva la feature y deja reintentar", async () => {
+    const gateway = fakeGateway({
+      delete: vi.fn(async () => ({
+        featureDeleted: false,
+        removedWorktrees: ["/data/features/feat-1/meta"],
+        removedBranches: [],
+        keptBranches: [],
+        errors: ["No se pudo quitar el worktree /data/features/feat-1/web"],
+        warnings: [],
+      })),
+    });
+    const { result } = setup(gateway);
+    await waitFor(() => expect(result.current.features).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.requestDelete("feat-1");
+    });
+    await act(async () => {
+      await result.current.confirmDelete(false);
+    });
+
+    expect(result.current.features).toHaveLength(1);
+    expect(result.current.deletion?.error).toContain("No se pudo quitar el worktree");
+    expect(result.current.deletion?.error).toContain("sigue en la lista");
+    expect(gateway.deletePreview).toHaveBeenCalledTimes(2);
+  });
+
+  test("forceDirty llega al adaptador cuando se aceptan los cambios", async () => {
+    const p = deletePreview({
+      worktrees: [
+        {
+          role: "root",
+          name: "Meta",
+          repoPath: "/repos/meta",
+          path: "/data/features/feat-1/meta",
+          branch: "feature/demo",
+          baseBranch: "main",
+          exists: true,
+          dirty: true,
+          branchExists: true,
+          branchPublished: false,
+          branchInUse: null,
+          protectReason: null,
+        },
+      ],
+    });
+    const gateway = fakeGateway({ deletePreview: vi.fn(async () => p) });
+    const { result } = setup(gateway);
+    await waitFor(() => expect(result.current.features).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.requestDelete("feat-1");
+    });
+    await act(async () => {
+      await result.current.confirmDelete(true);
+    });
+    expect(gateway.delete).toHaveBeenCalledWith("feat-1", true);
   });
 
   test("aprobar con targets nuevos guarda el artefacto, provisiona y actualiza", async () => {

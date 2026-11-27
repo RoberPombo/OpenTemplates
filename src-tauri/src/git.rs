@@ -8,7 +8,7 @@ use crate::model::{
     GitCommitResult, GitCommitSummary, GitMergeResult, GitPushResult, GitStatusOutput,
     GitUntrackedStat,
 };
-use crate::process::{execute, Output};
+use crate::process::{Output, execute};
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(180);
 const MAX_OUTPUT: usize = 12_000;
@@ -192,6 +192,60 @@ pub fn worktree_prune(repo: &Path) {
 /// Borra una rama local (solo para deshacer una creación a medias).
 pub fn delete_branch(repo: &Path, branch: &str) -> Result<(), String> {
     run(repo, &["branch", "-D", branch]).map(|_| ())
+}
+
+/// Worktree registrado y, si tiene una rama checkouteada, su nombre.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeEntry {
+    pub path: PathBuf,
+    pub branch: Option<String>,
+}
+
+fn parse_worktrees(raw: &str) -> Vec<WorktreeEntry> {
+    let mut entries = Vec::new();
+    for block in raw.split("\n\n") {
+        let mut path = None;
+        let mut branch = None;
+        for line in block.lines() {
+            if let Some(value) = line.strip_prefix("worktree ") {
+                path = Some(PathBuf::from(value.trim()));
+            } else if let Some(value) = line.strip_prefix("branch ") {
+                branch = Some(value.trim().trim_start_matches("refs/heads/").to_string());
+            }
+        }
+        if let Some(path) = path {
+            entries.push(WorktreeEntry { path, branch });
+        }
+    }
+    entries
+}
+
+/// Worktrees registrados en un repo. Si git falla, devuelve una lista vacía.
+pub fn worktrees(repo: &Path) -> Vec<WorktreeEntry> {
+    run(repo, &["worktree", "list", "--porcelain"])
+        .map(|raw| parse_worktrees(&raw))
+        .unwrap_or_default()
+}
+
+/// Ruta del worktree que tiene checkouteada la rama, si hay alguno.
+pub fn branch_in_use(repo: &Path, branch: &str) -> Option<PathBuf> {
+    worktrees(repo)
+        .into_iter()
+        .find(|entry| entry.branch.as_deref() == Some(branch))
+        .map(|entry| entry.path)
+}
+
+/// `true` si la rama local sigue una rama remota (se publicó al menos una vez).
+pub fn branch_has_upstream(repo: &Path, branch: &str) -> bool {
+    succeeds(
+        repo,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            &format!("{branch}@{{upstream}}"),
+        ],
+    )
 }
 
 pub fn is_dirty(worktree: &Path) -> bool {
@@ -918,11 +972,13 @@ mod tests {
             "{:?}",
             result.conflicts
         );
-        assert!(result
-            .message
-            .as_deref()
-            .unwrap_or_default()
-            .contains("readme.md"));
+        assert!(
+            result
+                .message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("readme.md")
+        );
         assert_eq!(
             fs::read_to_string(repo.join("readme.md")).unwrap(),
             "adios desde el workspace\n"
@@ -947,5 +1003,50 @@ mod tests {
         assert!(error.contains("misma carpeta"), "{error}");
         fs::remove_dir_all(repo.parent().unwrap()).ok();
         fs::remove_dir_all(other.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn parsea_worktrees_con_y_sin_rama() {
+        let raw = "worktree /tmp/a\nHEAD 111\nbranch refs/heads/main\n\nworktree /tmp/b\nHEAD 222\ndetached\n";
+        let entries = parse_worktrees(raw);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].path, PathBuf::from("/tmp/a"));
+        assert_eq!(entries[0].branch.as_deref(), Some("main"));
+        assert_eq!(entries[1].branch, None);
+    }
+
+    #[test]
+    fn detecta_la_rama_en_uso_y_su_upstream() {
+        let repo = init_repo("worktree-branch");
+        let root = repo.parent().unwrap();
+        let remote = root.join("remote.git");
+        fs::create_dir_all(&remote).unwrap();
+        run_git(&remote, &["init", "--bare", "-q"]);
+        run_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_string_lossy().as_ref()],
+        );
+        run_git(&repo, &["branch", "feature/x"]);
+        run_git(&repo, &["push", "-q", "-u", "origin", "feature/x"]);
+
+        let worktree = root.join("wt");
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                worktree.to_string_lossy().as_ref(),
+                "feature/x",
+            ],
+        );
+        assert_eq!(branch_in_use(&repo, "feature/x"), Some(worktree.clone()));
+        assert!(branch_has_upstream(&repo, "feature/x"));
+        assert!(!branch_has_upstream(&repo, "sin-upstream"));
+
+        run_git(
+            &repo,
+            &["worktree", "remove", worktree.to_string_lossy().as_ref()],
+        );
+        fs::remove_dir_all(root).ok();
     }
 }

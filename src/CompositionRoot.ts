@@ -29,6 +29,7 @@ import { DeleteWorkspace } from "./domain/usecases/DeleteWorkspace";
 import { CreateWorkspace } from "./domain/usecases/CreateWorkspace";
 import { ApplyWorkspaceSettings } from "./domain/usecases/ApplyWorkspaceSettings";
 import { StartFeature } from "./domain/usecases/StartFeature";
+import { DeleteFeature } from "./domain/usecases/DeleteFeature";
 import { ApproveDecomposition } from "./domain/usecases/ApproveDecomposition";
 import { LaunchCoordinator } from "./domain/usecases/LaunchCoordinator";
 import { LaunchStep } from "./domain/usecases/LaunchStep";
@@ -138,6 +139,10 @@ export class CompositionRoot {
 
   provideStartFeature(): StartFeature {
     return new StartFeature(this.features);
+  }
+
+  provideDeleteFeature(): DeleteFeature {
+    return new DeleteFeature(this.features);
   }
 
   provideLaunchCoordinator(): LaunchCoordinator {

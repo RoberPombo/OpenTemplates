@@ -10,6 +10,7 @@ import { LaunchCoordinator } from "../usecases/LaunchCoordinator";
 import { LaunchStep } from "../usecases/LaunchStep";
 import { AdvanceStep } from "../usecases/AdvanceStep";
 import { StartFeature } from "../usecases/StartFeature";
+import { DeleteFeature } from "../usecases/DeleteFeature";
 import type { ProfileGateway } from "../repositories/ProfileGateway";
 import type { ProfileManifest } from "../../types";
 import { makeFeature, makeRunner, makeStartedFeature } from "../../tests/fixtures";
@@ -18,7 +19,21 @@ function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
   return {
     list: vi.fn(async () => []),
     save: vi.fn(async (feature: Feature) => feature),
-    remove: vi.fn(async () => undefined),
+    deletePreview: vi.fn(async (id: string) => ({
+      featureId: id,
+      name: "Demo",
+      directory: `/data/features/${id}`,
+      worktrees: [],
+      warnings: [],
+    })),
+    delete: vi.fn(async () => ({
+      featureDeleted: true,
+      removedWorktrees: [],
+      removedBranches: [],
+      keptBranches: [],
+      errors: [],
+      warnings: [],
+    })),
     provision: vi.fn(async (): Promise<FeatureProvisionOutcome> => ({
       feature: makeFeature(),
       worktrees: [],
@@ -355,6 +370,36 @@ describe("LaunchCoordinator", () => {
     expect(prompt).not.toHaveBeenCalled();
     expect(gateway.startRunner).toHaveBeenCalledWith(started.id, "coord");
     expect(result.sessionId).toBe("ses-old");
+  });
+});
+
+describe("DeleteFeature", () => {
+  test("pide la preview y ejecuta la limpieza con la confirmación de sucios", async () => {
+    const preview = {
+      featureId: "feat-1",
+      name: "Demo",
+      directory: "/data/features/feat-1",
+      worktrees: [],
+      warnings: [],
+    };
+    const outcome = {
+      featureDeleted: true,
+      removedWorktrees: ["/data/features/feat-1/meta"],
+      removedBranches: ["feature/demo"],
+      keptBranches: [],
+      errors: [],
+      warnings: [],
+    };
+    const gateway = fakeGateway({
+      deletePreview: vi.fn(async () => preview),
+      delete: vi.fn(async () => outcome),
+    });
+    const usecase = new DeleteFeature(gateway);
+
+    expect(await usecase.preview("feat-1")).toEqual(preview);
+    expect(await usecase.execute("feat-1", true)).toEqual(outcome);
+    expect(gateway.deletePreview).toHaveBeenCalledWith("feat-1");
+    expect(gateway.delete).toHaveBeenCalledWith("feat-1", true);
   });
 });
 

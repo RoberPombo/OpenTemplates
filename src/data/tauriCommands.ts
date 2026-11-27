@@ -3,6 +3,7 @@ import type { ModelDetails } from "../domain/models/details";
 import type { Feature } from "../domain/features/model";
 import type { FeatureArtifact, FeatureRunnerInfo } from "../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../domain/features/provision";
+import type { FeatureDeleteOutcome, FeatureDeletePreview } from "../domain/features/deletion";
 import type {
   GitCommit,
   GitCommitResult,
@@ -45,7 +46,10 @@ export const api = {
 
   listFeatures: () => invoke<Feature[]>("list_features"),
   saveFeature: (feature: Feature) => invoke<Feature>("save_feature", { feature }),
-  deleteFeature: (id: string) => invoke<void>("delete_feature", { id }),
+  deleteFeature: (id: string, forceDirty: boolean) =>
+    invoke<FeatureDeleteOutcome>("delete_feature", { id, forceDirty }),
+  featureDeletePreview: (id: string) =>
+    invoke<FeatureDeletePreview>("feature_delete_preview", { id }),
   provisionFeature: (id: string) => invoke<FeatureProvisionOutcome>("provision_feature", { id }),
   featureArtifacts: (id: string) => invoke<FeatureArtifact[]>("feature_artifacts", { id }),
   writeFeatureArtifact: (id: string, name: string, content: string) =>

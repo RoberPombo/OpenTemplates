@@ -569,12 +569,79 @@ pub struct FeatureRunnerInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProvisionedWorktree {    /// `root` o `target`.
+pub struct ProvisionedWorktree {
+    /// `root` o `target`.
     pub role: String,
     pub repo_path: String,
     pub path: String,
     pub branch: String,
     pub base: String,
+}
+
+/// Plan de borrado de una feature: una entrada por worktree/rama, sin tocar
+/// disco. La UI lo usa para confirmar con la lista exacta de lo que se pierde.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureDeletePreview {
+    pub feature_id: String,
+    pub name: String,
+    pub directory: String,
+    pub worktrees: Vec<FeatureDeleteEntry>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureDeleteEntry {
+    /// `root` o `target`.
+    pub role: String,
+    pub name: String,
+    pub repo_path: String,
+    pub path: String,
+    pub branch: String,
+    pub base_branch: String,
+    pub exists: bool,
+    pub dirty: bool,
+    pub branch_exists: bool,
+    /// La rama existe en `origin` o tiene upstream configurado.
+    pub branch_published: bool,
+    /// Worktree ajeno que tiene checkouteada la rama, si lo hay.
+    #[serde(default)]
+    pub branch_in_use: Option<String>,
+    /// Motivo por el que la rama se conserva (`rama base`, `publicada en
+    /// origin`, `en uso en <ruta>`); `None` si se puede borrar.
+    #[serde(default)]
+    pub protect_reason: Option<String>,
+}
+
+/// Rama que se conserva al borrar una feature, con su motivo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureDeleteSkip {
+    pub repo_path: String,
+    pub branch: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureDeleteOutcome {
+    /// `true` solo si no hubo errores; entonces la feature ya no está en el
+    /// store y su carpeta se intentó borrar.
+    pub feature_deleted: bool,
+    #[serde(default)]
+    pub removed_worktrees: Vec<String>,
+    #[serde(default)]
+    pub removed_branches: Vec<String>,
+    /// Ramas conservadas por ser base, publicadas o estar en uso.
+    #[serde(default)]
+    pub kept_branches: Vec<FeatureDeleteSkip>,
+    /// Fallos por worktree, rama o carpeta. Si hay alguno, la feature se queda.
+    #[serde(default)]
+    pub errors: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

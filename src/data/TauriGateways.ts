@@ -29,6 +29,7 @@ import type { FeatureGateway } from "../domain/repositories/FeatureGateway";
 import type { Feature } from "../domain/features/model";
 import type { FeatureArtifact, FeatureRunnerInfo } from "../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../domain/features/provision";
+import type { FeatureDeleteOutcome, FeatureDeletePreview } from "../domain/features/deletion";
 import type {
   AppSettings,
   Bootstrap,
@@ -275,8 +276,12 @@ export class TauriFeatureGateway implements FeatureGateway {
     return call(api.saveFeature(feature));
   }
 
-  remove(id: string): Promise<void> {
-    return call(api.deleteFeature(id));
+  deletePreview(id: string): Promise<FeatureDeletePreview> {
+    return call(api.featureDeletePreview(id));
+  }
+
+  delete(id: string, forceDirty: boolean): Promise<FeatureDeleteOutcome> {
+    return call(api.deleteFeature(id, forceDirty));
   }
 
   provision(id: string): Promise<FeatureProvisionOutcome> {

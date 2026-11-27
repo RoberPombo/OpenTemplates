@@ -426,8 +426,17 @@ step:
 
 - Dos features sobre la misma raíz (o repo) = dos worktrees distintos: eso es el
   paralelismo.
-- Al cerrar: merge/PR, `git worktree remove`, la rama se conserva; si falla, no
-  se borra nada.
+- Al cerrar el trabajo: merge/PR y `git worktree remove`; si falla, no se borra
+  nada.
+- **Borrar la feature** es una operación aparte y explícita. La UI pide una
+  preview, confirma con la lista de worktrees y ramas, y avisa de los cambios sin
+  commitear (hay que aceptarlos para continuar). La app para el coordinador y los
+  runners de paso, quita los worktrees de más profundo a menos profundo (los
+  targets viven dentro del de la raíz), borra las ramas locales que creó la
+  feature y elimina `<appdata>/features/<id>/`. Nunca borra la rama base ni una
+  rama publicada en `origin` (o con upstream) ni una rama checkouteada por otro
+  worktree: las conserva y lo explica. Si algo falla, la feature se queda en la
+  lista y se puede reintentar; lo ya limpiado no vuelve a fallar.
 
 ## Estados
 
@@ -504,6 +513,10 @@ Cerradas:
     Modelos por step: coordinador y recon baratos, plan caro.
 17. El contexto del coordinador no guarda código ni el historial de los workers;
     el estado vive en artefactos y se compacta o reabre desde ellos.
+18. Borrar una feature limpia worktrees, ramas locales y su carpeta, con
+    confirmación y preview. Protege siempre la rama base, las publicadas en
+    `origin` y las que usa otro worktree. Si la limpieza falla, la feature no
+    desaparece del listado: se reintenta sin repetir lo ya hecho.
 
 Abiertas:
 

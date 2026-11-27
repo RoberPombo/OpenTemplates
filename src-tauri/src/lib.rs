@@ -3,6 +3,7 @@ mod bootstrap;
 mod commands;
 mod config;
 mod context;
+mod feature_delete;
 mod feature_runner;
 mod features;
 mod gh;
@@ -76,6 +77,7 @@ pub fn run() {
             commands::list_features,
             commands::save_feature,
             commands::delete_feature,
+            commands::feature_delete_preview,
             commands::provision_feature,
             commands::feature_artifacts,
             commands::write_feature_artifact,

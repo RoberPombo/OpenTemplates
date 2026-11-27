@@ -11,10 +11,11 @@ use crate::git;
 use crate::library;
 use crate::model::{
     AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, Feature,
-    FeatureArtifact, FeatureProvisionOutcome, GhStatus, GitCommitResult, GitCommitSummary,
-    GitMergeResult, GitPushResult, GitStatusOutput, Library, McpInfo, ModelCost, ModelDetail, ModelLimit,
-    ProfileManifest, PullRequestCheck, PullRequestInfo, Repo, ServerInfo, SkillInfo, SkillRef,
-    Workspace, WorkspaceMode, WorktreeStatus,
+    FeatureArtifact, FeatureDeleteOutcome, FeatureDeletePreview, FeatureProvisionOutcome, GhStatus,
+    GitCommitResult, GitCommitSummary, GitMergeResult, GitPushResult, GitStatusOutput, Library,
+    McpInfo, ModelCost, ModelDetail, ModelLimit, ProfileManifest, PullRequestCheck,
+    PullRequestInfo, Repo, ServerInfo, SkillInfo, SkillRef, Workspace, WorkspaceMode,
+    WorktreeStatus,
 };
 use crate::preview::{self, PreviewProbe};
 use crate::profiles;
@@ -633,17 +634,57 @@ pub fn save_feature(state: State<'_, AppState>, feature: Feature) -> Result<Feat
     Ok(feature)
 }
 
+/// Plan de borrado sin efectos: worktrees, ramas y motivos de protección.
 #[tauri::command]
-pub fn delete_feature(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    {
-        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
-        let before = features.len();
-        features.retain(|item| item.id != id);
-        if features.len() == before {
-            return Err(format!("La feature '{id}' no existe"));
-        }
+pub fn feature_delete_preview(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<FeatureDeletePreview, String> {
+    let feature = feature_of(&state, &id)?;
+    crate::feature_delete::preview(&feature)
+}
+
+/// Borra de verdad una feature. Para primero sus servidores (coordinador y
+/// pasos) y solo quita el registro si la limpieza terminó sin errores.
+#[tauri::command]
+pub async fn delete_feature(
+    state: State<'_, AppState>,
+    id: String,
+    force_dirty: bool,
+) -> Result<FeatureDeleteOutcome, String> {
+    let feature = feature_of(&state, &id)?;
+    runner::stop_owner(state.clone(), Owner::Feature(id.clone())).await?;
+    delete_feature_inner(&state, feature, force_dirty)
+}
+
+fn delete_feature_inner(
+    state: &AppState,
+    feature: Feature,
+    force_dirty: bool,
+) -> Result<FeatureDeleteOutcome, String> {
+    let outcome = crate::feature_delete::delete(&feature, force_dirty, &state.data_dir)?;
+    if !outcome.feature_deleted {
+        return Ok(outcome);
     }
-    state.save()
+
+    let previous = {
+        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
+        let previous = features.clone();
+        let before = features.len();
+        features.retain(|item| item.id != feature.id);
+        if features.len() == before {
+            return Err(format!("La feature '{}' no existe", feature.id));
+        }
+        previous
+    };
+    if let Err(err) = state.save() {
+        let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
+        *features = previous;
+        return Err(format!(
+            "La feature se limpió, pero no se pudo guardar features.json: {err}"
+        ));
+    }
+    Ok(outcome)
 }
 
 /// Crea los worktrees de la feature (metarepo y subrepos). Idempotente.
@@ -1224,13 +1265,11 @@ pub async fn delete_workspace(
                 || context::read_meta(&context_dir)
                     .map(|meta| !meta.workspaces.is_empty())
                     .unwrap_or(false);
-            if !shared {
-                if let Ok(entries) = fs::read_dir(&context_dir) {
-                    for entry in entries.flatten() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        if name.starts_with("opencode.db") {
-                            let _ = fs::remove_file(entry.path());
-                        }
+            if !shared && let Ok(entries) = fs::read_dir(&context_dir) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.starts_with("opencode.db") {
+                        let _ = fs::remove_file(entry.path());
                     }
                 }
             }
@@ -1815,11 +1854,7 @@ pub fn git_merge_worktree(
     source: String,
     base: Option<String>,
 ) -> Result<GitMergeResult, String> {
-    git::merge_worktree(
-        Path::new(&destination),
-        Path::new(&source),
-        base.as_deref(),
-    )
+    git::merge_worktree(Path::new(&destination), Path::new(&source), base.as_deref())
 }
 
 #[tauri::command]
@@ -2056,5 +2091,59 @@ mod tests {
         assert!(resolve_session_file(&link.to_string_lossy(), SessionFileMode::Read).is_err());
         assert!(resolve_session_file(&link.to_string_lossy(), SessionFileMode::Write).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn feature_record(data_dir: &Path) -> Feature {
+        use crate::model::FeatureRoot;
+
+        Feature {
+            id: "feat-borrar".into(),
+            name: "Borrar".into(),
+            kind: "feature".into(),
+            flow: "standard".into(),
+            status: "confirmed".into(),
+            brief: "demo".into(),
+            issue: None,
+            directory: data_dir
+                .join("features/feat-borrar")
+                .to_string_lossy()
+                .to_string(),
+            root: Some(FeatureRoot {
+                repo_id: None,
+                name: "Repo".into(),
+                repo_path: data_dir.join("repo").to_string_lossy().to_string(),
+                base_branch: "main".into(),
+                branch: "feature/demo".into(),
+                relative_path: "meta".into(),
+                bootstrap: Vec::new(),
+            }),
+            targets: Vec::new(),
+            steps: Vec::new(),
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn el_registro_se_queda_si_falla_la_limpieza_y_se_va_al_reintentar() {
+        let data_dir = temp_dir("borrar-feature");
+        fs::create_dir_all(&data_dir).unwrap();
+        let state = AppState::load(data_dir.clone());
+        let feature = feature_record(&data_dir);
+        // Carpeta existente pero no registrada como worktree: limpieza fallida.
+        fs::create_dir_all(Path::new(&feature.directory).join("meta")).unwrap();
+        state.features.lock().unwrap().push(feature.clone());
+
+        let failed = delete_feature_inner(&state, feature.clone(), false).unwrap();
+        assert!(!failed.feature_deleted);
+        assert_eq!(state.features.lock().unwrap().len(), 1);
+
+        fs::remove_dir_all(Path::new(&feature.directory).join("meta")).unwrap();
+        let retried = delete_feature_inner(&state, feature, false).unwrap();
+        assert!(retried.feature_deleted, "{:?}", retried.errors);
+        assert!(state.features.lock().unwrap().is_empty());
+        assert!(!Path::new(&data_dir.join("features/feat-borrar")).exists());
+
+        fs::remove_dir_all(&data_dir).ok();
     }
 }

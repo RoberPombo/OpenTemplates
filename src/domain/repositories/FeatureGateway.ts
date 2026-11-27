@@ -2,11 +2,15 @@
 import type { Feature } from "../features/model";
 import type { FeatureArtifact, FeatureRunnerInfo } from "../features/coordinator";
 import type { FeatureProvisionOutcome } from "../features/provision";
+import type { FeatureDeleteOutcome, FeatureDeletePreview } from "../features/deletion";
 
 export interface FeatureGateway {
   list(): Promise<Feature[]>;
   save(feature: Feature): Promise<Feature>;
-  remove(id: string): Promise<void>;
+  /** Plan de borrado sin efectos: worktrees, ramas y protecciones. */
+  deletePreview(id: string): Promise<FeatureDeletePreview>;
+  /** Limpia worktrees, ramas y carpeta. La feature solo se va si no hay errores. */
+  delete(id: string, forceDirty: boolean): Promise<FeatureDeleteOutcome>;
   /** Crea los worktrees que falten; idempotente si ya existen. */
   provision(id: string): Promise<FeatureProvisionOutcome>;
   /** Artefactos compartidos de la feature. */

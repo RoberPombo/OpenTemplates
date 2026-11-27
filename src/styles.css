@@ -5198,6 +5198,67 @@ p {
   word-break: break-all;
 }
 
+.delete-feature-dialog {
+  width: min(680px, 94vw);
+}
+
+.delete-feature-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.delete-feature-list,
+.delete-feature-dirty ul,
+.delete-feature-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.delete-feature-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.delete-feature-entry-head,
+.delete-feature-branch {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.delete-feature-warning {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.delete-feature-dirty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+
+.delete-feature-force {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
 .feature-steps {
   display: flex;
   flex-direction: column;
