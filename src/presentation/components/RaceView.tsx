@@ -7,6 +7,8 @@ import { formatDuration } from "../../domain/shared";
 import { formatCost, formatTokens } from "../../domain/chat/usage";
 import {
   canChooseWinner,
+  mergeableWinner,
+  mergeStatusLabel,
   raceStatus,
   raceTotals,
   RACE_STATUS_LABELS,
@@ -21,11 +23,14 @@ import { Button } from "./ui";
 type Props = {
   race: Race;
   busy: boolean;
+  merging: boolean;
+  mergeError: string | null;
   onClose: () => void;
   onNewRace: () => void;
   onOpenSession: (run: RaceRun) => void;
   onOpenDiff: (run: RaceRun) => void;
   onKeepWinner: (run: RaceRun) => void;
+  onRetryMerge: () => void;
   onDiscard: (run: RaceRun) => void;
 };
 
@@ -54,15 +59,27 @@ function runHeadline(run: RaceRun): string {
 export function RaceView({
   race,
   busy,
+  merging,
+  mergeError,
   onClose,
   onNewRace,
   onOpenSession,
   onOpenDiff,
   onKeepWinner,
+  onRetryMerge,
   onDiscard,
 }: Props) {
   const totals = raceTotals(race);
   const status = raceStatus(race);
+  const merge = race.merge;
+  const mergeable = mergeableWinner(race);
+  const mergeLabel =
+    merge &&
+    `${mergeStatusLabel(merge)}${
+      merge.status === "merged"
+        ? `: ${merge.files} fichero(s) +${merge.additions} −${merge.deletions}, preparados sin commit`
+        : ""
+    }${merge.conflicts.length > 0 ? ` · ${merge.conflicts.join(", ")}` : ""}`;
   const canStartAnother = !race.runs.some(
     (run) => run.status === "preparing" || run.status === "running" || run.status === "waiting",
   );
@@ -86,11 +103,23 @@ export function RaceView({
               <span className="race-add">+{totals.additions}</span>{" "}
               <span className="race-del">−{totals.deletions}</span>
             </p>
-            {race.merge === null && (
-              <p className="muted small-text">
-                Fusionar resultados queda para un paso posterior; hoy se elige una ganadora.
+            {mergeLabel && (
+              <p
+                className={`race-merge ${merge?.status ?? ""}`}
+                role={
+                  merge?.status === "conflict" || merge?.status === "failed" ? "alert" : undefined
+                }
+              >
+                {mergeLabel}
               </p>
             )}
+            {!merge && race.winnerRunId && !race.useWorktrees && (
+              <p className="muted small-text">
+                Las corridas compartieron la carpeta del workspace; no hay una fusión separada.
+              </p>
+            )}
+            {merging && <p className="muted small-text">Aplicando los cambios al workspace…</p>}
+            {mergeError && <p className="inline-error small-text">{mergeError}</p>}
           </div>
           <div className="row">
             <Button onClick={onNewRace} disabled={!canStartAnother || busy}>
@@ -172,6 +201,11 @@ export function RaceView({
                     onClick={() => onKeepWinner(run)}
                   >
                     Quedarse con esta
+                  </Button>
+                )}
+                {mergeable?.id === run.id && (
+                  <Button className="small" disabled={busy} onClick={onRetryMerge}>
+                    {merge ? "Reintentar fusión" : "Fusionar en el workspace"}
                   </Button>
                 )}
                 {run.status !== "winner" && run.status !== "discarded" && (

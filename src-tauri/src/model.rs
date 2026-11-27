@@ -623,6 +623,20 @@ pub struct GitCommitResult {
     pub oid: String,
 }
 
+/// Resultado de aplicar los cambios de un worktree sobre otro checkout.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitMergeResult {
+    pub status: String,
+    pub files: u64,
+    pub additions: u64,
+    pub deletions: u64,
+    #[serde(default)]
+    pub conflicts: Vec<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitPushResult {

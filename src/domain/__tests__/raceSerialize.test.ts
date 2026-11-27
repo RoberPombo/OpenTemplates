@@ -4,6 +4,7 @@ import {
   createRace,
   finishRun,
   prepareRun,
+  recordMerge,
   startRun,
   type CreateRaceInput,
   type Race,
@@ -64,6 +65,34 @@ describe("persistencia y recuperación", () => {
     expect(parsed?.runs[0].sessionId).toBe("ses-1");
   });
 
+  test("persiste el resultado de la fusión", () => {
+    const finished = finishRun(withSession(makeRace()), "race-1-run-1", {}, 3000);
+    const chosen = chooseWinner(finished, "race-1-run-1", 4000);
+    const merged = recordMerge(
+      chosen,
+      {
+        status: "conflict",
+        files: 2,
+        additions: 5,
+        deletions: 1,
+        conflicts: ["src/a.ts"],
+        message: "no aplica",
+      },
+      5000,
+    );
+    const parsed = parseRace(serializeRace(merged));
+    expect(parsed?.merge).toEqual({
+      runId: "race-1-run-1",
+      status: "conflict",
+      files: 2,
+      additions: 5,
+      deletions: 1,
+      conflicts: ["src/a.ts"],
+      message: "no aplica",
+      at: 5000,
+    });
+  });
+
   test("un JSON inválido o con otra versión se descarta", () => {
     expect(parseRace(null)).toBeNull();
     expect(parseRace("nope")).toBeNull();
@@ -113,6 +142,7 @@ describe("persistencia y recuperación", () => {
       model: { key: "anthropic/claude", providerID: "anthropic", id: "claude", name: "claude" },
     });
     expect(race?.runs[1].model.name).toBe("GPT");
+    expect(race?.merge).toBeNull();
   });
 
   test("al reabrir la app, las corridas vivas quedan fallidas", () => {

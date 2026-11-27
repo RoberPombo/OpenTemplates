@@ -6,6 +6,7 @@ import type { FeatureProvisionOutcome } from "../domain/features/provision";
 import type {
   GitCommit,
   GitCommitResult,
+  GitMergeResult,
   GitPushResult,
   GitStatusRaw,
 } from "../domain/workspace/git";
@@ -100,6 +101,8 @@ export const api = {
     invoke<GitStatusRaw>("git_unstage", { projectPath, paths }),
   gitDiff: (projectPath: string, staged: boolean) =>
     invoke<string>("git_diff", { projectPath, staged }),
+  gitMergeWorktree: (destination: string, source: string, base: string | null) =>
+    invoke<GitMergeResult>("git_merge_worktree", { destination, source, base }),
   gitCommit: (projectPath: string, message: string) =>
     invoke<GitCommitResult>("git_commit", { projectPath, message }),
   gitPush: (projectPath: string, branch: string, setUpstream: boolean) =>

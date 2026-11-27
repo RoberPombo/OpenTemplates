@@ -66,11 +66,24 @@ export type RaceRun = {
   cleanedAt: number | null;
 };
 
+export type RaceMergeStatus = "merged" | "empty" | "conflict" | "failed";
+
 /**
- * Hueco reservado para la fusión de resultados (siguiente paso). Hoy siempre
- * `null`; existe para que la persistencia y la UI no cambien de forma.
+ * Resultado de aplicar al workspace los cambios de la corrida ganadora. Se
+ * guarda con la carrera para que la UI lo muestre al reabrir.
  */
-export type RaceMerge = null;
+export type RaceMerge = {
+  runId: string;
+  status: RaceMergeStatus;
+  files: number;
+  additions: number;
+  deletions: number;
+  conflicts: string[];
+  message: string | null;
+  at: number;
+};
+
+export type RaceMergeOutcome = Omit<RaceMerge, "runId" | "at">;
 
 export type Race = {
   id: string;
@@ -85,7 +98,7 @@ export type Race = {
   updatedAt: number;
   /** Identificador del arranque de la app que creó la carrera. */
   bootId: string | null;
-  merge: RaceMerge;
+  merge: RaceMerge | null;
 };
 
 export type RaceModelChoice = {
@@ -320,6 +333,42 @@ export function chooseWinner(race: Race, runId: string, at: number): Race {
         ? { ...item, status: "winner", waitingFor: null, endedAt: item.endedAt ?? at }
         : item,
     ),
+  };
+}
+
+export function winnerRun(race: Race): RaceRun | null {
+  return race.runs.find((run) => run.id === race.winnerRunId) ?? null;
+}
+
+/**
+ * Ganadora que todavía puede fusionarse: tiene worktree propio y la fusión no
+ * terminó bien. Sin worktree los cambios ya están en la carpeta compartida.
+ */
+export function mergeableWinner(race: Race): RaceRun | null {
+  const run = winnerRun(race);
+  if (!run || run.worktree === null) return null;
+  if (race.merge?.status === "merged" || race.merge?.status === "empty") return null;
+  return run;
+}
+
+/** Guarda el resultado de la fusión de la ganadora. */
+export function recordMerge(race: Race, outcome: RaceMergeOutcome, at: number): Race {
+  const run = winnerRun(race);
+  if (!run) return race;
+  if (race.merge?.status === "merged" || race.merge?.status === "empty") return race;
+  return {
+    ...race,
+    merge: {
+      runId: run.id,
+      status: outcome.status,
+      files: Math.max(0, outcome.files),
+      additions: Math.max(0, outcome.additions),
+      deletions: Math.max(0, outcome.deletions),
+      conflicts: [...outcome.conflicts],
+      message: outcome.message,
+      at,
+    },
+    updatedAt: at,
   };
 }
 

@@ -24,7 +24,7 @@ import type { PullRequestGateway } from "../domain/repositories/PullRequestGatew
 import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
 import type { PreviewProbe } from "../domain/preview/preview";
 import type { Preferences } from "../domain/repositories/Preferences";
-import type { GitCommit, GitFileEntry, GitStatus } from "../domain/workspace/git";
+import type { GitCommit, GitFileEntry, GitMergeResult, GitStatus } from "../domain/workspace/git";
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
 import { toServerEvent } from "../data/opencodePayloads";
 
@@ -600,6 +600,8 @@ export function makeGitGateway(
     commitError?: unknown;
     pushError?: unknown;
     diffError?: unknown;
+    mergeResult?: GitMergeResult;
+    mergeError?: unknown;
   } = {},
 ) {
   let current = options.status ?? makeGitStatus();
@@ -660,8 +662,30 @@ export function makeGitGateway(
     },
   );
   const commits = vi.fn(async () => options.commits ?? []);
+  const mergeWorktree = vi.fn(async () => {
+    if (options.mergeError) throw options.mergeError;
+    return (
+      options.mergeResult ?? {
+        status: "merged" as const,
+        files: 1,
+        additions: 1,
+        deletions: 0,
+        conflicts: [],
+        message: null,
+      }
+    );
+  });
 
-  const gateway: GitGateway = { status, stage, unstage, stagedDiff, commit, push, commits };
+  const gateway: GitGateway = {
+    status,
+    stage,
+    unstage,
+    stagedDiff,
+    commit,
+    push,
+    commits,
+    mergeWorktree,
+  };
   return {
     gateway,
     status,
@@ -671,6 +695,7 @@ export function makeGitGateway(
     commit,
     push,
     commits,
+    mergeWorktree,
     get current() {
       return current;
     },

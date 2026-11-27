@@ -1,5 +1,11 @@
 /** Puerto del flujo git de un workspace: estado, stage, commit y push. */
-import type { GitCommit, GitCommitResult, GitPushResult, GitStatus } from "../workspace/git";
+import type {
+  GitCommit,
+  GitCommitResult,
+  GitMergeResult,
+  GitPushResult,
+  GitStatus,
+} from "../workspace/git";
 
 export interface GitGateway {
   status(projectPath: string): Promise<GitStatus>;
@@ -14,4 +20,6 @@ export interface GitGateway {
   ): Promise<GitPushResult>;
   /** Commits de la rama que no están en la base, para el borrador de la PR. */
   commits(projectPath: string, base: string, limit?: number): Promise<GitCommit[]>;
+  /** Aplica los cambios de un worktree sobre el workspace desde su rama base. */
+  mergeWorktree(destination: string, source: string, base?: string | null): Promise<GitMergeResult>;
 }

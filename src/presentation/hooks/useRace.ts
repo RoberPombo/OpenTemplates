@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatServer } from "../../domain/repositories/ChatGateway";
+import type { GitGateway } from "../../domain/repositories/GitGateway";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import type { Preferences } from "../../domain/repositories/Preferences";
 import { errorText, folderName } from "../../domain/shared";
@@ -19,10 +20,12 @@ import {
   failRun,
   finishRun,
   markCleaned,
+  mergeableWinner,
   parseRace,
   prepareRun,
   projectIdFor,
   raceIsLive,
+  recordMerge,
   recoverRace,
   runSummaryFromMessages,
   runsNeedingCleanup,
@@ -56,6 +59,7 @@ type Catalog = {
 
 type UseRaceInput = {
   client: ChatServer;
+  git: GitGateway;
   workspace: Workspace;
   worktreesRoot: string;
   repoPath: string | null;
@@ -94,6 +98,7 @@ function toChanges(
 
 export function useRace({
   client,
+  git,
   workspace,
   worktreesRoot,
   repoPath,
@@ -108,6 +113,8 @@ export function useRace({
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const raceRef = useRef<Race | null>(race);
 
   const commit = useCallback((next: Race | null) => {
@@ -464,6 +471,49 @@ export function useRace({
     [client, update],
   );
 
+  const attemptMerge = useCallback(
+    async (current: Race, run: RaceRun): Promise<Race | null> => {
+      if (!run.worktree) return current;
+      setMerging(true);
+      setMergeError(null);
+      try {
+        const result = await git.mergeWorktree(workspace.projectPath, run.worktree, run.branch);
+        const merged = recordMerge(raceRef.current ?? current, result, Date.now());
+        update(() => merged);
+        return merged;
+      } catch (err) {
+        const message = errorText(err);
+        const failed = recordMerge(
+          raceRef.current ?? current,
+          {
+            status: "failed",
+            files: 0,
+            additions: 0,
+            deletions: 0,
+            conflicts: [],
+            message,
+          },
+          Date.now(),
+        );
+        update(() => failed);
+        setMergeError(message);
+        return failed;
+      } finally {
+        setMerging(false);
+      }
+    },
+    [git, update, workspace.projectPath],
+  );
+
+  const cleanLosers = useCallback(
+    async (next: Race) => {
+      await Promise.all(
+        runsNeedingCleanup(next).map((run) => cleanupRun(run, catalog?.projectID ?? null, true)),
+      );
+    },
+    [catalog?.projectID, cleanupRun],
+  );
+
   const keepWinner = useCallback(
     async (runId: string) => {
       const current = raceRef.current;
@@ -471,11 +521,31 @@ export function useRace({
       const next = chooseWinner(current, runId, Date.now());
       if (next === current) return;
       update(() => next);
-      const losers = runsNeedingCleanup(next);
-      await Promise.all(losers.map((run) => cleanupRun(run, catalog?.projectID ?? null, true)));
+      let settled = next;
+      const winner = mergeableWinner(next);
+      if (winner) {
+        const merged = await attemptMerge(next, winner);
+        if (!merged || merged.merge?.status === "conflict" || merged.merge?.status === "failed") {
+          return;
+        }
+        settled = merged;
+      }
+      await cleanLosers(settled);
     },
-    [catalog?.projectID, cleanupRun, update],
+    [attemptMerge, cleanLosers, update],
   );
+
+  const retryMerge = useCallback(async () => {
+    const current = raceRef.current;
+    if (!current) return;
+    const winner = mergeableWinner(current);
+    if (!winner) return;
+    const merged = await attemptMerge(current, winner);
+    if (!merged || merged.merge?.status === "conflict" || merged.merge?.status === "failed") {
+      return;
+    }
+    await cleanLosers(merged);
+  }, [attemptMerge, cleanLosers]);
 
   const discard = useCallback(
     async (runId: string) => {
@@ -502,6 +572,7 @@ export function useRace({
     );
     commit(null);
     setLaunchError(null);
+    setMergeError(null);
   }, [catalog?.projectID, cleanupRun, commit]);
 
   return {
@@ -513,9 +584,12 @@ export function useRace({
     projectID: catalog?.projectID ?? null,
     catalogError,
     launchError,
+    merging,
+    mergeError,
     hasLiveRace: race ? raceIsLive(race) : false,
     startRace,
     keepWinner,
+    retryMerge,
     discard,
     clearRace,
     refreshDetails: loadRunDetails,
