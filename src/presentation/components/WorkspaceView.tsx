@@ -1,8 +1,9 @@
-import { lazy, Profiler, Suspense, useMemo, useState } from "react";
+import { lazy, Profiler, Suspense, useEffect, useMemo, useState } from "react";
 import type { ProfileManifest, ServerInfo, Workspace } from "../../types";
 import { useAppContext } from "../context/AppContext";
 import { prefKeys } from "../../domain/repositories/Preferences";
 import { folderName } from "../../domain/shared";
+import { workspaceModeLabel } from "../../domain/workspace/labels";
 import type { ChatGateway } from "../../domain/repositories/ChatGateway";
 import { useCommandAction } from "../context/CommandActions";
 import { Chat } from "./Chat";
@@ -41,6 +42,15 @@ type Props = {
   onOpenSettings?: (client: ChatGateway | null) => void;
   /** El workspace terminó un turno sin foco: se marca en el sidebar. */
   onWorkspaceActivity?: (workspaceId: string) => void;
+  /** Sesión que la barra lateral pide abrir (o una carrera). */
+  openSessionId?: string | null;
+  onSessionOpened?: () => void;
+  /** Notifica la sesión activa para resaltarla en la barra lateral. */
+  onSessionChange?: (workspaceId: string, sessionId: string | null) => void;
+  /** Notifica el contexto (perfil) activo para listar sus sesiones. */
+  onContextChange?: (workspaceId: string, contextHash: string | undefined) => void;
+  /** Despliega o pliega las sesiones en la barra lateral (paleta de comandos). */
+  onToggleSessions?: () => void;
   worktreesRoot: string;
   repoPath: string | null;
 };
@@ -66,12 +76,6 @@ function ProfiledChat(props: React.ComponentProps<typeof Chat>) {
   );
 }
 
-function modeLabel(workspace: Workspace) {
-  if (workspace.mode === "worktree") return "worktree";
-  if (workspace.mode === "principal") return "checkout principal";
-  return "ad-hoc";
-}
-
 export function WorkspaceView({
   workspace,
   profileName,
@@ -87,6 +91,11 @@ export function WorkspaceView({
   onUpdated,
   onOpenSettings,
   onWorkspaceActivity,
+  openSessionId: requestedSessionId,
+  onSessionOpened,
+  onSessionChange,
+  onContextChange,
+  onToggleSessions,
   worktreesRoot,
   repoPath,
 }: Props) {
@@ -124,6 +133,12 @@ export function WorkspaceView({
   }, [activeHash, servers, workspace.contextHash, defaultServer]);
   // El resto del componente usa este `server` como el contexto activo.
   const server = activeServer;
+  const activeContextHash = server?.contextHash;
+  useEffect(() => {
+    // La barra lateral lista las sesiones de este mismo contexto; al cambiar
+    // de perfil debe apuntar al servidor nuevo.
+    onContextChange?.(workspace.id, activeContextHash);
+  }, [onContextChange, workspace.id, activeContextHash]);
   const serverModel = server?.model;
   const serverModels = server?.models;
   const chatWorkspace = useMemo(
@@ -160,9 +175,6 @@ export function WorkspaceView({
     }
   }
 
-  const [sessionsOpen, setSessionsOpen] = useState(
-    () => root.preferences.get(prefKeys.sessionsOpen) === "1",
-  );
   const [terminalOpen, setTerminalOpen] = useState(
     () => root.preferences.get(prefKeys.terminalOpen) === "1",
   );
@@ -172,7 +184,8 @@ export function WorkspaceView({
   const [sessionId, setSessionId] = useState<string | null>(() =>
     root.preferences.get(prefKeys.session(workspace.id)),
   );
-  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
+  /** Sesión que abrió una carrera; se suma a la petición de la barra lateral. */
+  const [raceSessionId, setRaceSessionId] = useState<string | null>(null);
   const [liveRace, setLiveRace] = useState(false);
   // Los memo se anclan a los valores que definen el cliente (URL y contraseña)
   // para no recrear gateways ni terminales: `server` cambia de identidad en cada
@@ -196,13 +209,6 @@ export function WorkspaceView({
     });
   }
 
-  function toggleSessions() {
-    setSessionsOpen((prev) => {
-      const next = !prev;
-      root.preferences.set(prefKeys.sessionsOpen, next ? "1" : "0");
-      return next;
-    });
-  }
   function toggleTerminal() {
     setTerminalOpen((prev) => {
       const next = !prev;
@@ -271,7 +277,6 @@ export function WorkspaceView({
   function closeActivePanel() {
     if (terminalOpen) toggleTerminal();
     else if (previewOpen) togglePreview();
-    else if (sessionsOpen) toggleSessions();
     else if (panelOpen) togglePanel();
   }
 
@@ -284,8 +289,8 @@ export function WorkspaceView({
   );
   useCommandAction(
     "panel.sessions",
-    toggleSessions,
-    Boolean(server),
+    () => onToggleSessions?.(),
+    Boolean(server && onToggleSessions),
     "Arranca el workspace para ver sus sesiones.",
   );
   useCommandAction(
@@ -309,7 +314,7 @@ export function WorkspaceView({
   useCommandAction(
     "panel.close",
     closeActivePanel,
-    Boolean(server && (terminalOpen || previewOpen || sessionsOpen || panelOpen)),
+    Boolean(server && (terminalOpen || previewOpen || panelOpen)),
     "No hay ningún panel abierto.",
   );
 
@@ -331,7 +336,7 @@ export function WorkspaceView({
               {folder} · {workspace.projectPath}
             </p>
             <p className="muted small-text">
-              {modeLabel(workspace)}
+              {workspaceModeLabel(workspace.mode)}
               {profiles.length > 0 && onStartProfile ? (
                 <span className="profile-switch">
                   {" · perfil "}
@@ -364,13 +369,6 @@ export function WorkspaceView({
         <div className="row">
           {server ? (
             <>
-              <Button
-                className={sessionsOpen ? "active" : ""}
-                title={sessionsOpen ? "Ocultar sesiones" : "Mostrar sesiones"}
-                onClick={toggleSessions}
-              >
-                Sesiones
-              </Button>
               <Button
                 className={panelOpen && panelTab === "resumen" ? "active" : ""}
                 title={panelOpen ? "Ocultar panel" : "Mostrar panel"}
@@ -406,9 +404,9 @@ export function WorkspaceView({
                   worktreesRoot={worktreesRoot}
                   repoPath={repoPath}
                   sessionId={sessionId}
-                  onOpenSession={(id) => setOpenSessionId(id)}
+                  onOpenSession={(id) => setRaceSessionId(id)}
                   onOpenDiff={(id) => {
-                    setOpenSessionId(id);
+                    setRaceSessionId(id);
                     openChanges();
                   }}
                   onLiveChange={setLiveRace}
@@ -457,12 +455,16 @@ export function WorkspaceView({
               workspace={chatWorkspace}
               projectName={repoPath ? folderName(repoPath) : undefined}
               scope={server.contextHash ?? "default"}
-              onSessionChange={setSessionId}
-              sessionsOpen={sessionsOpen}
-              onCloseSessions={toggleSessions}
+              onSessionChange={(id) => {
+                setSessionId(id);
+                onSessionChange?.(workspace.id, id);
+              }}
               onWorkspaceActivity={onWorkspaceActivity}
-              openSessionId={openSessionId}
-              onSessionOpened={() => setOpenSessionId(null)}
+              openSessionId={raceSessionId ?? requestedSessionId ?? null}
+              onSessionOpened={() => {
+                if (raceSessionId) setRaceSessionId(null);
+                onSessionOpened?.();
+              }}
             />
             {panelOpen && (
               <Suspense fallback={null}>

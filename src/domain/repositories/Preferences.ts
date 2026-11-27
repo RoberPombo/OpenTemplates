@@ -12,7 +12,6 @@ export const prefKeys = {
   theme: "opentemplates:theme",
   accent: "opentemplates:accent",
   panelOpen: "opentemplates:panel",
-  sessionsOpen: "opentemplates:sessions",
   terminalOpen: "opentemplates:terminal",
   notifications: "opentemplates:notifications",
   panelTab: (workspaceId: string) => `opentemplates:panel-tab:${workspaceId}`,

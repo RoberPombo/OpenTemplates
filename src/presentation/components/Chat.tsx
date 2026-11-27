@@ -16,7 +16,6 @@ import { useCommandAction } from "../context/CommandActions";
 import { Markdown } from "./Markdown";
 import { ModelInfoCard } from "./ModelInfoCard";
 import { RequestDock } from "./RequestDock";
-import { SessionsPanel } from "./SessionsPanel";
 import { GoalChip } from "./GoalChip";
 import { GoalDialog } from "./GoalDialog";
 import { SLASH_MENU_ID, SlashMenu, slashOptionId } from "./SlashMenu";
@@ -30,8 +29,6 @@ type Props = {
   /** Ámbito de sesiones (huella del contexto/perfil). */
   scope?: string;
   onSessionChange?: (sessionId: string | null) => void;
-  sessionsOpen?: boolean;
-  onCloseSessions?: () => void;
   /** Actividad terminada sin foco, para marcarla en el sidebar. */
   onWorkspaceActivity?: (workspaceId: string) => void;
   /** Sesión que debe abrirse (p. ej. una corrida de la carrera). */
@@ -61,8 +58,6 @@ export function Chat({
   projectName,
   scope,
   onSessionChange,
-  sessionsOpen,
-  onCloseSessions,
   onWorkspaceActivity,
   openSessionId,
   onSessionOpened,
@@ -71,9 +66,6 @@ export function Chat({
   const {
     sessionId,
     messages,
-    sessions,
-    sessionsError,
-    sessionsNotice,
     permissions,
     forms,
     requestError,
@@ -81,7 +73,6 @@ export function Chat({
     goal,
     goalError,
     decisionModel,
-    goalSessionIds,
     input,
     setInput,
     models,
@@ -114,11 +105,7 @@ export function Chat({
     send,
     stop,
     newConversation,
-    selectSession,
-    renameSession,
-    deleteSession,
     exportSession,
-    importSession,
     forkSession,
     replyPermission,
     replyForm,
@@ -292,24 +279,6 @@ export function Chat({
 
   return (
     <div className="chat-shell">
-      {sessionsOpen && (
-        <SessionsPanel
-          sessions={sessions}
-          activeId={sessionId}
-          busy={busy}
-          error={sessionsError}
-          notice={sessionsNotice}
-          onSelect={selectSession}
-          onRename={renameSession}
-          onDelete={deleteSession}
-          onExport={exportSession}
-          onImport={importSession}
-          onFork={forkSession}
-          onNew={newConversation}
-          onClose={() => onCloseSessions?.()}
-          goalSessionIds={goalSessionIds}
-        />
-      )}
       <section className="chat">
         <div className="messages">
           {messages.length === 0 && streaming.length === 0 && (
