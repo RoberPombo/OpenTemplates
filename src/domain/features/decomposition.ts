@@ -204,6 +204,7 @@ function mergeStep(generated: FeatureStep, previous: FeatureStep | undefined): F
     sessionId: previous.sessionId,
     profileId: previous.profileId,
     agentId: previous.agentId,
+    contextHash: previous.contextHash,
   };
 }
 
@@ -269,6 +270,7 @@ export function applyDecomposition(
         sessionId: coordinate.sessionId,
         profileId: coordinate.profileId,
         agentId: coordinate.agentId,
+        contextHash: coordinate.contextHash,
       };
     }
     return mergeStep(step, previous.get(step.id));

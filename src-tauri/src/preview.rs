@@ -675,12 +675,21 @@ mod tests {
 
     #[test]
     fn explica_que_no_hay_servidor_escuchando() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        let probe = probe(&format!("http://127.0.0.1:{port}/"));
-        assert!(!probe.ok);
-        assert!(probe.error.unwrap().contains("No hay nadie escuchando"));
+        // El puerto libre se reserva y se suelta; otro proceso puede reutilizarlo
+        // antes del sondeo. Se reintenta con puertos nuevos en vez de depender
+        // de una única carrera.
+        let mut last = String::new();
+        for _ in 0..10 {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            drop(listener);
+            let probe = probe(&format!("http://127.0.0.1:{port}/"));
+            last = probe.error.unwrap_or_default();
+            if !probe.ok && last.contains("No hay nadie escuchando") {
+                return;
+            }
+        }
+        panic!("ningún puerto libre dio el error esperado; último: {last}");
     }
 
     /// Prueba manual contra un dev server real: `cargo test preview_probe_real -- --ignored`.

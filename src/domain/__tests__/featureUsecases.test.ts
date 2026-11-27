@@ -7,8 +7,12 @@ import type { FeatureGateway } from "../repositories/FeatureGateway";
 import type { ChatServer } from "../repositories/ChatGateway";
 import { ApproveDecomposition } from "../usecases/ApproveDecomposition";
 import { LaunchCoordinator } from "../usecases/LaunchCoordinator";
+import { LaunchStep } from "../usecases/LaunchStep";
+import { AdvanceStep } from "../usecases/AdvanceStep";
 import { StartFeature } from "../usecases/StartFeature";
-import { makeFeature } from "../../tests/fixtures";
+import type { ProfileGateway } from "../repositories/ProfileGateway";
+import type { ProfileManifest } from "../../types";
+import { makeFeature, makeRunner, makeStartedFeature } from "../../tests/fixtures";
 
 function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
   return {
@@ -42,11 +46,222 @@ function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
       },
       warnings: [],
     })),
+    startStepRunner: vi.fn(async (id: string): Promise<FeatureRunnerInfo> => ({
+      featureId: id,
+      profileId: null,
+      directory: "/data/features/feat-1",
+      contextHash: "hash",
+      server: {
+        workspaceId: id,
+        baseUrl: "http://127.0.0.1:1",
+        password: "pw",
+        port: 1,
+        pid: 1,
+      },
+      warnings: [],
+    })),
     runnerStatus: vi.fn(async () => null),
     stopRunner: vi.fn(async () => undefined),
     ...overrides,
   };
 }
+
+function profile(overrides: Partial<ProfileManifest> = {}): ProfileManifest {
+  return {
+    id: "implementador",
+    name: "Implementador",
+    description: "",
+    version: 1,
+    agents: ["implementer"],
+    skills: [],
+    mcps: [],
+    commands: [],
+    plugins: [],
+    models: [],
+    permissions: [],
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function fakeProfiles(profiles: ProfileManifest[] = [profile()]): ProfileGateway {
+  return {
+    list: vi.fn(async () => profiles),
+    save: vi.fn(async (manifest: ProfileManifest) => manifest),
+    delete: vi.fn(async () => undefined),
+    agentsMd: vi.fn(async () => ""),
+    saveAgentsMd: vi.fn(async (_id: string, content: string) => content),
+  };
+}
+
+describe("LaunchStep", () => {
+  test("crea la sesión en el worktree, guarda el paso antes del encargo y resuelve agente", async () => {
+    const started = makeStartedFeature({ kind: "chore" });
+    const implement = started.steps.find((step) => step.type === "implement")!;
+    const runner = makeRunner(started.id, {
+      profileId: "implementador",
+      directory: "/data/features/feat-1/web",
+      server: {
+        ...makeRunner().server,
+        model: "provider/model",
+      },
+    });
+    const create = vi.fn(async () => ({ id: "ses-step" }));
+    const prompt = vi.fn(async () => undefined);
+    const client = {
+      session: { create, prompt, remove: vi.fn(async () => undefined) },
+    } as unknown as ChatServer;
+    const gateway = fakeGateway({ startStepRunner: vi.fn(async () => runner) });
+
+    const result = await new LaunchStep(gateway, fakeProfiles(), () => client).execute(
+      started,
+      implement.id,
+      null,
+      null,
+      3000,
+    );
+
+    expect(gateway.startStepRunner).toHaveBeenCalledWith(started.id, implement.id, "implementador");
+    expect(create).toHaveBeenCalledWith({
+      location: { directory: runner.directory },
+      title: expect.any(String),
+      agent: "implementer",
+      model: { providerID: "provider", id: "model" },
+    });
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionID: "ses-step",
+        text: expect.stringContaining("Flujo rápido"),
+      }),
+    );
+    const saved = result.feature.steps.find((step) => step.id === implement.id);
+    expect(saved).toMatchObject({
+      sessionId: "ses-step",
+      profileId: "implementador",
+      agentId: "implementer",
+      contextHash: "hash",
+      status: "running",
+    });
+    expect(result.feature.status).toBe("running");
+  });
+
+  test("reabre la sesión guardada sin crear otra ni repetir el encargo", async () => {
+    const started = makeStartedFeature({ kind: "chore" });
+    const implement = started.steps.find((step) => step.type === "implement")!;
+    const withSession: Feature = {
+      ...started,
+      steps: started.steps.map((step) =>
+        step.id === implement.id
+          ? {
+              ...step,
+              sessionId: "ses-old",
+              profileId: "implementador",
+              contextHash: "hash",
+            }
+          : step,
+      ),
+    };
+    const create = vi.fn();
+    const prompt = vi.fn();
+    const client = {
+      session: { create, prompt, remove: vi.fn() },
+    } as unknown as ChatServer;
+    const runner = makeRunner(started.id, { profileId: "implementador" });
+    const gateway = fakeGateway({ startStepRunner: vi.fn(async () => runner) });
+
+    const result = await new LaunchStep(gateway, fakeProfiles(), () => client).execute(
+      withSession,
+      implement.id,
+      null,
+      null,
+      3000,
+    );
+
+    expect(create).not.toHaveBeenCalled();
+    expect(prompt).not.toHaveBeenCalled();
+    expect(gateway.startStepRunner).toHaveBeenCalledWith(started.id, implement.id, "implementador");
+    expect(result.feature).toBe(withSession);
+    expect(result.sessionId).toBe("ses-old");
+  });
+
+  test("rechaza un paso que aún no está listo", async () => {
+    const started = makeStartedFeature();
+    const recon = started.steps.find((step) => step.type === "recon")!;
+    const gateway = fakeGateway();
+
+    await expect(
+      new LaunchStep(gateway, fakeProfiles(), () => ({}) as ChatServer).execute(
+        started,
+        recon.id,
+        null,
+        null,
+        3000,
+      ),
+    ).rejects.toThrow("dependencias pendientes");
+    expect(gateway.startStepRunner).not.toHaveBeenCalled();
+  });
+
+  test("si no se puede guardar el paso, borra la sesión recién creada", async () => {
+    const started = makeStartedFeature({ kind: "chore" });
+    const implement = started.steps.find((step) => step.type === "implement")!;
+    const remove = vi.fn(async () => undefined);
+    const client = {
+      session: {
+        create: vi.fn(async () => ({ id: "ses-step" })),
+        prompt: vi.fn(async () => undefined),
+        remove,
+      },
+    } as unknown as ChatServer;
+    const gateway = fakeGateway({
+      save: vi.fn(async () => {
+        throw new Error("disco lleno");
+      }),
+      startStepRunner: vi.fn(async () => makeRunner(started.id)),
+    });
+
+    await expect(
+      new LaunchStep(gateway, fakeProfiles(), () => client).execute(
+        started,
+        implement.id,
+        null,
+        null,
+        3000,
+      ),
+    ).rejects.toThrow("disco lleno");
+    expect(remove).toHaveBeenCalledWith({ sessionID: "ses-step" });
+  });
+});
+
+describe("AdvanceStep", () => {
+  test("terminar deja el paso en revisión y aprobar lo cierra", async () => {
+    const started = makeStartedFeature({ kind: "chore" });
+    const implement = started.steps.find((step) => step.type === "implement")!;
+    const running: Feature = {
+      ...started,
+      steps: started.steps.map((step) =>
+        step.id === implement.id ? { ...step, status: "running", sessionId: "ses-step" } : step,
+      ),
+    };
+    const gateway = fakeGateway();
+    const usecase = new AdvanceStep(gateway);
+
+    const review = await usecase.execute(running, implement.id, "finish", 3000);
+    expect(review.steps.find((step) => step.id === implement.id)?.status).toBe("awaiting-review");
+
+    const done = await usecase.execute(review, implement.id, "approve", 4000);
+    expect(done.steps.find((step) => step.id === implement.id)?.status).toBe("done");
+    expect(gateway.save).toHaveBeenCalledTimes(2);
+  });
+
+  test("no permite terminar un paso pendiente", async () => {
+    const started = makeStartedFeature({ kind: "chore" });
+    const implement = started.steps.find((step) => step.type === "implement")!;
+    await expect(
+      new AdvanceStep(fakeGateway()).execute(started, implement.id, "finish", 3000),
+    ).rejects.toThrow("No se puede pasar");
+  });
+});
 
 describe("StartFeature", () => {
   test("confirma, expande y guarda", async () => {

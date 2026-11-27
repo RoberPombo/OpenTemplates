@@ -166,10 +166,21 @@ pub async fn ensure_server(
     Ok(info)
 }
 
-/// Estado del servidor si el dueño está enganchado a uno vivo.
-pub fn status_for_owner(state: &AppState, owner: &Owner) -> Option<ServerInfo> {
+/// Estado del servidor si el dueño está enganchado a uno vivo. Con `hash`,
+/// solo devuelve ese contexto: una feature puede tener varios servidores
+/// (coordinador y pasos con perfiles distintos) y el estado debe ser el suyo.
+pub fn status_for_owner_hash(
+    state: &AppState,
+    owner: &Owner,
+    hash: Option<&str>,
+) -> Option<ServerInfo> {
     let mut servers = state.servers.lock().ok()?;
-    for handle in servers.values_mut() {
+    for (key, handle) in servers.iter_mut() {
+        if let Some(expected) = hash
+            && key != expected
+        {
+            continue;
+        }
         let attached = if owner.is_feature() {
             handle.features.iter().any(|id| id == owner.id())
         } else {

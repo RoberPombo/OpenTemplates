@@ -504,6 +504,9 @@ pub struct FeatureStep {
     pub status: String,
     #[serde(default)]
     pub session_id: Option<String>,
+    /// Huella del contexto donde vive `session_id`; `None` hasta lanzar el paso.
+    #[serde(default)]
+    pub context_hash: Option<String>,
 }
 
 /// Feature persistida. El dominio y la expansión de flujos viven en el frontend;
@@ -555,7 +558,8 @@ pub struct FeatureRunnerInfo {
     pub feature_id: String,
     #[serde(default)]
     pub profile_id: Option<String>,
-    /// Carpeta de trabajo del coordinador (raíz de la feature).
+    /// Carpeta de trabajo de la sesión: raíz para el coordinador, worktree para
+    /// un paso.
     pub directory: String,
     pub context_hash: String,
     pub server: ServerInfo,

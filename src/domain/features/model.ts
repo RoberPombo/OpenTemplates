@@ -82,6 +82,8 @@ export type FeatureStep = {
   dependsOn: string[];
   status: StepStatus;
   sessionId: string | null;
+  /** Huella del contexto donde vive `sessionId`; `null` hasta lanzar el paso. */
+  contextHash: string | null;
 };
 
 export type Feature = {

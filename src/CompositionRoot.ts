@@ -31,6 +31,8 @@ import { ApplyWorkspaceSettings } from "./domain/usecases/ApplyWorkspaceSettings
 import { StartFeature } from "./domain/usecases/StartFeature";
 import { ApproveDecomposition } from "./domain/usecases/ApproveDecomposition";
 import { LaunchCoordinator } from "./domain/usecases/LaunchCoordinator";
+import { LaunchStep } from "./domain/usecases/LaunchStep";
+import { AdvanceStep } from "./domain/usecases/AdvanceStep";
 import type { BootstrapGateway, SettingsGateway } from "./domain/repositories/SettingsGateway";
 import type { ChatGateway, ChatServer } from "./domain/repositories/ChatGateway";
 import type { ConfirmDialog, FolderPicker } from "./domain/repositories/Dialogs";
@@ -144,6 +146,16 @@ export class CompositionRoot {
 
   provideApproveDecomposition(): ApproveDecomposition {
     return new ApproveDecomposition(this.features);
+  }
+
+  provideLaunchStep(): LaunchStep {
+    return new LaunchStep(this.features, this.profiles, (server) =>
+      this.provideChatGateway(server),
+    );
+  }
+
+  provideAdvanceStep(): AdvanceStep {
+    return new AdvanceStep(this.features);
   }
 
   provideApplyWorkspaceSettings(server: ChatGateway | null): ApplyWorkspaceSettings {

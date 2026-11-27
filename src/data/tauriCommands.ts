@@ -52,6 +52,8 @@ export const api = {
     invoke<FeatureArtifact>("write_feature_artifact", { id, name, content }),
   startFeatureRunner: (id: string, profileId: string | null) =>
     invoke<FeatureRunnerInfo>("start_feature_runner", { featureId: id, profileId }),
+  startFeatureStepRunner: (id: string, stepId: string, profileId: string | null) =>
+    invoke<FeatureRunnerInfo>("start_feature_step_runner", { featureId: id, stepId, profileId }),
   featureRunnerStatus: (id: string) =>
     invoke<FeatureRunnerInfo | null>("feature_runner_status", { featureId: id }),
   stopFeatureRunner: (id: string) => invoke<void>("stop_feature_runner", { featureId: id }),

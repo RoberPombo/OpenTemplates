@@ -17,6 +17,9 @@ describe("FeatureView", () => {
         profiles={[]}
         defaultProfileId={null}
         runner={null}
+        stepRunner={null}
+        openStepId={null}
+        stepBusyId={null}
         coordinatorBusy={false}
         busy={false}
         notice={null}
@@ -27,6 +30,10 @@ describe("FeatureView", () => {
         onLaunchCoordinator={async () => undefined}
         onStopCoordinator={async () => undefined}
         onApproveDecomposition={async () => undefined}
+        onLaunchStep={async () => undefined}
+        onFinishStep={async () => undefined}
+        onApproveStep={async () => undefined}
+        onCloseStepChat={() => {}}
         onDelete={() => {}}
         onBack={() => {}}
       />,
@@ -51,6 +58,9 @@ describe("FeatureView", () => {
         profiles={[]}
         defaultProfileId={null}
         runner={null}
+        stepRunner={null}
+        openStepId={null}
+        stepBusyId={null}
         coordinatorBusy={false}
         busy={false}
         notice={null}
@@ -61,6 +71,10 @@ describe("FeatureView", () => {
         onLaunchCoordinator={async () => undefined}
         onStopCoordinator={async () => undefined}
         onApproveDecomposition={async () => undefined}
+        onLaunchStep={async () => undefined}
+        onFinishStep={async () => undefined}
+        onApproveStep={async () => undefined}
+        onCloseStepChat={() => {}}
         onDelete={() => {}}
         onBack={() => {}}
       />,
@@ -76,6 +90,9 @@ describe("FeatureView", () => {
         profiles={[]}
         defaultProfileId={null}
         runner={null}
+        stepRunner={null}
+        openStepId={null}
+        stepBusyId={null}
         coordinatorBusy={false}
         busy
         notice={null}
@@ -86,11 +103,65 @@ describe("FeatureView", () => {
         onLaunchCoordinator={async () => undefined}
         onStopCoordinator={async () => undefined}
         onApproveDecomposition={async () => undefined}
+        onLaunchStep={async () => undefined}
+        onFinishStep={async () => undefined}
+        onApproveStep={async () => undefined}
+        onCloseStepChat={() => {}}
         onDelete={() => {}}
         onBack={() => {}}
       />,
     );
     expect(screen.getByRole("button", { name: "Preparando…" })).toBeDisabled();
+  });
+
+  test("en flujo rápido ofrece lanzar la implementación", () => {
+    render(
+      <FeatureView
+        feature={started({ kind: "chore" })}
+        artifacts={[]}
+        profiles={[
+          {
+            id: "implementador",
+            name: "Implementador",
+            description: "",
+            version: 1,
+            agents: ["implementer"],
+            skills: [],
+            mcps: [],
+            commands: [],
+            plugins: [],
+            models: [],
+            permissions: [],
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ]}
+        defaultProfileId={null}
+        runner={null}
+        stepRunner={null}
+        openStepId={null}
+        stepBusyId={null}
+        coordinatorBusy={false}
+        busy={false}
+        notice={null}
+        error={null}
+        onProvision={() => {}}
+        onSaveArtifact={async () => undefined}
+        onReloadArtifacts={async () => undefined}
+        onLaunchCoordinator={async () => undefined}
+        onStopCoordinator={async () => undefined}
+        onApproveDecomposition={async () => undefined}
+        onLaunchStep={async () => undefined}
+        onFinishStep={async () => undefined}
+        onApproveStep={async () => undefined}
+        onCloseStepChat={() => {}}
+        onDelete={() => {}}
+        onBack={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Lanzar sesión" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Perfil de Implementación · Web")).toBeInTheDocument();
   });
 
   test("muestra el error de bootstrap bloqueado", () => {
@@ -101,6 +172,9 @@ describe("FeatureView", () => {
         profiles={[]}
         defaultProfileId={null}
         runner={null}
+        stepRunner={null}
+        openStepId={null}
+        stepBusyId={null}
         coordinatorBusy={false}
         busy={false}
         notice={null}
@@ -111,6 +185,10 @@ describe("FeatureView", () => {
         onLaunchCoordinator={async () => undefined}
         onStopCoordinator={async () => undefined}
         onApproveDecomposition={async () => undefined}
+        onLaunchStep={async () => undefined}
+        onFinishStep={async () => undefined}
+        onApproveStep={async () => undefined}
+        onCloseStepChat={() => {}}
         onDelete={() => {}}
         onBack={() => {}}
       />,

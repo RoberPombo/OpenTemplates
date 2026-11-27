@@ -80,6 +80,7 @@ pub fn run() {
             commands::feature_artifacts,
             commands::write_feature_artifact,
             feature_runner::start_feature_runner,
+            feature_runner::start_feature_step_runner,
             feature_runner::feature_runner_status,
             feature_runner::stop_feature_runner,
             commands::list_profiles,
