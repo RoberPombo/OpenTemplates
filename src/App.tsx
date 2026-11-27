@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { errorText, folderName } from "./domain/shared";
+import { prefKeys } from "./domain/repositories/Preferences";
 import { useWorkspaces } from "./presentation/hooks/useWorkspaces";
 import { useFeatures } from "./presentation/hooks/useFeatures";
 import { CreateWorkspace } from "./presentation/components/CreateWorkspace";
@@ -16,7 +17,7 @@ import { formatShortcut, resolveShortcut, shortcutFor } from "./domain/palette/k
 import { Button } from "./presentation/components/ui";
 import { useUpdater } from "./presentation/hooks/useUpdater";
 import { useAppContext } from "./presentation/context/AppContext";
-import type { Workspace } from "./types";
+import type { ServerInfo, Workspace } from "./types";
 import type { ChatGateway } from "./domain/repositories/ChatGateway";
 import "./styles.css";
 
@@ -25,6 +26,18 @@ const PALETTE_SHORTCUT = shortcutFor("palette.open");
 const SettingsDialog = lazy(() =>
   import("./presentation/components/SettingsDialog").then((module) => ({
     default: module.SettingsDialog,
+  })),
+);
+/** La lista de sesiones solo se monta al desplegar un workspace en marcha. */
+const WorkspaceSessions = lazy(() =>
+  import("./presentation/components/WorkspaceSessions").then((module) => ({
+    default: module.WorkspaceSessions,
+  })),
+);
+/** La ficha solo se pide al pasar el ratón por un workspace. */
+const WorkspaceMetaCard = lazy(() =>
+  import("./presentation/components/WorkspaceMetaCard").then((module) => ({
+    default: module.WorkspaceMetaCard,
   })),
 );
 const PerformanceCapture = import.meta.env.DEV
@@ -71,6 +84,19 @@ function App() {
     client?: ChatGateway | null;
   } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /** Workspace desplegado en la barra lateral (acordeón: uno a la vez). */
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** Sesión que el chat debe abrir tras elegirla en la barra lateral. */
+  const [openSessionRequest, setOpenSessionRequest] = useState<{
+    workspaceId: string;
+    sessionId: string;
+  } | null>(null);
+  /** Ficha flotante al pasar el ratón por el nombre de un workspace. */
+  const [hovered, setHovered] = useState<{ id: string; top: number; left: number } | null>(null);
+  /** Sesión activa que el chat va notificando por workspace. */
+  const [activeSessions, setActiveSessions] = useState<Record<string, string | null>>({});
+  /** Contexto (perfil) activo de cada workspace, para leer sus sesiones. */
+  const [contextHashes, setContextHashes] = useState<Record<string, string | undefined>>({});
   const { entries, run: runRegisteredAction } = useCommandActions();
   const updater = useUpdater();
 
@@ -140,6 +166,12 @@ function App() {
   );
 
   useEffect(() => {
+    // La lista desplegada pertenece al workspace seleccionado: si la selección
+    // cambia por otra vía (paleta, alta, borrado), el acordeón se pliega.
+    if (expandedId && expandedId !== selectedId) setExpandedId(null);
+  }, [expandedId, selectedId]);
+
+  useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
       if (paletteOpen) return;
       // Los modales existentes gestionan su propia interacción; no actuamos detrás.
@@ -195,6 +227,15 @@ function App() {
     return repos.find((repo) => repo.id === selectedRepoId)?.path ?? null;
   }, [selectedRepoId, repos]);
 
+  const handleContextChange = useCallback(
+    (workspaceId: string, contextHash: string | undefined) => {
+      setContextHashes((prev) =>
+        prev[workspaceId] === contextHash ? prev : { ...prev, [workspaceId]: contextHash },
+      );
+    },
+    [],
+  );
+
   if (fatal) {
     return (
       <main className="fatal">
@@ -211,43 +252,135 @@ function App() {
     return <main className="fatal muted">Cargando…</main>;
   }
 
+  function toggleExpanded(id: string) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
+  function activateWorkspace(id: string) {
+    featuresState.clearSelection();
+    select(id);
+    toggleExpanded(id);
+    setHovered(null);
+  }
+
+  /** Servidor del contexto activo (perfil) del workspace, o el de por defecto. */
+  function serverFor(workspaceId: string): ServerInfo | undefined {
+    const hash = contextHashes[workspaceId];
+    if (hash) {
+      const found = contexts.find(
+        (context) => context.workspaceId === workspaceId && context.contextHash === hash,
+      );
+      if (found) return found;
+    }
+    return running[workspaceId];
+  }
+
+  /** Abre una sesión del workspace y deja la selección lista para el chat. */
+  function openWorkspaceSession(workspaceId: string, sessionId: string) {
+    const server = serverFor(workspaceId);
+    if (server) {
+      root.preferences.set(
+        prefKeys.session(workspaceId, server.contextHash ?? "default"),
+        sessionId,
+      );
+    }
+    if (selectedId !== workspaceId) select(workspaceId);
+    setExpandedId(workspaceId);
+    setActiveSessions((prev) =>
+      prev[workspaceId] === sessionId ? prev : { ...prev, [workspaceId]: sessionId },
+    );
+    setOpenSessionRequest({ workspaceId, sessionId });
+  }
+
+  function handleSessionChange(workspaceId: string, sessionId: string | null) {
+    setActiveSessions((prev) =>
+      prev[workspaceId] === sessionId ? prev : { ...prev, [workspaceId]: sessionId },
+    );
+  }
+
+  /** Sesión abierta del workspace; si aún no se visitó, la guardada en preferencias. */
+  function activeSessionFor(workspace: Workspace): string | null {
+    if (Object.prototype.hasOwnProperty.call(activeSessions, workspace.id)) {
+      return activeSessions[workspace.id] ?? null;
+    }
+    const server = serverFor(workspace.id);
+    if (!server) return null;
+    return root.preferences.get(prefKeys.session(workspace.id, server.contextHash ?? "default"));
+  }
+
+  function showWorkspaceCard(workspace: Workspace, target: HTMLElement) {
+    const rect = target.getBoundingClientRect();
+    const sidebar = target.closest(".sidebar");
+    const left = (sidebar?.getBoundingClientRect().right ?? rect.right) + 10;
+    setHovered({
+      id: workspace.id,
+      top: Math.max(8, rect.top - 6),
+      left: Math.max(8, Math.min(left, window.innerWidth - 340)),
+    });
+  }
+
+  const hoveredWorkspace = hovered
+    ? (workspaces.find((workspace) => workspace.id === hovered.id) ?? null)
+    : null;
+
   function renderWorkspace(workspace: Workspace) {
-    const isRunning = Boolean(running[workspace.id]);
-    const secondary =
-      workspace.mode === "worktree"
-        ? (workspace.branch ?? folderName(workspace.projectPath))
-        : workspace.mode === "principal"
-          ? "checkout principal"
-          : folderName(workspace.projectPath);
+    const server = serverFor(workspace.id);
+    const isRunning = Boolean(server);
+    const expanded = expandedId === workspace.id;
     return (
-      <button
-        key={workspace.id}
-        className={`workspace-item ${
-          featuresState.selected ? "" : selectedId === workspace.id ? "active" : ""
-        } ${workspace.missing ? "missing" : ""}`}
-        onClick={() => {
-          featuresState.clearSelection();
-          select(workspace.id);
-        }}
-      >
-        <span className={`dot ${isRunning ? "live" : ""}`} />
-        <span className="workspace-meta">
-          <span className="workspace-name">{workspace.name}</span>
-          <span className="workspace-project" title={workspace.projectPath}>
-            {secondary}
-            {workspace.missing ? " · no encontrada" : ""}
-          </span>
-        </span>
-        {isRunning && <span className="live-label">live</span>}
-        {unseen[workspace.id] > 0 && (
+      <div key={workspace.id} className={`workspace-node ${expanded ? "expanded" : ""}`}>
+        <button
+          className={`workspace-item ${
+            featuresState.selected ? "" : selectedId === workspace.id ? "active" : ""
+          } ${workspace.missing ? "missing" : ""}`}
+          aria-expanded={expanded}
+          onClick={() => activateWorkspace(workspace.id)}
+        >
+          <span className={`dot ${isRunning ? "live" : ""}`} />
           <span
-            className="unseen-badge"
-            title={`${unseen[workspace.id]} aviso${unseen[workspace.id] === 1 ? "" : "s"} sin ver`}
+            className="workspace-name"
+            onMouseEnter={(event) => showWorkspaceCard(workspace, event.currentTarget)}
+            onMouseLeave={() => setHovered(null)}
           >
-            {unseen[workspace.id]}
+            {workspace.name}
           </span>
-        )}
-      </button>
+          {workspace.missing && (
+            <span className="workspace-missing" title="Carpeta no encontrada">
+              !
+            </span>
+          )}
+          {unseen[workspace.id] > 0 && (
+            <span
+              className="unseen-badge"
+              title={`${unseen[workspace.id]} aviso${unseen[workspace.id] === 1 ? "" : "s"} sin ver`}
+            >
+              {unseen[workspace.id]}
+            </span>
+          )}
+          <span className={`workspace-chevron ${expanded ? "open" : ""}`} aria-hidden="true">
+            ›
+          </span>
+        </button>
+        {expanded &&
+          (server ? (
+            <Suspense
+              fallback={
+                <p className="workspace-sessions-empty muted small-text">Cargando sesiones…</p>
+              }
+            >
+              <WorkspaceSessions
+                workspace={workspace}
+                server={server}
+                activeSessionId={activeSessionFor(workspace)}
+                onOpenSession={openWorkspaceSession}
+              />
+            </Suspense>
+          ) : (
+            <p className="workspace-sessions-empty muted small-text">
+              Arranca el workspace para ver y crear sesiones.
+            </p>
+          ))}
+      </div>
     );
   }
 
@@ -266,7 +399,7 @@ function App() {
           <span>+</span> Nuevo workspace
         </button>
 
-        <nav className="workspace-list">
+        <nav className="workspace-list" onScroll={() => setHovered(null)}>
           {groups.map((group) => (
             <div key={group.key || "loose"} className="workspace-group">
               <div className="group-head" title={group.subtitle}>
@@ -411,10 +544,20 @@ function App() {
             starting={startingId === selected.id}
             onStart={() => void start(selected.id)}
             onStop={() => void stop(selected.id)}
-            onDelete={() => void remove(selected.id)}
+            onDelete={() => {
+              if (expandedId === selected.id) setExpandedId(null);
+              void remove(selected.id);
+            }}
             onUpdated={updated}
             onOpenSettings={(client) => setSettings({ section: "model", client })}
             onWorkspaceActivity={markUnseen}
+            onSessionChange={handleSessionChange}
+            onContextChange={handleContextChange}
+            openSessionId={
+              openSessionRequest?.workspaceId === selected.id ? openSessionRequest.sessionId : null
+            }
+            onSessionOpened={() => setOpenSessionRequest(null)}
+            onToggleSessions={() => toggleExpanded(selected.id)}
             worktreesRoot={worktreesRoot}
             repoPath={selectedRepoPath}
           />
@@ -500,6 +643,21 @@ function App() {
           onRun={runPaletteAction}
           onClose={() => setPaletteOpen(false)}
         />
+      )}
+      {hovered && hoveredWorkspace && (
+        <div className="workspace-hover-anchor" style={{ top: hovered.top, left: hovered.left }}>
+          <Suspense fallback={null}>
+            <WorkspaceMetaCard
+              workspace={hoveredWorkspace}
+              repo={repos.find((repo) => repo.id === hoveredWorkspace.repoId) ?? null}
+              profile={
+                profiles.find((profile) => profile.id === hoveredWorkspace.profileId) ?? null
+              }
+              running={Boolean(running[hoveredWorkspace.id])}
+              sharedWith={hoveredWorkspace.id === selected?.id ? sharedWith : []}
+            />
+          </Suspense>
+        </div>
       )}
       {PerformanceCapture && (
         <Suspense fallback={null}>

@@ -199,6 +199,35 @@ describe("App — carga y selección", () => {
     expect(localStorage.getItem("opentemplates:selected")).toBe("w2");
   });
 
+  test("un clic despliega las sesiones del workspace y otro las pliega", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await screen.findByText("Primero");
+
+    await user.click(screen.getByText("Primero"));
+    expect(screen.getByText("Arranca el workspace para ver y crear sesiones.")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Primero"));
+    expect(screen.queryByText("Arranca el workspace para ver y crear sesiones.")).toBeNull();
+  });
+
+  test("la ficha del workspace aparece al pasar el ratón por su nombre", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const name = await screen.findByText("Primero");
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    await user.hover(name);
+
+    const card = await screen.findByRole("tooltip");
+    expect(card).toHaveTextContent("/repo");
+    expect(card).toHaveTextContent("Repo");
+    expect(card).toHaveTextContent("ad-hoc");
+
+    await user.unhover(name);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   test("fallo de bootstrap muestra pantalla fatal", async () => {
     apiMock.bootstrap.mockRejectedValue(new Error("sin backend"));
     renderApp();

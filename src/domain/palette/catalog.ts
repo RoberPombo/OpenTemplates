@@ -145,10 +145,10 @@ const DEFINITIONS: readonly Definition[] = [
   },
   {
     id: "panel.sessions",
-    label: "Panel de sesiones",
-    description: "Mostrar u ocultar el historial de sesiones.",
+    label: "Mostrar sesiones en la barra lateral",
+    description: "Desplegar o plegar el historial de sesiones del workspace.",
     group: "Paneles",
-    keywords: ["sesiones", "historial", "lista", "panel"],
+    keywords: ["sesiones", "historial", "lista", "panel", "desplegar"],
     requires: "server",
     handler: true,
   },

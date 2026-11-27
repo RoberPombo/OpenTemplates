@@ -58,7 +58,6 @@ export function CoordinatorChat({ feature, runner, sessionId }: Props) {
         workspace={workspace}
         scope={coordinatorScope()}
         initialSessionId={sessionId}
-        sessionsOpen={false}
       />
     </div>
   );

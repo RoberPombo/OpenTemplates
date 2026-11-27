@@ -5,13 +5,7 @@ import { Chat } from "../Chat";
 import { AppProvider } from "../../context/AppContext";
 import { CompositionRoot } from "../../../CompositionRoot";
 import type { ChatServer } from "../../../domain/repositories/ChatGateway";
-import {
-  makeFakeClient,
-  makeNotificationGateway,
-  makeSessionFiles,
-  makeWorkspace,
-} from "../../../tests/fakes";
-import { createSessionFile, serializeSessionFile } from "../../../domain/chat/transfer";
+import { makeFakeClient, makeNotificationGateway, makeWorkspace } from "../../../tests/fakes";
 import type { GoalDecisionResult } from "../../../domain/chat/goals";
 
 // Caracterización del comportamiento interactivo de Chat con un cliente fake.
@@ -31,12 +25,8 @@ function renderChat(
   options: Parameters<typeof makeFakeClient>[0] = {},
   workspace = makeWorkspace(),
   props: {
-    sessionsOpen?: boolean;
-    onCloseSessions?: () => void;
     onWorkspaceActivity?: (workspaceId: string) => void;
     notifications?: ReturnType<typeof makeNotificationGateway>;
-    sessionFiles?: ReturnType<typeof makeSessionFiles>;
-    confirm?: boolean;
     openSessionId?: string | null;
     onSessionOpened?: () => void;
   } = {},
@@ -45,16 +35,12 @@ function renderChat(
   const notifications = props.notifications ?? makeNotificationGateway();
   const root = new CompositionRoot({
     notifications,
-    sessionFiles: props.sessionFiles ?? makeSessionFiles(),
-    confirm: { confirm: () => props.confirm ?? true },
   });
   const view = render(
     <AppProvider root={root}>
       <Chat
         client={client as unknown as ChatServer}
         workspace={workspace}
-        sessionsOpen={props.sessionsOpen}
-        onCloseSessions={props.onCloseSessions}
         onWorkspaceActivity={props.onWorkspaceActivity}
         openSessionId={props.openSessionId}
         onSessionOpened={props.onSessionOpened}
@@ -398,213 +384,7 @@ describe("Chat — streaming", () => {
   });
 });
 
-describe("Chat — historial de sesiones", () => {
-  const sessions = [
-    { id: "s2", title: "Diseño de API", time: { created: 1, updated: 3 }, cost: 0.5 },
-    { id: "s1", title: "Chat · Demo", time: { created: 1, updated: 2 }, cost: 0 },
-  ];
-
-  test("lista las sesiones del workspace y abre la elegida", async () => {
-    const user = userEvent.setup();
-    localStorage.setItem("opentemplates:session:w1", "s1");
-    const { client } = renderChat({ sessions }, makeWorkspace(), { sessionsOpen: true });
-
-    expect(await screen.findByText("Diseño de API")).toBeInTheDocument();
-    expect(client.session.list).toHaveBeenCalledWith({
-      directory: "/tmp/demo",
-      limit: 100,
-    });
-
-    client.message.list.mockResolvedValue({ data: [] });
-    await user.click(screen.getByRole("button", { name: /^Diseño de API/ }));
-
-    await waitFor(() =>
-      expect(client.message.list).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionID: "s2" }),
-      ),
-    );
-    expect(localStorage.getItem("opentemplates:session:w1")).toBe("s2");
-  });
-
-  test("recarga la lista cuando el servidor avisa de una sesión nueva", async () => {
-    const { client, hub } = renderChat({ sessions }, makeWorkspace(), { sessionsOpen: true });
-    await waitFor(() => expect(client.session.list).toHaveBeenCalled());
-
-    const before = client.session.list.mock.calls.length;
-    await act(async () => {
-      hub.push({ type: "session.created", data: { sessionID: "s3" } });
-    });
-    await waitFor(() => expect(client.session.list.mock.calls.length).toBeGreaterThan(before));
-  });
-
-  test("cerrar el panel lo notifica al contenedor", async () => {
-    const user = userEvent.setup();
-    const onCloseSessions = vi.fn();
-    renderChat({ sessions }, makeWorkspace(), { sessionsOpen: true, onCloseSessions });
-
-    await user.click(screen.getByRole("button", { name: "Ocultar sesiones" }));
-    expect(onCloseSessions).toHaveBeenCalled();
-  });
-});
-
-describe("Chat — transferencia de sesiones", () => {
-  const sessions = [{ id: "s1", title: "Chat · Demo", time: { created: 1, updated: 2 }, cost: 0 }];
-  const transfer = {
-    info: {
-      id: "ses_compartida",
-      title: "Sesión compartida",
-      location: { directory: "/home/ana/otro" },
-    },
-    messages: [{ id: "msg_1", type: "user", text: "hola" }],
-  };
-  const importFile = {
-    path: "/tmp/sesion.json",
-    contents: serializeSessionFile(createSessionFile(transfer, { sanitized: true, now: 0 })),
-  };
-
-  test("exporta la sesión saneada y avisa con la ruta", async () => {
-    const user = userEvent.setup();
-    localStorage.setItem("opentemplates:session:w1", "s1");
-    const sessionFiles = makeSessionFiles();
-    const { client } = renderChat({ sessions }, makeWorkspace(), {
-      sessionsOpen: true,
-      sessionFiles,
-    });
-    await screen.findByText("Chat · Demo");
-
-    await user.click(screen.getByRole("button", { name: "Exportar Chat · Demo" }));
-
-    await waitFor(() =>
-      expect(client.session.export).toHaveBeenCalledWith({ sessionID: "s1", sanitize: true }),
-    );
-    expect(await screen.findByText("Sesión exportada en /tmp/sesion.json")).toBeInTheDocument();
-    const file = JSON.parse(sessionFiles.saved[0] ?? "{}");
-    expect(file.format).toBe("opentemplates.session");
-    expect(file.version).toBe(1);
-    expect(file.sanitized).toBe(true);
-    expect(file.session.info.id).toBe("s1");
-    expect(sessionFiles.saves[0]?.suggestedName).toMatch(/^sesion-chat-demo-\d{8}\.json$/);
-  });
-
-  test("pide confirmación antes de sobrescribir y reintenta con overwrite", async () => {
-    const user = userEvent.setup();
-    localStorage.setItem("opentemplates:session:w1", "s1");
-    const sessionFiles = makeSessionFiles({ saved: "exists" });
-    renderChat({ sessions }, makeWorkspace(), {
-      sessionsOpen: true,
-      sessionFiles,
-      confirm: true,
-    });
-    await screen.findByText("Chat · Demo");
-
-    await user.click(screen.getByRole("button", { name: "Exportar Chat · Demo" }));
-
-    await waitFor(() => expect(sessionFiles.saves).toHaveLength(2));
-    expect(sessionFiles.saves[1]?.overwrite).toBe(true);
-    expect(sessionFiles.saved).toHaveLength(1);
-  });
-
-  test("no escribe si el usuario rechaza sobrescribir", async () => {
-    const user = userEvent.setup();
-    localStorage.setItem("opentemplates:session:w1", "s1");
-    const sessionFiles = makeSessionFiles({ saved: "exists" });
-    renderChat({ sessions }, makeWorkspace(), {
-      sessionsOpen: true,
-      sessionFiles,
-      confirm: false,
-    });
-    await screen.findByText("Chat · Demo");
-
-    await user.click(screen.getByRole("button", { name: "Exportar Chat · Demo" }));
-
-    await waitFor(() => expect(sessionFiles.saves).toHaveLength(1));
-    expect(sessionFiles.saved).toHaveLength(0);
-  });
-
-  test("importa el archivo en el workspace y selecciona la sesión nueva", async () => {
-    const user = userEvent.setup();
-    localStorage.setItem("opentemplates:session:w1", "s1");
-    const sessionFiles = makeSessionFiles({ file: importFile });
-    const { client } = renderChat({ sessions }, makeWorkspace(), {
-      sessionsOpen: true,
-      sessionFiles,
-    });
-    await screen.findByText("Chat · Demo");
-    const lists = client.session.list.mock.calls.length;
-
-    await user.click(screen.getByRole("button", { name: "Importar sesión" }));
-
-    await waitFor(() =>
-      expect(client.session.import).toHaveBeenCalledWith({
-        info: expect.objectContaining({
-          id: "ses_compartida",
-          title: "Sesión compartida",
-          location: { directory: "/tmp/demo" },
-        }),
-        messages: transfer.messages,
-        location: { directory: "/tmp/demo" },
-      }),
-    );
-    await waitFor(() =>
-      expect(localStorage.getItem("opentemplates:session:w1")).toBe("ses_compartida"),
-    );
-    expect(await screen.findByText("Sesión importada desde /tmp/sesion.json")).toBeInTheDocument();
-    expect(client.session.list.mock.calls.length).toBeGreaterThan(lists);
-    expect(screen.getByText("Sesión compartida")).toBeInTheDocument();
-  });
-
-  test("un archivo ilegible se explica en el panel y no se importa", async () => {
-    const user = userEvent.setup();
-    localStorage.setItem("opentemplates:session:w1", "s1");
-    const sessionFiles = makeSessionFiles({
-      file: { path: "/tmp/roto.json", contents: "no es json" },
-    });
-    const { client } = renderChat({ sessions }, makeWorkspace(), {
-      sessionsOpen: true,
-      sessionFiles,
-    });
-    await screen.findByText("Chat · Demo");
-
-    await user.click(screen.getByRole("button", { name: "Importar sesión" }));
-
-    expect(await screen.findByText("El archivo no es JSON válido.")).toBeInTheDocument();
-    expect(client.session.import).not.toHaveBeenCalled();
-  });
-
-  test("una colisión de id se explica sin ocultarla", async () => {
-    const user = userEvent.setup();
-    localStorage.setItem("opentemplates:session:w1", "s1");
-    const sessionFiles = makeSessionFiles({ file: importFile });
-    renderChat(
-      { sessions, importError: new Error("Session already exists: ses_compartida") },
-      makeWorkspace(),
-      { sessionsOpen: true, sessionFiles },
-    );
-    await screen.findByText("Chat · Demo");
-
-    await user.click(screen.getByRole("button", { name: "Importar sesión" }));
-
-    expect(
-      await screen.findByText(/Ya existe una sesión con el identificador ses_compartida/),
-    ).toBeInTheDocument();
-    expect(localStorage.getItem("opentemplates:session:w1")).toBe("s1");
-  });
-
-  test("duplica la sesión, la selecciona y refresca la lista", async () => {
-    const user = userEvent.setup();
-    localStorage.setItem("opentemplates:session:w1", "s1");
-    const { client } = renderChat({ sessions }, makeWorkspace(), { sessionsOpen: true });
-    await screen.findByText("Chat · Demo");
-    const lists = client.session.list.mock.calls.length;
-
-    await user.click(screen.getByRole("button", { name: "Duplicar Chat · Demo" }));
-
-    await waitFor(() => expect(client.session.fork).toHaveBeenCalledWith({ sessionID: "s1" }));
-    await waitFor(() => expect(localStorage.getItem("opentemplates:session:w1")).toBe("fork1"));
-    expect(await screen.findByText("Sesión duplicada.")).toBeInTheDocument();
-    expect(client.session.list.mock.calls.length).toBeGreaterThan(lists);
-  });
-
+describe("Chat — bifurcar desde un mensaje", () => {
   test("continuar desde un mensaje bifurca con `before`", async () => {
     const user = userEvent.setup();
     localStorage.setItem("opentemplates:session:w1", "previa");

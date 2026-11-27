@@ -70,6 +70,8 @@ export type Ports = {
   updates: UpdateGateway;
   notifications: NotificationGateway;
   sessionFiles: SessionFiles;
+  /** Fábrica del cliente del servidor opencode; los tests inyectan un fake. */
+  createChatServer: (server: ServerInfo) => ChatServer;
 };
 
 export class CompositionRoot {
@@ -93,6 +95,7 @@ export class CompositionRoot {
   readonly updates: UpdateGateway;
   readonly notifications: NotificationGateway;
   readonly sessionFiles: SessionFiles;
+  private readonly createChatServer: (server: ServerInfo) => ChatServer;
 
   constructor(overrides: Partial<Ports> = {}) {
     this.bootstrap = overrides.bootstrap ?? new TauriBootstrapGateway();
@@ -113,6 +116,7 @@ export class CompositionRoot {
     this.updates = overrides.updates ?? new TauriUpdateGateway();
     this.notifications = overrides.notifications ?? new TauriNotificationGateway();
     this.sessionFiles = overrides.sessionFiles ?? new TauriSessionFiles();
+    this.createChatServer = overrides.createChatServer ?? createChatGateway;
   }
 
   static getInstance(): CompositionRoot {
@@ -147,7 +151,7 @@ export class CompositionRoot {
   }
 
   provideChatGateway(server: ServerInfo): ChatServer {
-    return createChatGateway(server);
+    return this.createChatServer(server);
   }
   provideTerminalGateway(server: ServerInfo): TerminalGateway {
     return createTerminalGateway(server);
