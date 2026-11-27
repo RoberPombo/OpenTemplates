@@ -9,8 +9,6 @@ import { FeatureView } from "./presentation/components/FeatureView";
 import type { SettingsSectionId } from "./presentation/components/SettingsDialog";
 import { UpdateDialog } from "./presentation/components/UpdateDialog";
 import { WorkspaceView } from "./presentation/components/WorkspaceView";
-import { WorkspaceMetaCard } from "./presentation/components/WorkspaceMetaCard";
-import { WorkspaceSessions } from "./presentation/components/WorkspaceSessions";
 import { CommandPalette } from "./presentation/components/CommandPalette";
 import { useCommandActions } from "./presentation/context/CommandActions";
 import { buildPaletteCommands } from "./domain/palette/catalog";
@@ -28,6 +26,18 @@ const PALETTE_SHORTCUT = shortcutFor("palette.open");
 const SettingsDialog = lazy(() =>
   import("./presentation/components/SettingsDialog").then((module) => ({
     default: module.SettingsDialog,
+  })),
+);
+/** La lista de sesiones solo se monta al desplegar un workspace en marcha. */
+const WorkspaceSessions = lazy(() =>
+  import("./presentation/components/WorkspaceSessions").then((module) => ({
+    default: module.WorkspaceSessions,
+  })),
+);
+/** La ficha solo se pide al pasar el ratón por un workspace. */
+const WorkspaceMetaCard = lazy(() =>
+  import("./presentation/components/WorkspaceMetaCard").then((module) => ({
+    default: module.WorkspaceMetaCard,
   })),
 );
 const PerformanceCapture = import.meta.env.DEV
@@ -353,12 +363,18 @@ function App() {
         </button>
         {expanded &&
           (server ? (
-            <WorkspaceSessions
-              workspace={workspace}
-              server={server}
-              activeSessionId={activeSessionFor(workspace)}
-              onOpenSession={openWorkspaceSession}
-            />
+            <Suspense
+              fallback={
+                <p className="workspace-sessions-empty muted small-text">Cargando sesiones…</p>
+              }
+            >
+              <WorkspaceSessions
+                workspace={workspace}
+                server={server}
+                activeSessionId={activeSessionFor(workspace)}
+                onOpenSession={openWorkspaceSession}
+              />
+            </Suspense>
           ) : (
             <p className="workspace-sessions-empty muted small-text">
               Arranca el workspace para ver y crear sesiones.
@@ -630,13 +646,17 @@ function App() {
       )}
       {hovered && hoveredWorkspace && (
         <div className="workspace-hover-anchor" style={{ top: hovered.top, left: hovered.left }}>
-          <WorkspaceMetaCard
-            workspace={hoveredWorkspace}
-            repo={repos.find((repo) => repo.id === hoveredWorkspace.repoId) ?? null}
-            profile={profiles.find((profile) => profile.id === hoveredWorkspace.profileId) ?? null}
-            running={Boolean(running[hoveredWorkspace.id])}
-            sharedWith={hoveredWorkspace.id === selected?.id ? sharedWith : []}
-          />
+          <Suspense fallback={null}>
+            <WorkspaceMetaCard
+              workspace={hoveredWorkspace}
+              repo={repos.find((repo) => repo.id === hoveredWorkspace.repoId) ?? null}
+              profile={
+                profiles.find((profile) => profile.id === hoveredWorkspace.profileId) ?? null
+              }
+              running={Boolean(running[hoveredWorkspace.id])}
+              sharedWith={hoveredWorkspace.id === selected?.id ? sharedWith : []}
+            />
+          </Suspense>
         </div>
       )}
       {PerformanceCapture && (
