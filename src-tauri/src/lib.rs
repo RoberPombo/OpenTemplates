@@ -13,6 +13,7 @@ mod issue;
 mod library;
 mod model;
 mod preview;
+mod preview_proxy;
 mod process;
 mod profiles;
 mod resources;
@@ -125,6 +126,8 @@ pub fn run() {
             commands::begin_session_file,
             commands::preview_probe,
             commands::open_external,
+            commands::preview_proxy_start,
+            commands::preview_proxy_stop,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

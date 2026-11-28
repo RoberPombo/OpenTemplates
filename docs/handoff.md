@@ -803,3 +803,57 @@ Limitaciones conocidas:
   cerrados ni se resuelven repos sin remoto de GitHub. El margen del bundle
   inicial es de 2,14 kB, así que la próxima feature pesada debe vigilar
   `pnpm check:bundle`.
+
+## Estado tras selector de elemento en preview (Fase 1)
+
+Rama `feature/preview-selector-elemento` desde `develop`. Plan aprobado:
+`.agents/plans/selector-elemento-preview-bfa8e896cfd3f1de/plan.md`.
+
+**Decisión arquitectónica**: proxy propio (opción D de
+`docs/preview-viabilidad.md`) sobre el iframe, listener HTTP `127.0.0.1`
+efímero sin dependencias nuevas; multiwebview (opción B) descartada
+(Wayland + `tauri` `unstable` + relajar IPC remoto). La CSP de la app y
+`capabilities/default.json` **no cambian**; contenido remoto sin IPC.
+
+**Implementación**:
+- Rust `src-tauri/src/preview_proxy.rs` (nuevo): proxy transparente mínimo
+  (loopback-only; upstream fijo validado; sin redirecciones fuera de loopback
+  ni a otro origen; rutas saneadas; hop-by-hop; `X-Frame-Options`/
+  `frame-ancestors` neutralizados; `Location`/`Set-Cookie` reescritos; CSP
+  upstream mínima; **inyección** `preview-selector.js` en `text/html`; token
+  de sesión obligatorio; Host check; `__ot__` reservado; `stop`). `preview.rs`
+  expone `Target`/`parse_target`/`validate_preview_host`/`connect`/
+  `host_header` `pub(crate)`. Comandos `preview_proxy_start` /
+  `preview_proxy_stop`; `AppState` `preview_tickets` (`PreviewProxyTicket`,
+  un solo uso + TTL, patrón `SessionFileTicket`, sin diálogo nativo nuevo) +
+  `preview_proxies`. `src-tauri/src/preview-selector.js` (script inyectado:
+  resaltado, captura, selector CSS estable, rol, nombre accesible, texto,
+  `getComputedStyle` curado, `postMessage` validado, Escape, no romper
+  navegación). Sin dependencias nuevas.
+- Dominio `src/domain/preview/element.ts` (nuevo): `PreviewElementContext`,
+  `PreviewProxySession`, `sanitizePreviewElement`, `isPreviewSelectorMessage`,
+  `PREVIEW_STYLE_PROPS`, límites; `buildPreviewPrompt` añade sección `Elemento`
+  numerada recortada; prompt total `PREVIEW_PROMPT_MAX`; payload no confiable.
+- `PreviewGateway` += `startElementPicker`/`stopElementPicker`;
+  `TauriPreviewGateway`; `tauriCommands` `previewProxyStart`/`previewProxyStop`.
+- `PreviewDock.tsx`: botón «Seleccionar elemento» (`aria-pressed`); swap de
+  iframe a proxy; `postMessage` validado (origen + `source` + `nonce` +
+  esquema); prompt compacto a la sesión activa (`session.prompt`); Escape sale
+  y restaura; para proxy al salir/desmontar; sin sesión avisa. Fase 1 **sin
+  screenshot** y **sin consola**; **sin HMR/WS** por el proxy.
+
+**Verificación**: `cargo test preview_proxy` + `cargo test preview`;
+`cargo test` total (flaky `gh` `Text file busy` reintentado); `pnpm check`
+(typecheck + lint + format + `check:layers` + tests; **829** TS); `pnpm build`.
+Tests nuevos Rust (token, anti-rebinding, ruta, no-arbitrario, redirección,
+inyección, `Location`, cookie, CSP, real local) + `element.test.ts` +
+`PreviewDock.test.tsx`. CSP/capabilities sin cambios. **No** verificado a mano
+en app Tauri real/Wayland (sin entorno gráfico); pasos en `docs/seguridad.md`.
+**No commiteado ni publicado.**
+
+**Docs**: `docs/seguridad.md` («Proxy del preview y selector de elemento»),
+`docs/preview-viabilidad.md` (decisión 4 / opción D),
+`docs/estado-plan-paridad.md` (punto 3 + decisiones), `docs/handoff.md`.
+
+**Pendiente Fase 2** (no autorizada): screenshot del elemento, consola del
+preview, HMR/WebSocket por el proxy.

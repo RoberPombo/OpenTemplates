@@ -22,17 +22,17 @@ pub struct PreviewProbe {
     pub verified: bool,
 }
 
-#[derive(Debug, PartialEq)]
-struct Target {
-    host: String,
-    port: u16,
-    path: String,
-    tls: bool,
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct Target {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) path: String,
+    pub(crate) tls: bool,
 }
 
 /// Loopback incluye `127.0.0.0/8`, `::1` y la forma IPv4 mapeada en IPv6
 /// (`::ffff:127.0.0.1`), que es como algunos resolvers devuelven `localhost`.
-fn is_loopback_ip(ip: IpAddr) -> bool {
+pub(crate) fn is_loopback_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => v4.is_loopback(),
         IpAddr::V6(v6) => {
@@ -59,7 +59,7 @@ fn describe_ip(ip: IpAddr) -> &'static str {
 /// (decisión de #81), así que el backend no debe poder alcanzar nada más.
 /// Se admiten `localhost` y direcciones literales de loopback; cualquier otro
 /// nombre o IP se rechaza antes de resolver o conectar.
-fn validate_preview_host(host: &str) -> Result<(), String> {
+pub(crate) fn validate_preview_host(host: &str) -> Result<(), String> {
     let name = host.trim_matches(['[', ']']);
     if name.eq_ignore_ascii_case("localhost") {
         return Ok(());
@@ -81,7 +81,7 @@ fn validate_preview_host(host: &str) -> Result<(), String> {
 /// Valida un `Location` de redirección antes de darla por buena. No se siguen
 /// redirecciones: una absoluta a otro host o a una IP no permitida se rechaza,
 /// y una relativa se queda en el mismo origen ya validado.
-fn validate_redirect(from: &Target, location: &str) -> Result<(), String> {
+pub(crate) fn validate_redirect(from: &Target, location: &str) -> Result<(), String> {
     let value = location.trim();
     if value.is_empty() {
         return Ok(());
@@ -153,7 +153,7 @@ fn split_authority(authority: &str, tls: bool) -> Result<(String, u16), String> 
 
 /// Valida y separa una URL http(s) sin dependencias externas. El host se
 /// resuelve después; aquí solo se rechaza lo que no puede ser una URL de preview.
-fn parse_target(raw: &str) -> Result<Target, String> {
+pub(crate) fn parse_target(raw: &str) -> Result<Target, String> {
     let value = raw.trim();
     if value.is_empty() {
         return Err("La URL está vacía.".to_string());
@@ -215,7 +215,7 @@ fn describe_io(error: &std::io::Error, host: &str, port: u16) -> String {
     }
 }
 
-fn connect(target: &Target) -> Result<TcpStream, String> {
+pub(crate) fn connect(target: &Target) -> Result<TcpStream, String> {
     let lookup = target.host.trim_matches(['[', ']']);
     let addresses: Vec<_> = (lookup, target.port)
         .to_socket_addrs()
@@ -244,7 +244,7 @@ fn connect(target: &Target) -> Result<TcpStream, String> {
     })
 }
 
-fn host_header(target: &Target) -> String {
+pub(crate) fn host_header(target: &Target) -> String {
     let default_port = if target.tls { 443 } else { 80 };
     if target.port == default_port {
         target.host.clone()

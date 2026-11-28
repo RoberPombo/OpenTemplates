@@ -82,12 +82,23 @@ propio o sin cambiar el modelo de ventanas y renunciar a Wayland.
    conexión (no se inspecciona TLS).
 3. **Abrir en navegador** con un comando Tauri (`open_external`) que usa
    `xdg-open`/`open`/`rundll32` sin shell y sin esperar.
-4. **Selector de elemento fuera**. No se simula: no hay clic en el DOM, ni
-   estilos computados, ni errores de consola. El prompt al agente lleva URL,
-   workspace, ruta, tamaño, estado del sondeo y la petición del usuario,
-   recortado y numerado. Cuando exista un proxy propio (opción D) o Wayland deje
-   de ser un bloqueo para multiwebview (opción B), el selector se podrá añadir
-   sobre esta base sin cambiar el dominio del preview.
+4. **Selector de elemento**: **opción D implementada** (proxy propio). El
+   preview base sigue siendo iframe + sondeo; el modo selección levanta un
+   listener HTTP `127.0.0.1` efímero en Rust que reenvía al origen upstream
+   **fijo** validado (solo loopback, sin credenciales, sin seguir redirecciones
+   fuera de loopback ni a otro origen) e inyecta un script en respuestas
+   `text/html`. Se resalta el elemento, al clic se captura contexto compacto
+   (selector CSS estable, etiqueta, rol, texto corto, estilos computados
+   curados, caja) y se manda por `postMessage` validado (origen + `source` +
+   `nonce` + esquema) a la sesión activa como prompt numerado recortado; no se
+   vuelca el DOM. Escape sale y restaura. **Sin cambiar la CSP de la app ni las
+   capabilities; el contenido remoto no puede invocar IPC.** Multiwebview
+   (opción B) sigue **descartada** por Wayland + `unstable` + relajar IPC
+   remoto. **Pospuesto a fase 2**: screenshot del elemento (no hay API
+   DOM→imagen en el webview; haría falta captura de plataforma), consola del
+   preview, HMR/WebSocket por el proxy. Seguridad detallada en
+   `docs/seguridad.md` «Proxy del preview y selector de elemento». Plan:
+   `.agents/plans/selector-elemento-preview-bfa8e896cfd3f1de/plan.md`.
 
 ## Verificación de la decisión
 

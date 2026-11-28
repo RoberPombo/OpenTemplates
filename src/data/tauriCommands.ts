@@ -14,6 +14,7 @@ import type {
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
 import type { GitHubIssue } from "../domain/features/issue";
 import type { PreviewProbe } from "../domain/preview/preview";
+import type { PreviewProxySession } from "../domain/preview/element";
 import type {
   AppSettings,
   Bootstrap,
@@ -137,6 +138,11 @@ export const api = {
   previewProbe: (url: string) => invoke<PreviewProbe>("preview_probe", { url }),
   /** Abre una URL http(s) en el navegador externo del sistema. */
   openExternal: (url: string) => invoke<void>("open_external", { url }),
+  /** Arranca el proxy propio loopback para el selector de elemento. */
+  previewProxyStart: (url: string, appOrigin: string) =>
+    invoke<PreviewProxySession>("preview_proxy_start", { url, appOrigin }),
+  /** Para el proxy de preview. Idempotente. */
+  previewProxyStop: (token: string) => invoke<void>("preview_proxy_stop", { token }),
 
   getSettings: () => invoke<AppSettings>("get_settings"),
   saveSettings: (settings: AppSettings) => invoke<AppSettings>("save_settings", { settings }),

@@ -5,9 +5,9 @@
  * puerto que escribe el usuario, tamaños de dispositivo, traducción del sondeo
  * del servidor a un estado legible y composición del prompt para el agente.
  *
- * El inspector de elementos (clic en un elemento para enviar estilos y errores)
- * queda fuera: el preview se embebe en un iframe de otro origen y la política
- * de mismo origen impide leer su DOM. Ver `docs/preview-viabilidad.md`.
+ * El selector de elemento (clic en un elemento para enviar contexto compacto)
+ * vive en `element.ts` y se habilita con un proxy propio que inyecta un script
+ * (`docs/preview-viabilidad.md`, opción D); este módulo compone el prompt.
  */
 
 export const DEFAULT_PREVIEW_URL = "http://localhost:5173";
@@ -130,6 +130,31 @@ export function describePreviewProbe(probe: PreviewProbe): PreviewStateView {
   };
 }
 
+/** Líneas numeradas del elemento elegido; recortadas; sin DOM completo. */
+function elementPromptLines(element: NonNullable<PreviewPromptInput["element"]>): string[] {
+  const lines = [`Elemento: <${clip(element.tag, 40) || "?"}>`];
+  if (element.selector) lines.push(`Selector CSS: ${clip(element.selector, 300)}`);
+  if (element.role) lines.push(`Rol: ${clip(element.role, 80)}`);
+  if (element.name) lines.push(`Nombre accesible: ${clip(element.name, 160)}`);
+  if (element.text) lines.push(`Texto corto: ${clip(element.text, 200)}`);
+  if (element.url) lines.push(`Elemento en: ${clip(element.url, 300)}`);
+  if (element.rect) {
+    const r = element.rect;
+    lines.push(
+      `Caja: ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}×${Math.round(r.height)}`,
+    );
+  }
+  const styles = Object.entries(element.computedStyles ?? {});
+  if (styles.length > 0) {
+    const rendered = styles
+      .map(([key, value]) => `${key}: ${clip(String(value), 80)}`)
+      .slice(0, 24)
+      .join("; ");
+    lines.push(`Estilos (curado): ${rendered}`);
+  }
+  return lines;
+}
+
 function clip(value: string, limit: number): string {
   const clean = value.replace(/\s+/g, " ").trim();
   if (clean.length <= limit) return clean;
@@ -151,6 +176,8 @@ export type PreviewPromptInput = {
   probe: PreviewProbe | null;
   /** Lo que el usuario quiere que revise; si falta, se pide una revisión general. */
   note?: string;
+  /** Elemento elegido en modo selección; se añade como sección recortada. */
+  element?: import("./element").PreviewElementContext | null;
 };
 
 /**
@@ -171,9 +198,14 @@ export function buildPreviewPrompt(input: PreviewPromptInput): string {
   if (input.probe?.frameBlocked) {
     lines.push(`${line++}. Aviso: el servidor prohíbe embeber la página (X-Frame-Options).`);
   }
+  if (input.element) {
+    for (const elementLine of elementPromptLines(input.element)) {
+      lines.push(`${line++}. ${elementLine}`);
+    }
+  }
   lines.push(
     `${line++}. Estado: ${promptState(input.probe)}`,
-    `${line}. Petición: ${clip(input.note ?? "", 700) || "revisa la vista y dime qué falla o qué mejorarías."}`,
+    `${line}. Petición: ${clip(input.note ?? "", 700) || (input.element ? "revisa el elemento seleccionado y dime qué falla o qué mejorarías." : "revisa la vista y dime qué falla o qué mejorarías.")}`,
   );
 
   const text = lines.join("\n");

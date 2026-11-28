@@ -137,3 +137,63 @@ escrituras que pasan por el comando.
   contraseña en el gestor de contraseñas, no junto a la clave): sin ellas no se
   pueden firmar actualizaciones ni reponer los secretos del entorno `release`.
 - Revisar los avisos de Dependabot y de CodeQL cuando lleguen.
+
+## Proxy del preview y selector de elemento
+
+El modo selección usa un proxy propio (`src-tauri/src/preview_proxy.rs`, opción
+D de `docs/preview-viabilidad.md`); la CSP de la app y `capabilities/` **no
+cambian**. El contenido remoto sigue sin poder invocar IPC de Tauri.
+
+- **Solo loopback**: upstream validado como en `preview_probe`
+  (`parse_target` + `validate_preview_host`, sin credenciales, sin espacios;
+  rechazo pre-DNS; **todas** las IPs resueltas loopback; **revalidación por
+  petición** anti rebinding con `connect`; sin seguir redirecciones fuera de
+  loopback; `Location` reescrito al origen proxy solo para el **mismo** origen
+  upstream, otro puerto o host se rechaza; rutas saneadas sin `..`, sin
+  absolute-form, sin `\\`, sin prefijo `/__ot__`; no es relay arbitrario;
+  upstream **fijo**, no se acepta host/esquema por petición). Listener
+  **`127.0.0.1:0`**, timeouts, topes de tamaño; hop-by-hop filtradas;
+  `X-Frame-Options`/`frame-ancestors` neutralizados; `Set-Cookie` sin `Domain`
+  foráneo/`Secure`, `Path=/`; `X-Content-Type-Options: nosniff`.
+- **Ticket del diálogo**: `SessionFileTicket`/`begin_session_file` sin cambios.
+  Patrón replicado con `PreviewProxyTicket` (un solo uso + TTL
+  `PREVIEW_TICKET_TTL`, ligado al **origen upstream canónico**, emitido por
+  Rust tras acción explícita, consumido atómicamente, **no persistido**, no
+  expuesto; **no** se añade diálogo nativo nuevo ni `SessionFileMode`).
+  `preview_proxy_start` solo invocable por el webview de la app. **Token de
+  sesión aleatorio obligatorio** en el listener (`?__ot_token=` + cookie
+  `ot_preview; HttpOnly; SameSite=Strict; Path=/`, comparación en tiempo
+  constante; **Host check** `127.0.0.1:<puerto>` anti DNS-rebinding; nuestro
+  token no se reenvía upstream; recurso `/__ot__/selector.js` con token;
+  `preview_proxy_stop` + limpieza al salir/desmontar; `AppState` limpia).
+  Diferencia deliberada con `SessionFileTicket` (un solo uso): un proxy
+  transparente hace muchas peticiones; ligadura + TTL + parada sustituyen el
+  consumo único. El contenido del iframe no puede pedir tickets.
+- **CSP acotada**: app intacta (`default-src 'self'; script-src 'self';
+  frame-src http://localhost:* http://127.0.0.1:*; connect-src … loopback …`);
+  proxy origin loopback casa `frame-src`; sin `unsafe-inline` nuevo en la app;
+  iframe `sandbox` sin cambios; sin `*`; sin ampliar `connect-src`. En
+  respuestas **proxied** se ajusta mínimamente la CSP upstream (quita
+  `frame-ancestors`, añade `'self'` a `script-src`, sin `'none'`) y se quitan
+  `X-Frame-Options`; **no se debilita la CSP de la app**. Script inyectado
+  servido desde origen proxy, `<script>` no inline en la app.
+- **Nada de abrir red arbitraria**: ver "solo loopback"; `capabilities`
+  intactas; sin `open_external` nuevo; sin CORS nuevo; sin passthrough de
+  `Origin`/`Referer` upstream; `postMessage` con origen proxy exacto +
+  `event.source === iframe.contentWindow` + `nonce` + `source` + `version` +
+  esquema + recorte; `targetOrigin` exacto (nunca `'*'`); payload tratado como
+  **dato no confiable**, no instrucciones; comandos al iframe solo al origen
+  padre verificado. CSP no verificable en CI; pasos manuales como el resto de
+  §"CSP del preview".
+
+Limitaciones: fidelidad vía proxy (CSP upstream estricta, URLs absolutas a
+origen upstream, cookies `SameSite`/`Domain`, service workers, HMR/WS no
+reenviado en fase 1) degrada solo en modo selección; procesos locales residual
+(como §SSRF #83); `https` loopback upstream sin verificar TLS. Screenshot y
+consola pospuestos a fase 2.
+
+Tests: `preview_proxy.rs` (token, host anti-rebinding, ruta saneada, no
+arbitrario, no-redirección, inyección, `Location`, `Set-Cookie`, CSP, servidor
+real, script) + `preview.rs` sin regresión + TS `element.test.ts` +
+`PreviewDock.test.tsx`. Plan:
+`.agents/plans/selector-elemento-preview-bfa8e896cfd3f1de/plan.md`.
