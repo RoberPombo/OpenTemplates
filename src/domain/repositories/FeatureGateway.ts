@@ -3,9 +3,12 @@ import type { Feature } from "../features/model";
 import type { FeatureArtifact, FeatureRunnerInfo } from "../features/coordinator";
 import type { FeatureProvisionOutcome } from "../features/provision";
 import type { FeatureDeleteOutcome, FeatureDeletePreview } from "../features/deletion";
+import type { BootstrapDetection } from "../../types";
 
 export interface FeatureGateway {
   list(): Promise<Feature[]>;
+  /** Ficheros ignorados que parecen configuración local; solo rutas y tipo. */
+  bootstrapCandidates(repoId: string): Promise<BootstrapDetection>;
   save(feature: Feature): Promise<Feature>;
   /** Plan de borrado sin efectos: worktrees, ramas y protecciones. */
   deletePreview(id: string): Promise<FeatureDeletePreview>;

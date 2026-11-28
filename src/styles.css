@@ -5418,6 +5418,26 @@ p {
   margin-top: 4px;
 }
 
+.feature-bootstrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bootstrap-repo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bootstrap-repo .section-head {
+  margin-bottom: 0;
+}
+
+.bootstrap-repo h4 {
+  font-size: 12px;
+}
+
 .coordinator-details {
   margin: 10px 0;
   padding: 9px 12px;

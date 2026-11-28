@@ -67,6 +67,20 @@ export type BootstrapEntry = {
   required?: boolean;
 };
 
+/** Tipo de configuración local detectada; solo nombre y ruta, nunca contenido. */
+export type BootstrapCandidateKind = "env" | "local" | "npm" | "tool" | "override";
+
+export type BootstrapCandidate = {
+  path: string;
+  kind: BootstrapCandidateKind;
+};
+
+export type BootstrapDetection = {
+  candidates: BootstrapCandidate[];
+  /** `true` si había más de los que se devuelven. */
+  truncated: boolean;
+};
+
 export type ProfileManifest = {
   id: string;
   name: string;

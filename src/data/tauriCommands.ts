@@ -16,6 +16,7 @@ import type { PreviewProbe } from "../domain/preview/preview";
 import type {
   AppSettings,
   Bootstrap,
+  BootstrapDetection,
   ConfigOutcome,
   CreateWorkspaceInput,
   Library,
@@ -41,6 +42,8 @@ export const api = {
 
   listRepos: () => invoke<Repo[]>("list_repos"),
   addRepo: (path: string) => invoke<Repo>("add_repo", { path }),
+  detectBootstrapCandidates: (repoId: string) =>
+    invoke<BootstrapDetection>("detect_bootstrap_candidates", { repoId }),
   refreshRepo: (id: string) => invoke<Repo>("refresh_repo", { id }),
   removeRepo: (id: string) => invoke<void>("remove_repo", { id }),
 

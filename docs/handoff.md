@@ -731,3 +731,35 @@ Limitaciones conocidas:
   si la rama tiene commits sin integrar (la confirmación avisa de que se
   pierden). La detección de rama publicada usa las refs locales tras un `fetch`
   best-effort: sin red ni refs remotas no puede saber que otra copia la publicó.
+
+## Estado tras detectar candidatos de bootstrap
+
+- **Backend**: nuevo `bootstrap_candidates.rs` con `detect(repo)`. Usa
+  `git ls-files --others --ignored --exclude-standard -z` con pathspecs glob
+  para `.env*`, `*.local*`, `.npmrc`, `.yarnrc*`, `.tool-versions`, `.nvmrc`,
+  `.node-version` y `*.override.{yml,yaml,json,toml}`; excluye `.git`,
+  `node_modules`, `dist`, `build`, `.next`, `target`, `coverage`, `out`,
+  `.turbo`, `.cache`, logs y `tmp`. Devuelve `BootstrapDetection` con hasta 200
+  `BootstrapCandidate { path, kind }`; una lista mayor marca `truncated`.
+- **Seguridad**: no se abre ningún candidato: solo se consulta
+  `symlink_metadata` para descartar symlinks y entradas que no sean ficheros.
+  Las rutas se validan relativas, sin `..`, sin `.git` y sin componentes
+  excluidos. Las rutas no UTF-8 se omiten.
+- **Comando y puerto**: `detect_bootstrap_candidates(repoId)` resuelve el repo
+  registrado y su checkout canónico; no acepta rutas libres. Se expone como
+  `FeatureGateway.bootstrapCandidates(repoId)`.
+- **Alta**: `useBootstrapCandidates` consulta cada repo seleccionado y
+  `FeatureBootstrapSection` agrupa por repo. Lo configurado en `repo.bootstrap`
+  aparece marcado y se conserva; lo detectado aparece sin marcar. Aceptar una
+  casilla crea `BootstrapEntry` con `mode: copy` y `required: false`. Un fallo
+  de detección muestra un aviso y no bloquea el alta.
+- **Verificación**: `cargo test` 92 tests pasando y 2 ignorados; `pnpm check`
+  en verde (801 tests) y `pnpm build` en verde. Tests nuevos de Rust para
+  detección, exclusión de build y dependencias, ficheros rastreados, ausencia de
+  contenido, symlinks fuera del repo y truncado; tests TS de propuestas y del
+  diálogo.
+- **Limitaciones**: no hay edición de rutas arbitrarias en el diálogo (solo
+  marcar o desmarcar); la allowlist puede dejar fuera un config no previsto y
+  el bootstrap manual sigue siendo la vía para añadirlo. No se levantó la app
+  contra repos reales: la UI se validó con dobles y la detección con repos
+  temporales.

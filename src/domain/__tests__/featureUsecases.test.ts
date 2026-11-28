@@ -18,6 +18,7 @@ import { makeFeature, makeRunner, makeStartedFeature } from "../../tests/fixture
 function fakeGateway(overrides: Partial<FeatureGateway> = {}): FeatureGateway {
   return {
     list: vi.fn(async () => []),
+    bootstrapCandidates: vi.fn(async () => ({ candidates: [], truncated: false })),
     save: vi.fn(async (feature: Feature) => feature),
     deletePreview: vi.fn(async (id: string) => ({
       featureId: id,

@@ -1,5 +1,6 @@
 mod artifacts;
 mod bootstrap;
+mod bootstrap_candidates;
 mod commands;
 mod config;
 mod context;
@@ -72,6 +73,7 @@ pub fn run() {
             commands::list_available_models,
             commands::list_repos,
             commands::add_repo,
+            commands::detect_bootstrap_candidates,
             commands::refresh_repo,
             commands::remove_repo,
             commands::list_features,
