@@ -21,6 +21,8 @@ import type {
 import type { SaveSessionFileResult, SessionFiles } from "../domain/repositories/SessionFiles";
 import type { GitGateway } from "../domain/repositories/GitGateway";
 import type { PullRequestGateway } from "../domain/repositories/PullRequestGateway";
+import type { IssueGateway } from "../domain/repositories/IssueGateway";
+import type { GitHubIssue } from "../domain/features/issue";
 import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
 import type { PreviewProbe } from "../domain/preview/preview";
 import type { Preferences } from "../domain/repositories/Preferences";
@@ -746,8 +748,35 @@ export function makePullRequestGateway(
   return { gateway, status, view, checks, create };
 }
 
-/** Preferencias en memoria para componentes que las reciben por props. */
-export function makePreferences(initial: Record<string, string> = {}) {
+/** Gateway de issues fake: estado de gh y listas por búsqueda configurables. */
+export function makeIssueGateway(
+  options: {
+    ghStatus?: GhStatus;
+    issues?: GitHubIssue[];
+    listError?: unknown;
+  } = {},
+) {
+  const ghStatus: GhStatus = options.ghStatus ?? {
+    installed: true,
+    authenticated: true,
+    version: "gh version 2.60.0",
+    message: null,
+    docsUrl: "https://cli.github.com/manual/gh_auth_login",
+  };
+  const status = vi.fn(async () => ghStatus);
+  const list = vi.fn(
+    async (_projectPath: string, _options?: { search?: string; limit?: number }) => {
+      if (options.listError) throw options.listError;
+      return options.issues ?? [];
+    },
+  );
+  const gateway: IssueGateway = { status, list };
+  return { gateway, status, list };
+}
+
+/** Preferencias en memoria para componentes que las reciben por props. */ export function makePreferences(
+  initial: Record<string, string> = {},
+) {
   const store = new Map(Object.entries(initial));
   const preferences: Preferences = {
     get: (key) => store.get(key) ?? null,

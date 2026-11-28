@@ -516,16 +516,11 @@ pub fn write_plan(
     }
 
     if let Some(issue) = &workspace.issue {
-        let mut text = format!("# Issue #{}", issue.number);
-        if !issue.title.is_empty() {
-            text.push_str(&format!(" — {}", issue.title));
-        }
-        if let Some(url) = issue.url.as_deref().filter(|url| !url.is_empty()) {
-            text.push_str(&format!("\n\n{url}"));
-        }
-        text.push('\n');
-        fs::write(workspace_dir.join("ISSUE.md"), text)
-            .map_err(|e| format!("No se pudo escribir ISSUE.md: {e}"))?;
+        fs::write(
+            workspace_dir.join("ISSUE.md"),
+            crate::issue::markdown(issue),
+        )
+        .map_err(|e| format!("No se pudo escribir ISSUE.md: {e}"))?;
     }
 
     let agents_path = config_dir.join("AGENTS.md");
@@ -740,6 +735,7 @@ mod tests {
             number: 12,
             title: "Login roto".into(),
             url: Some("https://github.com/acme/app/issues/12".into()),
+            body: None,
         };
         let text = build_agents_md(
             Some("TEMPLATE_MARK"),

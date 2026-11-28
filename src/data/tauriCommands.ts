@@ -12,6 +12,7 @@ import type {
   GitStatusRaw,
 } from "../domain/workspace/git";
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
+import type { GitHubIssue } from "../domain/features/issue";
 import type { PreviewProbe } from "../domain/preview/preview";
 import type {
   AppSettings,
@@ -129,6 +130,8 @@ export const api = {
     title: string;
     body: string;
   }) => invoke<string>("gh_pr_create", { input }),
+  ghIssueList: (projectPath: string, search: string | null, limit: number | null) =>
+    invoke<GitHubIssue[]>("gh_issue_list", { projectPath, search, limit }),
 
   /** Sondea la URL del preview desde Rust (sin CORS) y devuelve su estado. */
   previewProbe: (url: string) => invoke<PreviewProbe>("preview_probe", { url }),

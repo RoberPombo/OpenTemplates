@@ -9,6 +9,7 @@ mod feature_runner;
 mod features;
 mod gh;
 mod git;
+mod issue;
 mod library;
 mod model;
 mod preview;
@@ -115,6 +116,7 @@ pub fn run() {
             commands::gh_pr_view,
             commands::gh_pr_checks,
             commands::gh_pr_create,
+            commands::gh_issue_list,
             commands::resources,
             commands::get_settings,
             commands::save_settings,

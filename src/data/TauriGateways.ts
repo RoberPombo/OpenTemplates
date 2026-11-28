@@ -11,6 +11,7 @@ import type { ModelCatalogGateway } from "../domain/repositories/ModelCatalogGat
 import type { RepoGateway } from "../domain/repositories/RepoGateway";
 import type { GitGateway } from "../domain/repositories/GitGateway";
 import type { PullRequestGateway } from "../domain/repositories/PullRequestGateway";
+import type { IssueGateway, IssueSearchOptions } from "../domain/repositories/IssueGateway";
 import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
 import type { PreviewProbe } from "../domain/preview/preview";
 import type {
@@ -27,6 +28,7 @@ import type { ProfileGateway } from "../domain/repositories/ProfileGateway";
 import type { WorkspaceGateway } from "../domain/repositories/WorkspaceGateway";
 import type { FeatureGateway } from "../domain/repositories/FeatureGateway";
 import type { Feature } from "../domain/features/model";
+import type { GitHubIssue } from "../domain/features/issue";
 import type { FeatureArtifact, FeatureRunnerInfo } from "../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../domain/features/provision";
 import type { FeatureDeleteOutcome, FeatureDeletePreview } from "../domain/features/deletion";
@@ -196,6 +198,16 @@ export class TauriPullRequestGateway implements PullRequestGateway {
     input: { base: string; head: string; title: string; body: string },
   ): Promise<{ url: string }> {
     return { url: await call(api.ghPrCreate({ projectPath, ...input })) };
+  }
+}
+
+export class TauriIssueGateway implements IssueGateway {
+  status(): Promise<GhStatus> {
+    return call(api.ghStatus());
+  }
+
+  list(projectPath: string, options?: IssueSearchOptions): Promise<GitHubIssue[]> {
+    return call(api.ghIssueList(projectPath, options?.search ?? null, options?.limit ?? null));
   }
 }
 

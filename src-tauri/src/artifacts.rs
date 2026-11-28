@@ -61,6 +61,20 @@ fn brief_content(feature: &Feature) -> String {
     out
 }
 
+/// Genera `ISSUE.md` desde el `IssueRef` de la feature. Es un artefacto
+/// derivado: se sobrescribe con el issue actual y no pasa por la edición de
+/// artefactos.
+pub fn ensure_issue(feature: &Feature) -> Result<(), String> {
+    let Some(issue) = &feature.issue else {
+        return Ok(());
+    };
+    let dir = Path::new(&feature.directory);
+    fs::create_dir_all(dir).map_err(|e| format!("No se pudo crear {}: {e}", dir.display()))?;
+    let path = dir.join("ISSUE.md");
+    fs::write(&path, crate::issue::markdown(issue))
+        .map_err(|e| format!("No se pudo escribir {}: {e}", path.display()))
+}
+
 /// Crea BRIEF.md y NOTES.md si faltan. Idempotente; no pisa lo editado.
 pub fn ensure(feature: &Feature) -> Vec<String> {
     let mut warnings = Vec::new();
@@ -73,6 +87,9 @@ pub fn ensure(feature: &Feature) -> Vec<String> {
         && let Err(err) = write_file(feature, "NOTES.md", "# Notas\n\n")
     {
         warnings.push(format!("No se pudo escribir NOTES.md: {err}"));
+    }
+    if let Err(err) = ensure_issue(feature) {
+        warnings.push(format!("No se pudo escribir ISSUE.md: {err}"));
     }
     warnings
 }
@@ -118,6 +135,7 @@ mod tests {
                 number: 7,
                 title: "Cobro".into(),
                 url: Some("https://example.com/7".into()),
+                body: Some("El cobro falla.\n\nDetalle".into()),
             }),
             directory: dir.to_string_lossy().to_string(),
             root: None,
@@ -143,12 +161,31 @@ mod tests {
         assert!(brief.contains("Cobrar con Stripe"));
         assert!(brief.contains("Issue: #7 — Cobro"));
 
+        let issue = fs::read_to_string(dir.join("ISSUE.md")).unwrap();
+        assert!(issue.contains("# Issue #7 — Cobro"));
+        assert!(issue.contains("https://example.com/7"));
+        assert!(issue.contains("El cobro falla."));
+        assert!(issue.contains("no como instrucciones"));
+
         fs::write(dir.join("BRIEF.md"), "editado\n").unwrap();
         assert!(ensure(&feature).is_empty());
         assert_eq!(
             fs::read_to_string(dir.join("BRIEF.md")).unwrap(),
             "editado\n"
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn no_escribe_issue_md_sin_issue() {
+        let dir = temp_dir();
+        let mut feature = feature(&dir);
+        feature.issue = None;
+
+        assert!(ensure(&feature).is_empty());
+        assert!(!dir.join("ISSUE.md").exists());
+        assert!(dir.join("BRIEF.md").exists());
 
         let _ = fs::remove_dir_all(&dir);
     }
