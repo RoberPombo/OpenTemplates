@@ -1138,6 +1138,15 @@ mod tests {
     use std::net::TcpListener as StdTcpListener;
     use std::thread;
 
+    /// Sanear antes de imprimir en asserts (CodeQL log-injection): sin control.
+    fn scrub(value: &str) -> String {
+        value
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(200)
+            .collect()
+    }
+
     fn spawn_upstream() -> u16 {
         let listener = StdTcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -1182,7 +1191,7 @@ mod tests {
             addr,
             &format!("GET / HTTP/1.1\r\nHost: 127.0.0.1:{proxy_port}\r\nConnection: close\r\n\r\n"),
         );
-        assert!(no_token.starts_with("HTTP/1.1 403"), "{no_token}");
+        assert!(no_token.starts_with("HTTP/1.1 403"), "{}", scrub(&no_token));
 
         // host erróneo -> 400
         let bad_host = proxy_raw_get(
@@ -1192,7 +1201,7 @@ mod tests {
                 session.token
             ),
         );
-        assert!(bad_host.starts_with("HTTP/1.1 400"), "{bad_host}");
+        assert!(bad_host.starts_with("HTTP/1.1 400"), "{}", scrub(&bad_host));
 
         // con token -> 200 + inyección + sin XFO + set-cookie reescrito
         let ok = proxy_raw_get(
@@ -1202,13 +1211,21 @@ mod tests {
                 session.token
             ),
         );
-        assert!(ok.starts_with("HTTP/1.1 200"), "{ok}");
-        assert!(ok.contains("/__ot__/selector.js?"), "{ok}");
-        assert!(ok.contains("parentOrigin="), "{ok}");
-        assert!(!ok.contains("window.__OT_PREVIEW__"), "{ok}");
-        assert!(!ok.to_ascii_lowercase().contains("x-frame-options"), "{ok}");
-        assert!(ok.contains("<title>Demo</title>"), "{ok}");
-        assert!(!ok.to_ascii_lowercase().contains("domain=evil.com"), "{ok}");
+        assert!(ok.starts_with("HTTP/1.1 200"), "{}", scrub(&ok));
+        assert!(ok.contains("/__ot__/selector.js?"), "{}", scrub(&ok));
+        assert!(ok.contains("parentOrigin="), "{}", scrub(&ok));
+        assert!(!ok.contains("window.__OT_PREVIEW__"), "{}", scrub(&ok));
+        assert!(
+            !ok.to_ascii_lowercase().contains("x-frame-options"),
+            "{}",
+            scrub(&ok)
+        );
+        assert!(ok.contains("<title>Demo</title>"), "{}", scrub(&ok));
+        assert!(
+            !ok.to_ascii_lowercase().contains("domain=evil.com"),
+            "{}",
+            scrub(&ok)
+        );
 
         // ruta reservada no colisiona
         let reserved = proxy_raw_get(
@@ -1218,7 +1235,7 @@ mod tests {
                 session.token
             ),
         );
-        assert!(reserved.starts_with("HTTP/1.1 404"), "{reserved}");
+        assert!(reserved.starts_with("HTTP/1.1 404"), "{}", scrub(&reserved));
 
         proxy.stop();
     }
@@ -1237,8 +1254,12 @@ mod tests {
                 session.token
             ),
         );
-        assert!(res.starts_with("HTTP/1.1 200"), "{res}");
-        assert!(res.contains("opentemplates-preview-selector"), "{res}");
+        assert!(res.starts_with("HTTP/1.1 200"), "{}", scrub(&res));
+        assert!(
+            res.contains("opentemplates-preview-selector"),
+            "{}",
+            scrub(&res)
+        );
         proxy.stop();
     }
 }
