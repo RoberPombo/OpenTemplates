@@ -46,6 +46,10 @@ pub struct AppState {
     pub servers: Mutex<HashMap<String, ServerHandle>>,
     pub notices: Mutex<Vec<String>>,
     session_tickets: Mutex<HashMap<String, SessionFileTicket>>,
+    /// Tickets de activación del proxy de preview (un solo uso, TTL).
+    pub preview_tickets: Mutex<HashMap<String, crate::preview_proxy::PreviewProxyTicket>>,
+    /// Proxies de preview activos por token de sesión.
+    pub preview_proxies: Mutex<HashMap<String, crate::preview_proxy::PreviewProxy>>,
 }
 
 impl AppState {
@@ -67,6 +71,8 @@ impl AppState {
             servers: Mutex::new(HashMap::new()),
             notices: Mutex::new(notices),
             session_tickets: Mutex::new(HashMap::new()),
+            preview_tickets: Mutex::new(HashMap::new()),
+            preview_proxies: Mutex::new(HashMap::new()),
         }
     }
 

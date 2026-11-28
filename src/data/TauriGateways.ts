@@ -14,6 +14,7 @@ import type { PullRequestGateway } from "../domain/repositories/PullRequestGatew
 import type { IssueGateway, IssueSearchOptions } from "../domain/repositories/IssueGateway";
 import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
 import type { PreviewProbe } from "../domain/preview/preview";
+import type { PreviewProxySession } from "../domain/preview/element";
 import type {
   GitCommit,
   GitCommitResult,
@@ -277,6 +278,14 @@ export class TauriPreviewGateway implements PreviewGateway {
 
   openExternal(url: string): Promise<void> {
     return call(api.openExternal(url));
+  }
+
+  startElementPicker(url: string, appOrigin: string): Promise<PreviewProxySession> {
+    return call(api.previewProxyStart(url, appOrigin));
+  }
+
+  stopElementPicker(token: string): Promise<void> {
+    return call(api.previewProxyStop(token));
   }
 }
 

@@ -31,8 +31,10 @@ Decisiones que conviene no reabrir sin motivo:
 - La evaluación de objetivos usa `generate.decisions`, no heurísticas de texto.
 - Multi-run usa un solo proceso de workspace con sesiones en directorios distintos,
   no N procesos.
-- El preview no inspecciona el DOM: el selector de elemento necesita proxy propio o
-  multiwebview con Wayland (`docs/preview-viabilidad.md`).
+- El preview no inspecciona el DOM directamente; el selector de elemento usa
+  un proxy propio loopback que inyecta script (`docs/preview-viabilidad.md`,
+  opción D); multiwebview con Wayland (opción B) sigue descartada. CSP y
+  capabilities sin cambios.
 - Los permisos se responden en el dock; no se relajan en el perfil.
 
 ## Cambio de modelo en curso
@@ -68,8 +70,14 @@ Dentro del producto actual, por orden de valor:
 2. **Issues de GitHub con `gh`** (M). Implementado en la rama
    `feature/issues-gh-alta`: selector de issues abiertos en el alta, `IssueRef`
    con cuerpo saneado e `ISSUE.md` con el detalle. Falta abrir la PR.
-3. **Selector de elemento en preview** (L). Requiere proxy propio o multiwebview con
-   soporte Wayland; incluye screenshot y consola.
+3. **Selector de elemento en preview** (L). **Fase 1 entregada**: proxy propio
+   loopback (opción D de `docs/preview-viabilidad.md`), inyección de script,
+   modo selección, contexto compacto (selector CSS estable, etiqueta, rol,
+   texto corto, estilos computados curados), `postMessage` validado, prompt a
+   la sesión activa, Escape. Sin cambiar CSP ni capabilities. Multiwebview
+   (opción B) descartada (Wayland + `unstable` + relajar IPC remoto).
+   **Fase 2 pendiente**: screenshot del elemento y consola del preview; HMR/WS
+   por el proxy. Ver `.agents/plans/selector-elemento-preview-bfa8e896cfd3f1de/plan.md`.
 4. **Archivar sesiones** (S). El listado ya excluye archivadas; falta el gesto.
 5. **Reparar workspaces `missing`** (S). Recrear el worktree desde el estado guardado.
 6. **Modelo y agente por sesión** (S). Con el modelo nuevo dejan de ser overrides del

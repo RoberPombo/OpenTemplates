@@ -180,3 +180,193 @@ describe("PreviewDock — enviar al agente", () => {
     expect(screen.getByText(/No hay sesión activa/)).toBeInTheDocument();
   });
 });
+
+describe("PreviewDock — selector de elemento", () => {
+  const proxy = {
+    baseUrl: "http://127.0.0.1:4321/__ot__/enter?token=tok&to=/",
+    token: "tok",
+    proxyOrigin: "http://127.0.0.1:4321",
+    nonce: "nonce",
+  };
+
+  async function startSelection(options: { sessionId?: string | null } = {}) {
+    const user = userEvent.setup();
+    const fake = makePreviewGateway({ startElementPicker: async () => proxy });
+    const { client } = makeFakeClient();
+    const { preferences } = makePreferences();
+    render(
+      <PreviewDock
+        gateway={fake.gateway}
+        preferences={preferences}
+        workspace={makeWorkspace()}
+        client={client as unknown as ChatServer}
+        sessionId={options.sessionId === undefined ? "s1" : options.sessionId}
+        onClose={vi.fn()}
+      />,
+    );
+    await screen.findByTitle("Aplicación en marcha");
+    await user.click(screen.getByRole("button", { name: "Seleccionar elemento" }));
+    return { user, fake, client };
+  }
+
+  function frame(): HTMLIFrameElement {
+    return screen.getByTitle("Aplicación en marcha") as HTMLIFrameElement;
+  }
+
+  function postMessage(
+    data: unknown,
+    origin = proxy.proxyOrigin,
+    source?: MessageEventSource | null,
+  ) {
+    const iframe = frame();
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        origin,
+        source: source === undefined ? iframe.contentWindow : source,
+        data,
+      }),
+    );
+  }
+
+  const element = {
+    tag: "button",
+    role: "button",
+    selector: "#save",
+    name: "Guardar",
+    text: "Guardar",
+    url: "/app",
+    rect: { x: 1, y: 2, width: 100, height: 30 },
+    computedStyles: { color: "red" },
+  };
+
+  test("activar inicia el proxy loopback y sirve el iframe por el proxy; aria-pressed", async () => {
+    const { fake } = await startSelection();
+    expect(fake.startElementPicker).toHaveBeenCalledTimes(1);
+    expect(fake.startElementPicker.mock.calls[0][0]).toBe("http://localhost:5173");
+    expect(fake.startElementPicker.mock.calls[0][1]).toBe(window.location.origin);
+    expect(screen.getByRole("button", { name: /Seleccionando/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await waitFor(() => expect(frame().getAttribute("src")).toBe(proxy.baseUrl));
+  });
+
+  test("mensaje válido captura elemento y manda prompt compacto a la sesión activa", async () => {
+    const { client } = await startSelection();
+    await waitFor(() => expect(frame().getAttribute("src")).toBe(proxy.baseUrl));
+
+    // habilitar entrada al recibir 'ready'
+    postMessage({
+      source: "opentemplates-preview-selector",
+      version: 1,
+      type: "ready",
+      nonce: "nonce",
+    });
+    postMessage({
+      source: "opentemplates-preview-selector",
+      version: 1,
+      type: "element",
+      nonce: "nonce",
+      element,
+    });
+
+    await waitFor(() => expect(client.session.prompt).toHaveBeenCalledTimes(1));
+    const input = client.session.prompt.mock.calls[0][0] as { sessionID: string; text: string };
+    expect(input.sessionID).toBe("s1");
+    expect(input.text).toContain("Elemento: <button>");
+    expect(input.text).toContain("Selector CSS: #save");
+    expect(input.text).toContain("Rol: button");
+    expect(input.text).toContain("Estilo");
+    expect(input.text).not.toContain("<html");
+    // no se rompe el modo
+    expect(screen.getByRole("button", { name: /Seleccionando/ })).toBeInTheDocument();
+  });
+
+  test("rechaza postMessage con origen, source, nonce o esquema incorrectos", async () => {
+    const { client } = await startSelection();
+    await waitFor(() => expect(frame().getAttribute("src")).toBe(proxy.baseUrl));
+    const msg = {
+      source: "opentemplates-preview-selector",
+      version: 1,
+      type: "element",
+      nonce: "nonce",
+      element,
+    };
+
+    postMessage(msg, "http://evil.com"); // origen malo
+    postMessage(msg, proxy.proxyOrigin, null); // source malo
+    postMessage({ ...msg, nonce: "otro" }); // nonce malo
+    postMessage({ ...msg, source: "evil" }); // source-name malo
+    postMessage({ ...msg, version: 99 }); // versión mala
+    postMessage({ ...msg, type: "hack" }); // tipo malo
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(client.session.prompt).not.toHaveBeenCalled();
+  });
+
+  test("payload no confiable se sanea antes del prompt", async () => {
+    const { client } = await startSelection();
+    await waitFor(() => expect(frame().getAttribute("src")).toBe(proxy.baseUrl));
+    postMessage({
+      source: "opentemplates-preview-selector",
+      version: 1,
+      type: "element",
+      nonce: "nonce",
+      element: {
+        tag: "a",
+        selector: "x".repeat(9999),
+        text: "t".repeat(9999),
+        url: "/",
+        extra: "ignored",
+        computedStyles: { evil: 1, color: "red" },
+      },
+    });
+    await waitFor(() => expect(client.session.prompt).toHaveBeenCalledTimes(1));
+    const text = (client.session.prompt.mock.calls[0][0] as { text: string }).text;
+    expect(text.length).toBeLessThanOrEqual(920);
+    expect(text).toContain("color: red");
+    expect(text).not.toContain("evil");
+  });
+
+  test("Escape sale del modo, para el proxy y restaura la URL", async () => {
+    const user = userEvent.setup();
+    const { fake } = await startSelection();
+    await waitFor(() => expect(frame().getAttribute("src")).toBe(proxy.baseUrl));
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(fake.stopElementPicker).toHaveBeenCalledWith("tok"));
+    expect(screen.getByRole("button", { name: "Seleccionar elemento" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await waitFor(() => expect(frame().getAttribute("src")).toBe("http://localhost:5173"));
+  });
+
+  test("mensaje 'exit' del iframe sale del modo", async () => {
+    const { fake } = await startSelection();
+    await waitFor(() => expect(frame().getAttribute("src")).toBe(proxy.baseUrl));
+    postMessage({
+      source: "opentemplates-preview-selector",
+      version: 1,
+      type: "exit",
+      nonce: "nonce",
+    });
+    await waitFor(() => expect(fake.stopElementPicker).toHaveBeenCalledWith("tok"));
+    expect(screen.getByRole("button", { name: "Seleccionar elemento" })).toBeInTheDocument();
+  });
+
+  test("sin sesión activa no se envía elemento", async () => {
+    const { client } = await startSelection({ sessionId: null });
+    await waitFor(() => expect(frame().getAttribute("src")).toBe(proxy.baseUrl));
+    postMessage({
+      source: "opentemplates-preview-selector",
+      version: 1,
+      type: "element",
+      nonce: "nonce",
+      element,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(client.session.prompt).not.toHaveBeenCalled();
+  });
+});

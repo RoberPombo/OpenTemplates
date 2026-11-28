@@ -18,6 +18,7 @@ use crate::model::{
     WorktreeStatus,
 };
 use crate::preview::{self, PreviewProbe};
+use crate::preview_proxy::{self, PreviewProxySession};
 use crate::profiles;
 use crate::runner::{self, Owner};
 use crate::server;
@@ -1829,6 +1830,75 @@ pub fn preview_probe(url: String) -> PreviewProbe {
 #[tauri::command]
 pub fn open_external(url: String) -> Result<(), String> {
     preview::open_external(&url)
+}
+
+/// Arranca el proxy propio del preview para el selector de elemento.
+///
+/// Solo invocable por el webview de la app (no hay capability remota). Replica
+/// el patrón `SessionFileTicket`: ticket de activación de un solo uso emitido
+/// por Rust tras acción explícita, consumido atómicamente, ligado al origen
+/// upstream validado; luego token de sesión obligatorio en el listener.
+#[tauri::command]
+pub fn preview_proxy_start(
+    state: State<'_, AppState>,
+    url: String,
+    app_origin: String,
+) -> Result<PreviewProxySession, String> {
+    // Validar upstream antes de emitir nada.
+    let upstream = preview::parse_target(&url)?;
+    preview::validate_preview_host(&upstream.host)?;
+    let origin_key = preview_proxy::canonical_origin(&upstream);
+
+    // Ticket de activación de un solo uso + TTL, como `issue_session_ticket`.
+    let now = std::time::SystemTime::now();
+    let ticket = preview_proxy::PreviewProxyTicket {
+        origin: origin_key.clone(),
+        expires_at: now + preview_proxy::PREVIEW_TICKET_TTL,
+    };
+    let ticket_token = uuid::Uuid::new_v4().simple().to_string();
+    {
+        let mut tickets = state
+            .preview_tickets
+            .lock()
+            .map_err(|_| "estado bloqueado".to_string())?;
+        tickets.retain(|_, t| t.expires_at > now);
+        tickets.insert(ticket_token.clone(), ticket);
+    }
+    // Consumir siempre el ticket emitido; no se expone ni se reutiliza.
+    {
+        let mut tickets = state
+            .preview_tickets
+            .lock()
+            .map_err(|_| "estado bloqueado".to_string())?;
+        let stored = tickets.remove(&ticket_token).ok_or("Ticket no válido")?;
+        if stored.expires_at <= now || stored.origin != origin_key {
+            return Err("Ticket no válido o caducado".to_string());
+        }
+    }
+
+    let proxy = preview_proxy::start_proxy(&url, &app_origin)?;
+    let session = proxy.session();
+    let token = session.token.clone();
+    state
+        .preview_proxies
+        .lock()
+        .map_err(|_| "estado bloqueado".to_string())?
+        .insert(token, proxy);
+    Ok(session)
+}
+
+/// Para el proxy de preview, cierra el listener y limpia. Idempotente.
+#[tauri::command]
+pub fn preview_proxy_stop(state: State<'_, AppState>, token: String) -> Result<(), String> {
+    let proxy = state
+        .preview_proxies
+        .lock()
+        .map_err(|_| "estado bloqueado".to_string())?
+        .remove(&token);
+    if let Some(proxy) = proxy {
+        proxy.stop();
+    }
+    Ok(())
 }
 
 /// Estado del árbol de trabajo para el panel de commit (salida cruda de git).

@@ -25,6 +25,7 @@ import type { IssueGateway } from "../domain/repositories/IssueGateway";
 import type { GitHubIssue } from "../domain/features/issue";
 import type { PreviewGateway } from "../domain/repositories/PreviewGateway";
 import type { PreviewProbe } from "../domain/preview/preview";
+import type { PreviewProxySession } from "../domain/preview/element";
 import type { Preferences } from "../domain/repositories/Preferences";
 import type { GitCommit, GitFileEntry, GitMergeResult, GitStatus } from "../domain/workspace/git";
 import type { GhStatus, PullRequestCheck, PullRequestInfo } from "../domain/workspace/pullRequest";
@@ -797,6 +798,8 @@ export function makePreviewGateway(
     probe?: (url: string) => PreviewProbe | Promise<PreviewProbe>;
     probeError?: unknown;
     openError?: unknown;
+    startElementPicker?: (url: string, appOrigin: string) => Promise<PreviewProxySession>;
+    stopElementPicker?: (token: string) => Promise<void>;
   } = {},
 ) {
   const queue = [...(options.probes ?? [])];
@@ -816,8 +819,20 @@ export function makePreviewGateway(
   const openExternal = vi.fn(async () => {
     if (options.openError) throw options.openError;
   });
-  const gateway: PreviewGateway = { probe, openExternal };
-  return { gateway, probe, openExternal };
+  const startElementPicker = vi.fn(async (url: string, appOrigin: string) => {
+    if (options.startElementPicker) return options.startElementPicker(url, appOrigin);
+    return {
+      baseUrl: "http://127.0.0.1:1/__ot__/enter?token=tok&to=/",
+      token: "tok",
+      proxyOrigin: "http://127.0.0.1:1",
+      nonce: "nonce",
+    } satisfies PreviewProxySession;
+  });
+  const stopElementPicker = vi.fn(async (token: string) => {
+    if (options.stopElementPicker) return options.stopElementPicker(token);
+  });
+  const gateway: PreviewGateway = { probe, openExternal, startElementPicker, stopElementPicker };
+  return { gateway, probe, openExternal, startElementPicker, stopElementPicker };
 }
 
 /** Confirmación fake que registra el mensaje y responde lo que fije el test. */
