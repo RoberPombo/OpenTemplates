@@ -53,10 +53,7 @@ fn write_file(feature: &Feature, name: &str, content: &str) -> Result<FeatureArt
 fn brief_content(feature: &Feature) -> String {
     let mut out = format!("# {}\n\n{}\n", feature.name, feature.brief.trim());
     if let Some(issue) = &feature.issue {
-        out.push_str(&format!(
-            "\nIssue: #{} — {}\n",
-            issue.number, issue.title
-        ));
+        out.push_str(&format!("\nIssue: #{} — {}\n", issue.number, issue.title));
         if let Some(url) = &issue.url {
             out.push_str(&format!("{url}\n"));
         }
@@ -67,10 +64,10 @@ fn brief_content(feature: &Feature) -> String {
 /// Crea BRIEF.md y NOTES.md si faltan. Idempotente; no pisa lo editado.
 pub fn ensure(feature: &Feature) -> Vec<String> {
     let mut warnings = Vec::new();
-    if !Path::new(&feature.directory).join("BRIEF.md").exists() {
-        if let Err(err) = write_file(feature, "BRIEF.md", &brief_content(feature)) {
-            warnings.push(format!("No se pudo escribir BRIEF.md: {err}"));
-        }
+    if !Path::new(&feature.directory).join("BRIEF.md").exists()
+        && let Err(err) = write_file(feature, "BRIEF.md", &brief_content(feature))
+    {
+        warnings.push(format!("No se pudo escribir BRIEF.md: {err}"));
     }
     if !Path::new(&feature.directory).join("NOTES.md").exists()
         && let Err(err) = write_file(feature, "NOTES.md", "# Notas\n\n")
@@ -148,7 +145,10 @@ mod tests {
 
         fs::write(dir.join("BRIEF.md"), "editado\n").unwrap();
         assert!(ensure(&feature).is_empty());
-        assert_eq!(fs::read_to_string(dir.join("BRIEF.md")).unwrap(), "editado\n");
+        assert_eq!(
+            fs::read_to_string(dir.join("BRIEF.md")).unwrap(),
+            "editado\n"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

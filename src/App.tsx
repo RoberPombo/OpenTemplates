@@ -38,6 +38,12 @@ const FeatureDialog = lazy(() =>
     default: module.FeatureDialog,
   })),
 );
+/** La confirmación de borrado solo se monta al pedirla. */
+const DeleteFeatureDialog = lazy(() =>
+  import("./presentation/components/DeleteFeatureDialog").then((module) => ({
+    default: module.DeleteFeatureDialog,
+  })),
+);
 /** La lista de sesiones solo se monta al desplegar un workspace en marcha. */
 const WorkspaceSessions = lazy(() =>
   import("./presentation/components/WorkspaceSessions").then((module) => ({
@@ -552,7 +558,7 @@ function App() {
                 featuresState.approveStep(featuresState.selected!.id, stepId)
               }
               onCloseStepChat={featuresState.closeStepChat}
-              onDelete={() => void featuresState.remove(featuresState.selected!.id)}
+              onDelete={() => void featuresState.requestDelete(featuresState.selected!.id)}
               onBack={() => featuresState.clearSelection()}
             />
           </Suspense>
@@ -631,6 +637,18 @@ function App() {
                 .start(draft)
                 .catch((err) => featuresState.setError(errorText(err)));
             }}
+          />
+        </Suspense>
+      )}
+
+      {featuresState.deletion && (
+        <Suspense fallback={null}>
+          <DeleteFeatureDialog
+            preview={featuresState.deletion.preview}
+            busy={featuresState.deletion.busy}
+            error={featuresState.deletion.error}
+            onCancel={featuresState.cancelDelete}
+            onConfirm={(forceDirty) => void featuresState.confirmDelete(forceDirty)}
           />
         </Suspense>
       )}

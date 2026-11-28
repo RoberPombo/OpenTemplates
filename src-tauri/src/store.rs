@@ -292,10 +292,7 @@ pub fn load_features(data_dir: &Path) -> (Vec<crate::model::Feature>, Vec<String
     }
 }
 
-pub fn save_features(
-    data_dir: &Path,
-    features: &[crate::model::Feature],
-) -> Result<(), String> {
+pub fn save_features(data_dir: &Path, features: &[crate::model::Feature]) -> Result<(), String> {
     let store = crate::model::FeatureStore {
         version: 1,
         features: features.to_vec(),

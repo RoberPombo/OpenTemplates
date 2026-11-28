@@ -101,8 +101,8 @@ export function FeatureView({
           <button className="primary" disabled={busy || !canProvision} onClick={onProvision}>
             {busy ? "Preparando…" : "Preparar worktrees"}
           </button>
-          <button className="ghost" onClick={onDelete}>
-            Quitar
+          <button className="ghost danger-text" onClick={onDelete}>
+            Eliminar
           </button>
         </div>
       </header>

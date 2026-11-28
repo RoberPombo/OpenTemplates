@@ -8,6 +8,11 @@ import { errorText } from "../../domain/shared";
 import type { Feature } from "../../domain/features/model";
 import type { FeatureArtifact, FeatureRunnerInfo } from "../../domain/features/coordinator";
 import type { FeatureProvisionOutcome } from "../../domain/features/provision";
+import {
+  deletionError,
+  deletionNotice,
+  type FeatureDeletePreview,
+} from "../../domain/features/deletion";
 
 export function useFeatures(defaultProfileId: string | null = null) {
   const root = useAppContext();
@@ -34,6 +39,12 @@ export function useFeatures(defaultProfileId: string | null = null) {
     open: boolean;
   } | null>(null);
   const stepLaunches = useRef(new Set<string>());
+  const [deletion, setDeletion] = useState<{
+    id: string;
+    preview: FeatureDeletePreview;
+    busy: boolean;
+    error: string | null;
+  } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -341,22 +352,63 @@ export function useFeatures(defaultProfileId: string | null = null) {
     [root, selectedId],
   );
 
-  const remove = useCallback(
-    async (id: string): Promise<void> => {
-      const feature = featuresRef.current.find((item) => item.id === id);
-      const ok = root.confirm.confirm(
-        `¿Quitar la feature «${feature?.name ?? id}» del listado? Los worktrees no se tocan todavía.`,
-      );
-      if (!ok) return;
+  /** Pide el plan de borrado y abre el diálogo de confirmación. */
+  const requestDelete = useCallback(
+    async (id: string) => {
       setError(null);
-      await root.features.remove(id);
-      const next = featuresRef.current.filter((item) => item.id !== id);
-      featuresRef.current = next;
-      setFeatures(next);
-      if (selectedId === id) setSelectedId(null);
+      setNotice(null);
+      try {
+        const preview = await root.provideDeleteFeature().preview(id);
+        setDeletion({ id, preview, busy: false, error: null });
+      } catch (err: unknown) {
+        setError(errorText(err));
+      }
     },
-    [root, selectedId],
+    [root],
   );
+
+  const confirmDelete = useCallback(
+    async (forceDirty: boolean) => {
+      if (!deletion) return null;
+      const id = deletion.id;
+      setDeletion((current) =>
+        current && current.id === id ? { ...current, busy: true, error: null } : current,
+      );
+      try {
+        const outcome = await root.provideDeleteFeature().execute(id, forceDirty);
+        if (outcome.featureDeleted) {
+          const next = featuresRef.current.filter((item) => item.id !== id);
+          featuresRef.current = next;
+          setFeatures(next);
+          if (selectedId === id) setSelectedId(null);
+          setDeletion(null);
+          setNotice(deletionNotice(outcome));
+          return outcome;
+        }
+        // Fallo parcial: se conserva la feature y se refresca lo que queda.
+        let preview = deletion.preview;
+        try {
+          preview = await root.provideDeleteFeature().preview(id);
+        } catch {
+          // La preview vieja sigue sirviendo para reintentar.
+        }
+        setDeletion({ id, preview, busy: false, error: deletionError(outcome) });
+        return outcome;
+      } catch (err: unknown) {
+        setDeletion((current) =>
+          current && current.id === id
+            ? { ...current, busy: false, error: errorText(err) }
+            : current,
+        );
+        return null;
+      }
+    },
+    [deletion, root, selectedId],
+  );
+
+  const cancelDelete = useCallback(() => {
+    setDeletion((current) => (current && !current.busy ? null : current));
+  }, []);
 
   return {
     features,
@@ -380,7 +432,10 @@ export function useFeatures(defaultProfileId: string | null = null) {
     approveStep,
     closeStepChat,
     saveArtifact,
-    remove,
+    deletion,
+    requestDelete,
+    confirmDelete,
+    cancelDelete,
     busyId,
     notice,
     error,

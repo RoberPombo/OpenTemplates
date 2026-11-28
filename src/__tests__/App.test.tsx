@@ -16,6 +16,7 @@ const apiMock = vi.hoisted(() => ({
   listFeatures: vi.fn(),
   saveFeature: vi.fn(),
   deleteFeature: vi.fn(),
+  featureDeletePreview: vi.fn(),
   provisionFeature: vi.fn(),
   featureArtifacts: vi.fn(),
   writeFeatureArtifact: vi.fn(),

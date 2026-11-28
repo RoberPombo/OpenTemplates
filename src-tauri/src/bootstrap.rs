@@ -63,7 +63,8 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
         fs::symlink_metadata(src).map_err(|e| format!("No se pudo leer {}: {e}", src.display()))?;
 
     if meta.file_type().is_symlink() {
-        let target = fs::read_link(src).map_err(|e| format!("Enlace roto en {}: {e}", src.display()))?;
+        let target =
+            fs::read_link(src).map_err(|e| format!("Enlace roto en {}: {e}", src.display()))?;
         if let Some(parent) = dst.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("No se pudo crear {}: {e}", parent.display()))?;
@@ -72,8 +73,7 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
     }
 
     if meta.is_dir() {
-        fs::create_dir_all(dst)
-            .map_err(|e| format!("No se pudo crear {}: {e}", dst.display()))?;
+        fs::create_dir_all(dst).map_err(|e| format!("No se pudo crear {}: {e}", dst.display()))?;
         let entries =
             fs::read_dir(src).map_err(|e| format!("No se pudo listar {}: {e}", src.display()))?;
         for entry in entries {
@@ -172,7 +172,12 @@ fn install(worktree: &Path, program: &str, args: &[&str]) -> Result<(), String> 
     Err(format!("{program} falló: {tail}"))
 }
 
-fn node_modules_auto(repo: &Path, worktree: &Path, source: &Path, dest: &Path) -> Result<(), String> {
+fn node_modules_auto(
+    repo: &Path,
+    worktree: &Path,
+    source: &Path,
+    dest: &Path,
+) -> Result<(), String> {
     let Some(manager) = manager_for(repo) else {
         return reflink_or_copy(source, dest);
     };
@@ -292,7 +297,10 @@ mod tests {
         );
 
         assert!(report.errors.is_empty(), "{:?}", report.errors);
-        assert_eq!(fs::read_to_string(worktree.join(".env")).unwrap(), "TOKEN=1\n");
+        assert_eq!(
+            fs::read_to_string(worktree.join(".env")).unwrap(),
+            "TOKEN=1\n"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -333,7 +341,11 @@ mod tests {
         let worktree = root.join("wt");
         fs::create_dir_all(repo.join("node_modules/pkg")).unwrap();
         fs::create_dir_all(&worktree).unwrap();
-        fs::write(repo.join("node_modules/pkg/index.js"), "module.exports = 1;\n").unwrap();
+        fs::write(
+            repo.join("node_modules/pkg/index.js"),
+            "module.exports = 1;\n",
+        )
+        .unwrap();
         fs::write(repo.join("pnpm-lock.yaml"), "lockfileVersion: 9\n").unwrap();
         fs::write(worktree.join("pnpm-lock.yaml"), "lockfileVersion: 9\n").unwrap();
 
@@ -390,7 +402,10 @@ mod tests {
         );
 
         assert!(report.warnings[0].contains("ya existía"));
-        assert_eq!(fs::read_to_string(worktree.join(".env")).unwrap(), "propio\n");
+        assert_eq!(
+            fs::read_to_string(worktree.join(".env")).unwrap(),
+            "propio\n"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 }

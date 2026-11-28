@@ -14,14 +14,14 @@ use crate::bootstrap;
 use crate::git;
 use crate::model::{BootstrapEntry, Feature, ProvisionedWorktree};
 
-struct Entry {
-    role: &'static str,
-    label: String,
-    repo: PathBuf,
-    path: PathBuf,
-    branch: String,
-    base: String,
-    bootstrap: Vec<BootstrapEntry>,
+pub(crate) struct FeatureEntry {
+    pub(crate) role: &'static str,
+    pub(crate) label: String,
+    pub(crate) repo: PathBuf,
+    pub(crate) path: PathBuf,
+    pub(crate) branch: String,
+    pub(crate) base: String,
+    pub(crate) bootstrap: Vec<BootstrapEntry>,
 }
 
 #[derive(Debug)]
@@ -58,7 +58,7 @@ fn resolve_base(repo: &Path, base: &str) -> String {
     }
 }
 
-fn provisioned(entry: &Entry) -> ProvisionedWorktree {
+fn provisioned(entry: &FeatureEntry) -> ProvisionedWorktree {
     ProvisionedWorktree {
         role: entry.role.to_string(),
         repo_path: entry.repo.to_string_lossy().to_string(),
@@ -68,7 +68,7 @@ fn provisioned(entry: &Entry) -> ProvisionedWorktree {
     }
 }
 
-fn rollback(entries: &[Entry], created: &[usize]) {
+fn rollback(entries: &[FeatureEntry], created: &[usize]) {
     for index in created.iter().rev() {
         let entry = &entries[*index];
         let _ = git::worktree_remove(&entry.repo, &entry.path, true);
@@ -77,7 +77,7 @@ fn rollback(entries: &[Entry], created: &[usize]) {
     }
 }
 
-fn apply_bootstrap(entries: &[Entry], report: &mut ProvisionReport) {
+fn apply_bootstrap(entries: &[FeatureEntry], report: &mut ProvisionReport) {
     for entry in entries {
         let result = bootstrap::apply(&entry.repo, &entry.path, &entry.bootstrap);
         report.applied.extend(result.applied);
@@ -86,7 +86,7 @@ fn apply_bootstrap(entries: &[Entry], report: &mut ProvisionReport) {
     }
 }
 
-fn entries_for(feature: &Feature) -> Result<Vec<Entry>, String> {
+pub(crate) fn feature_entries(feature: &Feature) -> Result<Vec<FeatureEntry>, String> {
     let base_dir = Path::new(&feature.directory);
     if !base_dir.is_absolute() {
         return Err("La carpeta de la feature debe ser una ruta absoluta.".into());
@@ -94,7 +94,7 @@ fn entries_for(feature: &Feature) -> Result<Vec<Entry>, String> {
 
     let mut entries = Vec::new();
     if let Some(root) = &feature.root {
-        entries.push(Entry {
+        entries.push(FeatureEntry {
             role: "root",
             label: root.name.clone(),
             repo: PathBuf::from(&root.repo_path),
@@ -105,7 +105,7 @@ fn entries_for(feature: &Feature) -> Result<Vec<Entry>, String> {
         });
     }
     for target in &feature.targets {
-        entries.push(Entry {
+        entries.push(FeatureEntry {
             role: "target",
             label: target.name.clone(),
             repo: PathBuf::from(&target.repo_path),
@@ -136,17 +136,14 @@ pub fn provision(feature: &Feature) -> Result<ProvisionReport, String> {
     if feature.status == "draft" {
         return Err("Confirma el alcance de la feature antes de crear los worktrees.".into());
     }
-    if !matches!(
-        feature.status.as_str(),
-        "confirmed" | "running" | "blocked"
-    ) {
+    if !matches!(feature.status.as_str(), "confirmed" | "running" | "blocked") {
         return Err(format!(
             "No se puede provisionar una feature en estado '{}'.",
             feature.status
         ));
     }
 
-    let entries = entries_for(feature)?;
+    let entries = feature_entries(feature)?;
 
     let existing: Vec<usize> = entries
         .iter()
@@ -373,7 +370,12 @@ mod tests {
 
         let report = provision(&feature).unwrap();
         assert_eq!(report.worktrees.len(), 3);
-        assert!(report.warnings.iter().any(|item| item.contains("se crearon 1")));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|item| item.contains("se crearon 1"))
+        );
         assert!(root.join("feature/meta/repos/extra/.git").exists());
         assert!(root.join("feature/meta/.git").exists());
 

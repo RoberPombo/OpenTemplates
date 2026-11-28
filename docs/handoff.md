@@ -691,3 +691,43 @@ Limitaciones conocidas:
   no existir en el servidor nuevo; se avisa, pero no se reasocia.
 - No hay reintento, resolución de conflictos ni reasociación de sesiones
   perdidas.
+
+## Estado tras borrar una feature (worktrees y ramas)
+
+- **Backend**: `feature_delete_preview` calcula el plan sin tocar nada
+  (`exists`, `dirty`, `branchExists`, `branchPublished`, `branchInUse` y
+  `protectReason`) y `delete_feature(id, forceDirty)` hace la limpieza real.
+  Antes de tocar disco para el dueño `Feature` (coordinador y runners de paso) y
+  revalida la preview: no confía en lo que vio la UI.
+- **Orden**: worktrees de más profundo a menos profundo (los targets están dentro
+  del worktree de la raíz), `worktree prune` por repo y después `branch -D`. Solo
+  se borra la rama de un worktree que se quitó o que ya no existía.
+- **Protecciones**: se conserva la rama base de la entrada, la que existe en
+  `refs/remotes/origin/<rama>` o tiene upstream (con `fetch` best-effort antes) y
+  la que está checkouteada por un worktree ajeno. Las conservadas se devuelven en
+  `keptBranches` con su motivo; no son errores y no bloquean el borrado.
+- **Cambios sin commitear**: sin `forceDirty` la limpieza aborta antes de quitar
+  nada. La UI muestra la lista de worktrees sucios y exige marcar «Eliminar
+  también los cambios sin commitear» para habilitar el botón.
+- **Carpeta**: se borra `<appdata>/features/<id>/` (BRIEF, planes, `NOTES.md` y
+  `.runner`) solo si coincide exactamente con esa ruta; si no, se conserva y se
+  avisa. Nunca se hace `remove_dir_all` sobre una ruta arbitraria.
+- **Fallo parcial**: si falla un worktree, una rama o la carpeta, la feature sigue
+  en `features.json` con el mismo estado y la UI refresca la preview y muestra
+  los errores. Un reintento continúa donde se quedó: worktrees ausentes y ramas
+  ya borradas no vuelven a fallar.
+- **UI**: el botón «Eliminar» de `FeatureView` abre `DeleteFeatureDialog` desde
+  `App.tsx` (lazy). Lista worktrees y ramas, enseña las protegidas, avisa de la
+  pérdida de artefactos y del `forceDirty`. No usa `window.confirm` porque el
+  puerto `ConfirmDialog` es síncrono y no admite ni listas ni casilla.
+- **Verificación**: `pnpm check` en verde (792 tests), `pnpm build` en verde y
+  `cargo test` con 86 tests pasando y 2 ignorados; `cargo clippy --all-targets --
+  -D warnings` limpio. Tests nuevos de Rust para worktrees anidados, rama base,
+  publicada, en uso, sucio sin y con force, idempotencia, fallo parcial con
+  reintento y carpeta fuera de `features/`; tests TS de dominio, caso de uso,
+  hook y diálogo. No se levantó la app contra worktrees reales: el flujo de UI se
+  validó con dobles y la limpieza con repos temporales.
+- **Limitaciones**: no se borran ramas remotas, PRs ni sesiones; no se comprueba
+  si la rama tiene commits sin integrar (la confirmación avisa de que se
+  pierden). La detección de rama publicada usa las refs locales tras un `fetch`
+  best-effort: sin red ni refs remotas no puede saber que otra copia la publicó.
