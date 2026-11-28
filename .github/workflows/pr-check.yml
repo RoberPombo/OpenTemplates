@@ -18,7 +18,9 @@ jobs:
     # base repo, so a guard there filters nothing. Fork PRs need maintainer
     # approval from GitHub and then run this job with a read-only token, no
     # secrets and SHA-pinned actions. Do not gate it on the head repo either.
-    runs-on: ubuntu-latest
+    # Fijar runner: `ubuntu-latest` migró a 26.04 donde no están
+    # libwebkit2gtk-4.1-dev/libappindicator3-dev/librsvg2-dev. 24.04 los trae.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
