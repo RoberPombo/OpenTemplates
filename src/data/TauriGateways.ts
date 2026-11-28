@@ -33,6 +33,7 @@ import type { FeatureDeleteOutcome, FeatureDeletePreview } from "../domain/featu
 import type {
   AppSettings,
   Bootstrap,
+  BootstrapDetection,
   ConfigOutcome,
   CreateWorkspaceInput,
   Library,
@@ -270,6 +271,10 @@ export class TauriPreviewGateway implements PreviewGateway {
 export class TauriFeatureGateway implements FeatureGateway {
   list(): Promise<Feature[]> {
     return call(api.listFeatures());
+  }
+
+  bootstrapCandidates(repoId: string): Promise<BootstrapDetection> {
+    return call(api.detectBootstrapCandidates(repoId));
   }
 
   save(feature: Feature): Promise<Feature> {

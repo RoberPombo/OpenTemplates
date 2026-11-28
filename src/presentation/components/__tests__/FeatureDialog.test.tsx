@@ -61,6 +61,156 @@ describe("FeatureDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  test("propone candidatos por repo y guarda solo los marcados", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    const detectBootstrap = vi.fn(async (repoId: string) => ({
+      candidates:
+        repoId === "repo-web"
+          ? [
+              { path: ".env", kind: "env" as const },
+              { path: ".env.local", kind: "env" as const },
+            ]
+          : [],
+      truncated: false,
+    }));
+    render(
+      <FeatureDialog
+        repos={[repo]}
+        dataDir="/data"
+        detectBootstrap={detectBootstrap}
+        onClose={() => {}}
+        onCreated={onCreated}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Nombre"), "Checkout con Stripe");
+    await user.type(screen.getByLabelText("Objetivo"), "Cobrar con Stripe");
+    await user.click(screen.getByRole("checkbox", { name: /Web/ }));
+
+    const env = await screen.findByRole("checkbox", { name: ".env en Web" });
+    const local = screen.getByRole("checkbox", { name: ".env.local en Web" });
+    expect(env).not.toBeChecked();
+    expect(local).not.toBeChecked();
+
+    await user.click(env);
+    await user.click(screen.getByRole("button", { name: "Crear feature" }));
+
+    expect(detectBootstrap).toHaveBeenCalledWith("repo-web");
+    const feature = onCreated.mock.calls[0][0];
+    expect(feature.targets[0].bootstrap).toEqual([{ path: ".env", mode: "copy", required: false }]);
+  });
+
+  test("agrupa los candidatos por repo y avisa si la lista se trunca", async () => {
+    const user = userEvent.setup();
+    const api: Repo = { ...repo, id: "repo-api", name: "API", path: "/repos/api" };
+    const detectBootstrap = vi.fn(async (repoId: string) =>
+      repoId === "repo-web"
+        ? {
+            candidates: [{ path: ".env", kind: "env" as const }],
+            truncated: false,
+          }
+        : {
+            candidates: [{ path: "app.local.yml", kind: "local" as const }],
+            truncated: true,
+          },
+    );
+    render(
+      <FeatureDialog
+        repos={[repo, api]}
+        dataDir="/data"
+        detectBootstrap={detectBootstrap}
+        onClose={() => {}}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: "Web" }));
+    await user.click(screen.getByRole("checkbox", { name: "API" }));
+
+    expect(await screen.findByRole("checkbox", { name: ".env en Web" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("checkbox", { name: "app.local.yml en API" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Hay más candidatos/)).toBeInTheDocument();
+    expect(detectBootstrap).toHaveBeenCalledWith("repo-web");
+    expect(detectBootstrap).toHaveBeenCalledWith("repo-api");
+  });
+
+  test("conserva el bootstrap manual y no lo duplica con lo detectado", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    const configured: Repo = {
+      ...repo,
+      bootstrap: [{ path: ".env", mode: "copy", required: true }],
+    };
+    const detectBootstrap = vi.fn(async () => ({
+      candidates: [
+        { path: ".env", kind: "env" as const },
+        { path: ".env.local", kind: "env" as const },
+      ],
+      truncated: false,
+    }));
+    render(
+      <FeatureDialog
+        repos={[configured]}
+        dataDir="/data"
+        detectBootstrap={detectBootstrap}
+        onClose={() => {}}
+        onCreated={onCreated}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Nombre"), "Checkout con Stripe");
+    await user.type(screen.getByLabelText("Objetivo"), "Cobrar con Stripe");
+    await user.click(screen.getByRole("checkbox", { name: /Web/ }));
+
+    const env = await screen.findByRole("checkbox", { name: ".env en Web" });
+    expect(env).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: ".env.local en Web" })).not.toBeChecked();
+    expect(screen.getAllByRole("checkbox", { name: /\.env en Web/ })).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "Crear feature" }));
+
+    expect(onCreated.mock.calls[0][0].targets[0].bootstrap).toEqual([
+      { path: ".env", mode: "copy", required: true },
+    ]);
+  });
+
+  test("un fallo de detección avisa pero no bloquea el alta", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    const configured: Repo = {
+      ...repo,
+      bootstrap: [{ path: ".env", mode: "copy", required: true }],
+    };
+    const detectBootstrap = vi.fn(async () => {
+      throw new Error("git no disponible");
+    });
+    render(
+      <FeatureDialog
+        repos={[configured]}
+        dataDir="/data"
+        detectBootstrap={detectBootstrap}
+        onClose={() => {}}
+        onCreated={onCreated}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Nombre"), "Checkout con Stripe");
+    await user.type(screen.getByLabelText("Objetivo"), "Cobrar con Stripe");
+    await user.click(screen.getByRole("checkbox", { name: /Web/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudieron detectar candidatos",
+    );
+    await user.click(screen.getByRole("button", { name: "Crear feature" }));
+
+    expect(onCreated.mock.calls[0][0].targets[0].bootstrap).toEqual([
+      { path: ".env", mode: "copy", required: true },
+    ]);
+  });
+
   test("un hotfix usa el flujo rápido y exige repos", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();

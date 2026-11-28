@@ -11,13 +11,22 @@ import {
   type FeatureRootInput,
   type FeatureTargetInput,
 } from "../../domain/features/model";
-import type { Repo } from "../../types";
+import type { BootstrapDetection, BootstrapEntry, Repo } from "../../types";
+import {
+  bootstrapKey,
+  decisionsToBootstrap,
+  proposeBootstrap,
+} from "../../domain/features/bootstrap";
+import { FeatureBootstrapSection } from "./FeatureBootstrapSection";
+import { useBootstrapCandidates } from "../hooks/useBootstrapCandidates";
 
 type Props = {
   repos: Repo[];
   dataDir: string;
   onClose: () => void;
   onCreated: (feature: Feature) => void;
+  /** Detección de candidatos por repo; si falta, se conserva el bootstrap manual. */
+  detectBootstrap?: (repoId: string) => Promise<BootstrapDetection>;
 };
 
 const KINDS: { value: FeatureKind; label: string; hint: string }[] = [
@@ -42,7 +51,7 @@ function newId(): string {
   return `feat-${Date.now()}`;
 }
 
-export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
+export function FeatureDialog({ repos, dataDir, onClose, onCreated, detectBootstrap }: Props) {
   const dismiss = useDialogDismiss(onClose);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<FeatureKind>("feature");
@@ -52,6 +61,7 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
   const [baseTarget, setBaseTarget] = useState("main");
   const [scopes, setScopes] = useState(".");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [decisions, setDecisions] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   const rootRepo = repos.find((repo) => repo.id === rootId) ?? null;
@@ -59,12 +69,26 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
     () => repos.filter((repo) => selected.has(repo.id) && repo.id !== rootId),
     [repos, selected, rootId],
   );
+  const participatingRepos = useMemo(
+    () => (rootRepo ? [rootRepo, ...targetRepos] : targetRepos),
+    [rootRepo, targetRepos],
+  );
+  const detections = useBootstrapCandidates(participatingRepos, detectBootstrap);
   const canCreate = name.trim().length > 0 && brief.trim().length > 0 && targetRepos.length > 0;
   const flow = flowForKind(kind);
 
   function toggleTarget(id: string) {
     setSelected((prev) => toggleSetValue(prev, id));
     setError(null);
+  }
+
+  function toggleBootstrap(repoId: string, path: string, checked: boolean) {
+    setDecisions((prev) => ({ ...prev, [bootstrapKey(repoId, path)]: checked }));
+  }
+
+  function bootstrapFor(repo: Repo): BootstrapEntry[] {
+    const proposals = proposeBootstrap(repo.bootstrap ?? [], detections[repo.id]?.candidates ?? []);
+    return decisionsToBootstrap(repo.id, proposals, decisions);
   }
 
   function submit() {
@@ -75,7 +99,7 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
           name: rootRepo.name,
           repoPath: rootRepo.path,
           baseBranch: baseRoot.trim() || "main",
-          bootstrap: rootRepo.bootstrap ?? [],
+          bootstrap: bootstrapFor(rootRepo),
         }
       : null;
 
@@ -85,7 +109,7 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
       repoPath: repo.path,
       baseBranch: baseTarget.trim() || "main",
       scopes: parseScopes(scopes),
-      bootstrap: repo.bootstrap ?? [],
+      bootstrap: bootstrapFor(repo),
     }));
 
     const directory = `${dataDir.replace(/\/+$/, "")}/features/${id}`;
@@ -270,6 +294,13 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated }: Props) {
               );
             })}
           </section>
+
+          <FeatureBootstrapSection
+            repos={participatingRepos}
+            detections={detections}
+            decisions={decisions}
+            onToggle={toggleBootstrap}
+          />
 
           <p className="muted small-text">
             {flow === "fast"

@@ -201,11 +201,16 @@ git -C "$MAIN/repos/$REPO" worktree add -b "$BRANCH" "$WT/repos/$REPO" "origin/$
 Después de crear los worktrees, antes de lanzar el coordinador. La lista es **por
 repo/subrepo**, editable, y la app solo propone candidatos:
 
-1. **Detección (sugerencia).** Ficheros ignorados del checkout principal que
-   parezcan configuración: `.env*`, `*.local`, `.npmrc`, `.tool-versions`,
-   `docker-compose.override.yml`, configs de servicio. Se excluyen `.git`,
-   `node_modules`, `dist`, `build`, `.next`, `target`, logs y cachés. El usuario
-   confirma, añade o quita.
+1. **Detección (sugerencia).** El comando `detect_bootstrap_candidates(repoId)`
+   lista con `git ls-files --others --ignored --exclude-standard` los ficheros
+   ignorados que parecen configuración: `.env*`, `*.local*`, `.npmrc`,
+   `.yarnrc*`, `.tool-versions`, `.nvmrc`, `.node-version` y
+   `*.override.{yml,yaml,json,toml}`. Se excluyen `.git`, `node_modules`, `dist`,
+   `build`, `.next`, `target`, `coverage`, `out`, logs y cachés. Devuelve solo
+   ruta relativa y tipo, nunca contenido; descarta symlinks y limita la lista a
+   200 con aviso de truncado. El alta los agrupa por repo con casillas; lo
+   configurado a mano sigue marcado. El usuario confirma o descarta cada
+   propuesta.
 2. **Copia.** Cada entrada tiene modo:
 
    | Modo | Uso |

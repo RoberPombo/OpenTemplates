@@ -445,6 +445,17 @@ pub fn add_repo(state: State<'_, AppState>, path: String) -> Result<Repo, String
     Ok(repo)
 }
 
+/// Candidatos de configuración ignorada del checkout de un repo registrado.
+/// Solo devuelve rutas y tipo; nunca contenido.
+#[tauri::command]
+pub fn detect_bootstrap_candidates(
+    state: State<'_, AppState>,
+    repo_id: String,
+) -> Result<crate::bootstrap_candidates::BootstrapDetection, String> {
+    let repo = repo_of(&state, &repo_id)?;
+    crate::bootstrap_candidates::detect(Path::new(&repo.path))
+}
+
 #[tauri::command]
 pub fn refresh_repo(state: State<'_, AppState>, id: String) -> Result<Repo, String> {
     let mut repos = state.repos.lock().map_err(|_| "estado bloqueado")?;
