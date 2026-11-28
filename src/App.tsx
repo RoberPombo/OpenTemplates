@@ -630,6 +630,7 @@ function App() {
           <FeatureDialog
             repos={repos}
             dataDir={boot.dataDir}
+            issues={root.issues}
             detectBootstrap={(repoId) => root.features.bootstrapCandidates(repoId)}
             onClose={() => setCreatingFeature(false)}
             onCreated={(draft) => {

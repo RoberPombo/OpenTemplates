@@ -18,6 +18,9 @@ import {
   proposeBootstrap,
 } from "../../domain/features/bootstrap";
 import { FeatureBootstrapSection } from "./FeatureBootstrapSection";
+import { FeatureIssuePicker, type IssueSelection } from "./FeatureIssuePicker";
+import { toIssueRef } from "../../domain/features/issue";
+import type { IssueGateway } from "../../domain/repositories/IssueGateway";
 import { useBootstrapCandidates } from "../hooks/useBootstrapCandidates";
 
 type Props = {
@@ -27,6 +30,8 @@ type Props = {
   onCreated: (feature: Feature) => void;
   /** Detección de candidatos por repo; si falta, se conserva el bootstrap manual. */
   detectBootstrap?: (repoId: string) => Promise<BootstrapDetection>;
+  /** Issues de GitHub con gh; si falta, la sección no aparece. */
+  issues?: IssueGateway;
 };
 
 const KINDS: { value: FeatureKind; label: string; hint: string }[] = [
@@ -51,7 +56,14 @@ function newId(): string {
   return `feat-${Date.now()}`;
 }
 
-export function FeatureDialog({ repos, dataDir, onClose, onCreated, detectBootstrap }: Props) {
+export function FeatureDialog({
+  repos,
+  dataDir,
+  onClose,
+  onCreated,
+  detectBootstrap,
+  issues,
+}: Props) {
   const dismiss = useDialogDismiss(onClose);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<FeatureKind>("feature");
@@ -62,6 +74,7 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated, detectBootst
   const [scopes, setScopes] = useState(".");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [decisions, setDecisions] = useState<Record<string, boolean>>({});
+  const [issueChoice, setIssueChoice] = useState<IssueSelection | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const rootRepo = repos.find((repo) => repo.id === rootId) ?? null;
@@ -74,6 +87,13 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated, detectBootst
     [rootRepo, targetRepos],
   );
   const detections = useBootstrapCandidates(participatingRepos, detectBootstrap);
+  const issueVisible = useMemo(
+    () =>
+      issueChoice && participatingRepos.some((repo) => repo.id === issueChoice.repoId)
+        ? issueChoice
+        : null,
+    [issueChoice, participatingRepos],
+  );
   const canCreate = name.trim().length > 0 && brief.trim().length > 0 && targetRepos.length > 0;
   const flow = flowForKind(kind);
 
@@ -118,6 +138,7 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated, detectBootst
       name,
       kind,
       brief,
+      issue: issueVisible ? toIssueRef(issueVisible.issue) : null,
       directory,
       root,
       targets,
@@ -294,6 +315,13 @@ export function FeatureDialog({ repos, dataDir, onClose, onCreated, detectBootst
               );
             })}
           </section>
+
+          <FeatureIssuePicker
+            repos={participatingRepos}
+            gateway={issues}
+            value={issueVisible}
+            onChange={setIssueChoice}
+          />
 
           <FeatureBootstrapSection
             repos={participatingRepos}

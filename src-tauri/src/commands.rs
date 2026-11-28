@@ -12,8 +12,8 @@ use crate::library;
 use crate::model::{
     AppSettings, Bootstrap, ConfigOutcome, CreatePullRequestInput, CreateWorkspaceInput, Feature,
     FeatureArtifact, FeatureDeleteOutcome, FeatureDeletePreview, FeatureProvisionOutcome, GhStatus,
-    GitCommitResult, GitCommitSummary, GitMergeResult, GitPushResult, GitStatusOutput, Library,
-    McpInfo, ModelCost, ModelDetail, ModelLimit, ProfileManifest, PullRequestCheck,
+    GitCommitResult, GitCommitSummary, GitHubIssue, GitMergeResult, GitPushResult, GitStatusOutput,
+    Library, McpInfo, ModelCost, ModelDetail, ModelLimit, ProfileManifest, PullRequestCheck,
     PullRequestInfo, Repo, ServerInfo, SkillInfo, SkillRef, Workspace, WorkspaceMode,
     WorktreeStatus,
 };
@@ -634,6 +634,7 @@ pub fn save_feature(state: State<'_, AppState>, feature: Feature) -> Result<Feat
     if feature.name.trim().is_empty() {
         return Err("Ponle un nombre a la feature".into());
     }
+    crate::artifacts::ensure_issue(&feature)?;
     {
         let mut features = state.features.lock().map_err(|_| "estado bloqueado")?;
         match features.iter_mut().find(|item| item.id == feature.id) {
@@ -1909,6 +1910,15 @@ pub fn gh_pr_checks(project_path: String) -> Result<Vec<PullRequestCheck>, Strin
 #[tauri::command]
 pub fn gh_pr_create(input: CreatePullRequestInput) -> Result<String, String> {
     crate::gh::pr_create(&input)
+}
+
+#[tauri::command]
+pub fn gh_issue_list(
+    project_path: String,
+    search: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<GitHubIssue>, String> {
+    crate::gh::issue_list(Path::new(&project_path), search.as_deref(), limit)
 }
 
 #[cfg(test)]

@@ -5,14 +5,18 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::model::{
-    CreatePullRequestInput, GhStatus, PullRequestCheck, PullRequestComment, PullRequestInfo,
-    PullRequestReview,
+    CreatePullRequestInput, GhStatus, GitHubIssue, PullRequestCheck, PullRequestComment,
+    PullRequestInfo, PullRequestReview,
 };
 use crate::process::{Output, execute};
 
 const GH_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_BODY: usize = 2_000;
 const MAX_ENTRIES: usize = 20;
+const DEFAULT_ISSUES: u32 = 30;
+const MAX_ISSUES: u32 = 50;
+const MAX_ISSUE_SEARCH_CHARS: usize = 200;
+const ISSUE_FIELDS: &str = "number,title,labels,author,url,body,state";
 const DOCS_INSTALL: &str = "https://cli.github.com/";
 const DOCS_AUTH: &str = "https://cli.github.com/manual/gh_auth_login";
 
@@ -24,24 +28,23 @@ fn truncate(value: &str, limit: usize) -> String {
     text.chars().take(limit).collect::<String>() + "…"
 }
 
-fn gh_command(dir: Option<&Path>) -> Command {
-    let mut command = Command::new("gh");
+fn run_gh_with(program: &str, dir: Option<&Path>, args: &[&str]) -> Result<Output, String> {
+    let mut command = Command::new(program);
     if let Some(dir) = dir {
         command.current_dir(dir);
     }
-    command
-}
-
-fn run_gh(dir: Option<&Path>, args: &[&str]) -> Result<Output, String> {
-    let mut command = gh_command(dir);
     command.args(args);
     match execute(command, "gh", GH_TIMEOUT) {
         Ok(output) => Ok(output),
-        Err(error) if which::which("gh").is_err() => Err(format!(
+        Err(error) if which::which(program).is_err() => Err(format!(
             "GitHub CLI (gh) no está instalado. Instálalo desde {DOCS_INSTALL}.\n{error}"
         )),
         Err(error) => Err(error),
     }
+}
+
+fn run_gh(dir: Option<&Path>, args: &[&str]) -> Result<Output, String> {
+    run_gh_with("gh", dir, args)
 }
 
 fn output_text(output: &Output) -> String {
@@ -331,6 +334,110 @@ pub fn pr_create(input: &CreatePullRequestInput) -> Result<String, String> {
     Ok(url.to_string())
 }
 
+fn issue_limit(limit: Option<u32>) -> u32 {
+    limit.unwrap_or(DEFAULT_ISSUES).clamp(1, MAX_ISSUES)
+}
+
+fn issue_search(search: Option<&str>) -> Option<String> {
+    let text: String = search?
+        .chars()
+        .filter(|c| *c == ' ' || !c.is_control())
+        .collect();
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(text.chars().take(MAX_ISSUE_SEARCH_CHARS).collect())
+}
+
+fn issue_list_args(search: Option<&str>, limit: Option<u32>) -> Vec<String> {
+    let mut args = vec![
+        "issue".to_string(),
+        "list".to_string(),
+        "--state".to_string(),
+        "open".to_string(),
+        "--limit".to_string(),
+        issue_limit(limit).to_string(),
+        "--json".to_string(),
+        ISSUE_FIELDS.to_string(),
+    ];
+    if let Some(query) = issue_search(search) {
+        args.push(format!("--search={query}"));
+    }
+    args
+}
+
+fn parse_labels(value: &Value) -> Vec<String> {
+    let mut labels: Vec<String> = Vec::new();
+    let Some(items) = value.as_array() else {
+        return labels;
+    };
+    for item in items {
+        let name = item
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| json_optional(item.get("name")));
+        let Some(name) = name else { continue };
+        if name.trim().is_empty() || labels.len() >= MAX_ENTRIES || labels.contains(&name) {
+            continue;
+        }
+        labels.push(name);
+    }
+    labels
+}
+
+fn parse_issue(value: &Value) -> Option<GitHubIssue> {
+    if let Some(state) = value.get("state").and_then(Value::as_str)
+        && !state.eq_ignore_ascii_case("OPEN")
+    {
+        return None;
+    }
+    let number = value.get("number").and_then(Value::as_u64).unwrap_or(0);
+    if number == 0 {
+        return None;
+    }
+    let (body, body_truncated) = crate::issue::sanitize_body(&json_string(value.get("body")));
+    Some(GitHubIssue {
+        number,
+        title: truncate(&json_string(value.get("title")), 300),
+        labels: parse_labels(value.get("labels").unwrap_or(&Value::Null)),
+        author: truncate(&author_of(value), 100),
+        url: json_string(value.get("url")),
+        body,
+        body_truncated,
+    })
+}
+
+fn issue_list_with(
+    program: &str,
+    project: &Path,
+    search: Option<&str>,
+    limit: Option<u32>,
+) -> Result<Vec<GitHubIssue>, String> {
+    let args = issue_list_args(search, limit);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = run_gh_with(program, Some(project), &refs)?;
+    if !output.status.success() {
+        return Err(readable_error(&output));
+    }
+    let value: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("gh devolvió una lista de issues ilegible: {error}"))?;
+    let Some(items) = value.as_array() else {
+        return Err("gh devolvió una lista de issues con un formato inesperado.".into());
+    };
+    Ok(items.iter().filter_map(parse_issue).collect())
+}
+
+/// Issues abiertos del repo remoto, con búsqueda y límite acotado. Solo lectura:
+/// no se crea, cierra, edita ni comenta ningún issue.
+pub fn issue_list(
+    project: &Path,
+    search: Option<&str>,
+    limit: Option<u32>,
+) -> Result<Vec<GitHubIssue>, String> {
+    issue_list_with("gh", project, search, limit)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,5 +506,77 @@ mod tests {
         let review = parse_review(&value);
         assert!(review.body.chars().count() <= MAX_BODY + 1);
         assert!(review.body.ends_with('…'));
+    }
+
+    #[test]
+    fn acota_limite_y_busqueda_de_issues() {
+        let args = issue_list_args(Some("  login\n"), Some(500));
+        let joined = args.join(" ");
+        assert!(joined.contains("issue list --state open"));
+        assert!(joined.contains("--limit 50"));
+        assert!(joined.contains("--search=login"));
+        assert!(!joined.contains("create"));
+        assert!(!joined.contains("close"));
+        assert!(!joined.contains("comment"));
+
+        let args = issue_list_args(None, Some(0));
+        assert!(args.join(" ").contains("--limit 1"));
+        assert!(!args.iter().any(|arg| arg.starts_with("--search=")));
+    }
+
+    #[test]
+    fn parsea_issues_con_etiquetas_autor_y_cuerpo_saneado() {
+        let issue = parse_issue(&json!({
+            "number": 12,
+            "title": "Cobro roto",
+            "state": "OPEN",
+            "url": "https://github.com/acme/app/issues/12",
+            "author": { "login": "ana" },
+            "labels": [{ "name": "bug" }, { "name": "pagos" }, { "name": "bug" }],
+            "body": "El pago falla.\r\nToken: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }))
+        .expect("issue abierto");
+        assert_eq!(issue.number, 12);
+        assert_eq!(issue.title, "Cobro roto");
+        assert_eq!(issue.labels, vec!["bug", "pagos"]);
+        assert_eq!(issue.author, "ana");
+        assert!(issue.body.contains("El pago falla."));
+        assert!(issue.body.contains("[credencial oculta]"));
+        assert!(!issue.body.contains("ghp_"));
+        assert!(!issue.body_truncated);
+    }
+
+    #[test]
+    fn descarta_issues_cerrados_y_sin_numero() {
+        assert!(
+            parse_issue(&json!({ "number": 1, "title": "viejo", "state": "CLOSED" })).is_none()
+        );
+        assert!(parse_issue(&json!({ "title": "sin número", "state": "OPEN" })).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ejecuta_la_lista_con_un_gh_simulado() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("ot-gh-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("gh");
+        let json = r#"[{"number":7,"title":"Cobro","state":"OPEN","url":"https://example.com/7","author":{"login":"ana"},"labels":[{"name":"bug"}],"body":"Detalle"}]"#;
+        let content = format!(
+            "#!/bin/sh\ncase \"$*\" in\n  *\"issue list\"*\"--state open\"*\"--limit 3\"*\"--search=cobro\"*) printf '%s' '{json}' ;;\n  *) echo \"args inesperados: $*\" >&2; exit 2 ;;\nesac\n"
+        );
+        std::fs::write(&script, content).unwrap();
+        let mut perms = std::fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script, perms).unwrap();
+
+        let issues =
+            issue_list_with(script.to_str().unwrap(), &dir, Some("cobro"), Some(3)).unwrap();
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].number, 7);
+        assert_eq!(issues[0].labels, vec!["bug"]);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

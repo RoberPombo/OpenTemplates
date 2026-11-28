@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureDialog } from "../FeatureDialog";
+import { makeIssueGateway } from "../../../tests/fakes";
 import type { Repo } from "../../../types";
 
 const repo: Repo = {
@@ -232,5 +233,81 @@ describe("FeatureDialog", () => {
     expect(feature.kind).toBe("hotfix");
     expect(feature.flow).toBe("fast");
     expect(feature.targets[0].branch).toBe("hotfix/caida-de-pagos");
+  });
+
+  test("guarda el IssueRef del issue elegido", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    const fake = makeIssueGateway({
+      issues: [
+        {
+          number: 12,
+          title: "Cobro roto",
+          labels: ["bug"],
+          author: "ana",
+          url: "https://github.com/acme/app/issues/12",
+          body: "El pago falla.",
+          bodyTruncated: false,
+        },
+      ],
+    });
+    render(
+      <FeatureDialog
+        repos={[repo]}
+        dataDir="/data"
+        issues={fake.gateway}
+        onClose={() => {}}
+        onCreated={onCreated}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Nombre"), "Checkout con Stripe");
+    await user.type(screen.getByLabelText("Objetivo"), "Cobrar con Stripe");
+    await user.click(screen.getByRole("checkbox", { name: /Web/ }));
+
+    expect(await screen.findByText("#12 Cobro roto")).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "#12 Cobro roto" }));
+    await user.click(screen.getByRole("button", { name: "Crear feature" }));
+
+    const feature = onCreated.mock.calls[0][0];
+    expect(feature.issue).toEqual({
+      number: 12,
+      title: "Cobro roto",
+      url: "https://github.com/acme/app/issues/12",
+      body: "El pago falla.",
+    });
+  });
+
+  test("sin gh avisa del motivo pero crea la feature sin issue", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    const fake = makeIssueGateway({
+      ghStatus: {
+        installed: false,
+        authenticated: false,
+        version: null,
+        message: "GitHub CLI (gh) no está instalado.",
+        docsUrl: "https://cli.github.com/",
+      },
+    });
+    render(
+      <FeatureDialog
+        repos={[repo]}
+        dataDir="/data"
+        issues={fake.gateway}
+        onClose={() => {}}
+        onCreated={onCreated}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Nombre"), "Checkout con Stripe");
+    await user.type(screen.getByLabelText("Objetivo"), "Cobrar con Stripe");
+    await user.click(screen.getByRole("checkbox", { name: /Web/ }));
+
+    expect(await screen.findByText("GitHub CLI (gh) no está instalado.")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Sin issue" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Crear feature" }));
+
+    expect(onCreated.mock.calls[0][0].issue).toBeNull();
   });
 });

@@ -15,6 +15,8 @@ export type IssueRef = {
   number: number;
   title: string;
   url?: string | null;
+  /** Cuerpo saneado y recortado al elegir el issue; opcional en registros antiguos. */
+  body?: string | null;
 };
 
 export type Workspace = {

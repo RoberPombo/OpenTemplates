@@ -42,6 +42,29 @@ pub struct IssueRef {
     pub title: String,
     #[serde(default)]
     pub url: Option<String>,
+    /// Cuerpo saneado y recortado al elegir el issue. Opcional para no romper
+    /// los registros antiguos.
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+/// Issue abierto de GitHub tal como lo devuelve `gh issue list` para el alta.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubIssue {
+    pub number: u64,
+    pub title: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub body: String,
+    /// `true` si el cuerpo original superaba el tope y se recortó.
+    #[serde(default)]
+    pub body_truncated: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -1,7 +1,7 @@
 # Estado del plan de paridad con OpenChamber / OpenCode Desktop
 
-Instantánea para retomar el trabajo sin releer las sesiones. Actualizado: 2026-11-24,
-sobre `develop` en `2d70b92`.
+Instantánea para retomar el trabajo sin releer las sesiones. Actualizado: 2026-11-28,
+sobre `develop` en `517b6b8`.
 
 El análisis de origen está en `docs/analisis-openchamber-opencode-desktop.md` y el
 detalle de cada entrega, en `docs/handoff.md` (secciones «Estado tras #N»).
@@ -65,8 +65,9 @@ Dentro del producto actual, por orden de valor:
 
 1. **Fusionar la ganadora de una carrera** (M). `Race.merge` está reservado en el
    dominio; hoy se elige ganadora y se descartan las perdedoras sin integrar la rama.
-2. **Issues de GitHub con `gh`** (M). `ISSUE.md` ya se materializa si llega un
-   `IssueRef`; falta el selector de issues en el wizard.
+2. **Issues de GitHub con `gh`** (M). Implementado en la rama
+   `feature/issues-gh-alta`: selector de issues abiertos en el alta, `IssueRef`
+   con cuerpo saneado e `ISSUE.md` con el detalle. Falta abrir la PR.
 3. **Selector de elemento en preview** (L). Requiere proxy propio o multiwebview con
    soporte Wayland; incluye screenshot y consola.
 4. **Archivar sesiones** (S). El listado ya excluye archivadas; falta el gesto.
@@ -88,6 +89,8 @@ walkthrough del diff y marketplace de templates.
 - Recorrer el preview de #43 en un workspace con datos reales (solo se comprobó que
   el iframe pinta con la CSP nueva).
 - La app completa en Wayland con terminal y preview abiertos a la vez.
+- El selector de issues con `gh` contra un GitHub real: se validó con JSON
+  simulado y un script falso.
 
 ## Cómo retomar
 

@@ -10,6 +10,7 @@ import {
   TauriGitGateway,
   TauriModelCatalogGateway,
   TauriPullRequestGateway,
+  TauriIssueGateway,
   TauriPreviewGateway,
   TauriRepoGateway,
   TauriResourcesGateway,
@@ -44,6 +45,7 @@ import type { Preferences } from "./domain/repositories/Preferences";
 import type { RepoGateway } from "./domain/repositories/RepoGateway";
 import type { GitGateway } from "./domain/repositories/GitGateway";
 import type { PullRequestGateway } from "./domain/repositories/PullRequestGateway";
+import type { IssueGateway } from "./domain/repositories/IssueGateway";
 import type { PreviewGateway } from "./domain/repositories/PreviewGateway";
 import type { ResourcesGateway } from "./domain/repositories/ResourcesGateway";
 import type { SessionFiles } from "./domain/repositories/SessionFiles";
@@ -61,6 +63,7 @@ export type Ports = {
   features: FeatureGateway;
   git: GitGateway;
   pullRequests: PullRequestGateway;
+  issues: IssueGateway;
   preview: PreviewGateway;
   profiles: ProfileGateway;
   settings: SettingsGateway;
@@ -86,6 +89,7 @@ export class CompositionRoot {
   readonly features: FeatureGateway;
   readonly git: GitGateway;
   readonly pullRequests: PullRequestGateway;
+  readonly issues: IssueGateway;
   readonly preview: PreviewGateway;
   readonly profiles: ProfileGateway;
   readonly settings: SettingsGateway;
@@ -107,6 +111,7 @@ export class CompositionRoot {
     this.features = overrides.features ?? new TauriFeatureGateway();
     this.git = overrides.git ?? new TauriGitGateway();
     this.pullRequests = overrides.pullRequests ?? new TauriPullRequestGateway();
+    this.issues = overrides.issues ?? new TauriIssueGateway();
     this.preview = overrides.preview ?? new TauriPreviewGateway();
     this.profiles = overrides.profiles ?? new TauriProfileGateway();
     this.settings = overrides.settings ?? new TauriSettingsGateway();

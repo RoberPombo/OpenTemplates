@@ -763,3 +763,43 @@ Limitaciones conocidas:
   el bootstrap manual sigue siendo la vía para añadirlo. No se levantó la app
   contra repos reales: la UI se validó con dobles y la detección con repos
   temporales.
+
+## Estado tras elegir issues de GitHub en el alta
+
+- **Backend**: nuevo comando `gh_issue_list(projectPath, search, limit)` en
+  `gh.rs`. Ejecuta `gh issue list --state open --limit <n> --json
+  number,title,labels,author,url,body,state` con el cwd del repo elegido, acota
+  el límite a 1..50 (30 por defecto) y recorta la búsqueda a 200 caracteres. El
+  parser descarta cualquier issue cuyo `state` no sea `OPEN`, tolera autores
+  nulos y etiquetas como objetos o cadenas, y devuelve `GitHubIssue` con número,
+  título, etiquetas, autor, URL, cuerpo saneado y marca de recorte.
+- **Saneado**: el cuerpo pasa por `issue.rs`: CRLF a LF, fuera caracteres de
+  control salvo tabulador y salto de línea, redacción de patrones `ghp_`, `gho_`,
+  `ghu_`, `ghs_`, `ghr_` y `github_pat_`, y tope de 4.000 caracteres con marca
+  visible. El token de `gh` nunca se lee, se pasa por argumentos ni se registra.
+  No existe ningún subcomando de escritura de issues: la app solo lista.
+- **Persistencia y artefacto**: `IssueRef` gana `body` opcional y compatible con
+  registros antiguos. `save_feature` y el provisioning escriben `ISSUE.md` con
+  título, URL, cuerpo y un aviso de que el contenido es dato importado, no
+  instrucciones. `artifacts.rs` y `config.rs` comparten `issue::markdown`, así
+  que el `ISSUE.md` del workspace o runner también lleva el cuerpo.
+- **Puerto y UI**: nuevo `IssueGateway` (`status` y `list`) con adaptador Tauri y
+  cableado en el Composition Root. `FeatureIssuePicker` consulta issues del
+  metarepo o del primer repo participante, permite cambiar de repo si hay varios,
+  busca con debounce de 300 ms y muestra carga, error con reintento y opción
+  «Sin issue». Si `gh` falta o no tiene sesión se muestra el motivo y el enlace a
+  la documentación, sin bloquear el alta. El issue elegido se guarda en el
+  borrador de `FeatureDialog` y no se modifica en GitHub.
+- **Verificación**: `cargo test` con 104 tests pasando y 2 ignorados (nuevos de
+  parseo, límite, búsqueda, redacción, script `gh` simulado, `ISSUE.md` y
+  compatibilidad de `IssueRef`); `pnpm check` en verde (814 tests) y `pnpm build`
+  en verde. `pnpm check:bundle` deja el inicial en 497,86 kB de 500 kB (147,14 kB
+  gzip), con `FeatureDialog` como chunk perezoso de 28,10 kB. La app no se levantó
+  contra un GitHub real: los comandos se validaron con JSON de gh y un script
+  falso, y la UI con dobles.
+- **Limitaciones**: el cuerpo guardado se recorta a 4.000 caracteres y no se
+  conservan etiquetas ni autor en `IssueRef`; `ISSUE.md` se regenera al guardar o
+  provisionar y no se edita desde el panel de artefactos; no se listan issues
+  cerrados ni se resuelven repos sin remoto de GitHub. El margen del bundle
+  inicial es de 2,14 kB, así que la próxima feature pesada debe vigilar
+  `pnpm check:bundle`.
